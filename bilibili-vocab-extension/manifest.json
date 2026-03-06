@@ -1,0 +1,60 @@
+﻿{
+  "manifest_version": 3,
+  "name": "Bilibili Vocabulary Subtitle",
+  "version": "0.1.0",
+  "description": "在 Bilibili 字幕中自动插入英文词汇，帮助被动学习英语",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.bilibili.com/*",
+    "https://api.bilibili.com/*",
+    "https://aisubtitle.hdslb.com/*",
+    "https://www.youtube.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.bilibili.com/video/*",
+        "https://www.youtube.com/watch*",
+        "https://www.youtube.com/live/*",
+        "https://www.youtube.com/shorts/*"
+      ],
+      "js": [
+        "segmenter.js",
+        "vocabulary.js",
+        "translator.js",
+        "renderer.js",
+        "subtitleParser.js",
+        "scripts/danmaku.js",
+        "scripts/scheduler.js",
+        "tooltip.js",
+        "contentScript.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "options.html",
+  "action": {
+    "default_title": "Bilibili Vocabulary Subtitle",
+    "default_popup": "popup.html"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "data/*.json"
+      ],
+      "matches": [
+        "https://www.bilibili.com/*",
+        "https://www.youtube.com/*"
+      ]
+    }
+  ]
+}

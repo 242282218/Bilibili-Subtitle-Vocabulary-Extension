@@ -1,0 +1,26 @@
+{
+  "generatedAt": "2026-03-05",
+  "sources": [
+    {
+      "name": "ECDICT",
+      "url": "https://github.com/skywind3000/ECDICT",
+      "license": "MIT",
+      "file": "sources/ecdict.csv",
+      "notes": "英汉词典，含 cet4/cet6/ielts/toefl/ky 标签。"
+    },
+    {
+      "name": "Words-CEFR-Dataset",
+      "url": "https://github.com/Maximax67/Words-CEFR-Dataset",
+      "license": "MIT",
+      "file": "sources/words_cefr",
+      "notes": "按词与词性提供 CEFR 数值等级 (1-6)。"
+    },
+    {
+      "name": "CC-CEDICT",
+      "url": "https://www.mdbg.net/chinese/dictionary?page=cc-cedict",
+      "license": "CC BY-SA 3.0 (MDBG 发布版本)",
+      "file": "sources/cedict_ts.u8.gz",
+      "notes": "用于中文释义补充，需保留署名与同协议要求。"
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bilibili Vocabulary</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="popup-body">
+    <div class="popup-wrap">
+      <h1>Bilibili Vocabulary</h1>
+
+      <div class="popup-field">
+        <label class="popup-inline">
+          <input id="enabled" type="checkbox" />
+          启用字幕词汇替换
+        </label>
+      </div>
+
+      <div class="popup-field">
+        <label class="popup-field-title" for="replaceRatio">替换比例 (0.1 - 0.3)</label>
+        <div class="popup-inline">
+          <input id="replaceRatio" type="range" min="0.1" max="0.3" step="0.05" />
+          <span id="replaceRatioValue">0.20</span>
+        </div>
+      </div>
+
+      <div class="popup-field">
+        <label class="popup-field-title" for="maxReplaceCount">单句替换上限 (1 - 5)</label>
+        <input id="maxReplaceCount" type="number" min="1" max="5" step="1" />
+      </div>
+
+      <div class="popup-field">
+        <label class="popup-field-title" for="targetCefr">目标 CEFR 难度</label>
+        <select id="targetCefr">
+          <option value="A1">A1</option>
+          <option value="A2">A2</option>
+          <option value="B1">B1</option>
+          <option value="B2" selected>B2</option>
+          <option value="C1">C1</option>
+          <option value="C2">C2</option>
+        </select>
+      </div>
+
+      <div class="popup-field">
+        <span class="popup-field-title">激活等级</span>
+        <div class="popup-levels">
+          <label><input type="checkbox" name="activeLevels" value="CET4" /> CET4</label>
+          <label><input type="checkbox" name="activeLevels" value="CET6" /> CET6</label>
+          <label><input type="checkbox" name="activeLevels" value="KAOYAN" /> 考研</label>
+          <label><input type="checkbox" name="activeLevels" value="IELTS" /> IELTS</label>
+          <label><input type="checkbox" name="activeLevels" value="TOEFL" /> TOEFL</label>
+        </div>
+      </div>
+
+      <button id="saveButton" type="button">保存字幕设置</button>
+      <div id="status"></div>
+
+      <div class="popup-review">
+        <div class="popup-review-meta">
+          <span class="popup-field-title">复习弹幕</span>
+          <span id="reviewDanmakuState" class="popup-review-state">未启动</span>
+        </div>
+        <div class="popup-field">
+          <label class="popup-field-title" for="reviewDanmakuSpeed">弹幕速度</label>
+          <select id="reviewDanmakuSpeed">
+            <option value="slow">慢</option>
+            <option value="normal" selected>标准</option>
+            <option value="fast">快</option>
+          </select>
+        </div>
+        <button id="reviewDanmakuButton" class="popup-review-button" type="button">启动复习弹幕</button>
+      </div>
+
+      <div class="popup-ranking">
+        <div class="popup-ranking-tabs">
+          <button class="popup-ranking-tab is-active" type="button" data-sort="asc">急需巩固 ↑</button>
+          <button class="popup-ranking-tab" type="button" data-sort="desc">高频生词 ↓</button>
+        </div>
+        <ul id="rankingList" class="popup-ranking-list"></ul>
+        <div id="rankingEmpty" class="popup-ranking-empty">暂无命中词汇</div>
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
