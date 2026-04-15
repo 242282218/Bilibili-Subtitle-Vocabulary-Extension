@@ -870,7 +870,12 @@
       isRenderUpToDate,
       shouldRunReviewDanmaku,
       resetHitTrackingIfSourceChanged,
-      recordRenderedHits
+      recordRenderedHits,
+      loadOverlayModule,
+      __resetOverlayModuleStateForTest() {
+        overlayModuleCache = null;
+        overlayModulePromise = null;
+      }
     };
   }
 })();
