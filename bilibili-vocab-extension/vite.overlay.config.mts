@@ -7,14 +7,17 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    "process.env.NODE_ENV": JSON.stringify("production")
+  },
   build: {
     outDir: resolve(__dirname, "dist"),
     emptyOutDir: false,
     cssCodeSplit: false,
+    minify: "esbuild",
     lib: {
       entry: resolve(__dirname, "react-ui/src/overlay-entry.tsx"),
-      name: "BiliVocabOverlay",
-      formats: ["iife"],
+      formats: ["es"],
       fileName: () => "overlay.js"
     },
     rollupOptions: {

@@ -18,17 +18,13 @@ test("react ui contract: manifest should point options/popup to dist build", () 
   assert.equal(manifest.action && manifest.action.default_popup, "dist/popup.html");
 });
 
-test("react ui contract: content script should load dist overlay bundle before contentScript", () => {
+test("react ui contract: manifest should not eagerly inject dist overlay bundle", () => {
   const manifest = readManifest();
   const firstContentScript = Array.isArray(manifest.content_scripts) ? manifest.content_scripts[0] : null;
   const scriptList = firstContentScript && Array.isArray(firstContentScript.js) ? firstContentScript.js : [];
 
-  const overlayIndex = scriptList.indexOf("dist/overlay.js");
-  const contentScriptIndex = scriptList.indexOf("contentScript.js");
-
-  assert.notEqual(overlayIndex, -1);
-  assert.notEqual(contentScriptIndex, -1);
-  assert.ok(overlayIndex < contentScriptIndex);
+  assert.equal(scriptList.includes("dist/overlay.js"), false);
+  assert.notEqual(scriptList.indexOf("contentScript.js"), -1);
 });
 
 test("react ui contract: content script should load experience metrics before adaptive tuning", () => {
@@ -52,6 +48,13 @@ test("react ui contract: react-ui html entries should exist for options and popu
   assert.match(optionsHtml, /src="\/src\/options-main\.tsx"/);
   assert.match(popupHtml, /id="root"/);
   assert.match(popupHtml, /src="\/src\/popup-main\.tsx"/);
+});
+
+test("react ui contract: content script should lazy-load dist overlay bundle", () => {
+  const contentScript = readProjectFile("contentScript.js");
+
+  assert.match(contentScript, /import\(chrome\.runtime\.getURL\("dist\/overlay\.js"\)\)/);
+  assert.match(contentScript, /overlayModule\.mountOverlayPanel\(\)/);
 });
 
 test("react ui contract: overlay entry should use lightweight overlay adapters", () => {

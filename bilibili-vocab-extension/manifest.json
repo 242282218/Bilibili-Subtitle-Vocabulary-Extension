@@ -11,7 +11,14 @@
     "https://www.bilibili.com/*",
     "https://api.bilibili.com/*",
     "https://aisubtitle.hdslb.com/*",
-    "https://www.youtube.com/*"
+    "https://www.youtube.com/*",
+    "https://v.qq.com/*",
+    "https://www.iqiyi.com/*",
+    "https://www.netflix.com/*",
+    "https://v.youku.com/*"
+  ],
+  "optional_host_permissions": [
+    "*://*/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -19,12 +26,17 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.bilibili.com/video/*",
-        "https://www.youtube.com/watch*",
-        "https://www.youtube.com/live/*",
-        "https://www.youtube.com/shorts/*"
+        "http://*/*",
+        "https://*/*"
       ],
       "js": [
+        "config.js",
+        "settingsUiStateMachine.js",
+        "sharedSettings.js",
+        "experienceMetrics.js",
+        "adaptiveTuning.js",
+        "learningState.js",
+        "utils.js",
         "segmenter.js",
         "vocabulary.js",
         "translator.js",
@@ -41,20 +53,51 @@
       "run_at": "document_idle"
     }
   ],
-  "options_page": "options.html",
+  "options_page": "dist/options.html",
   "action": {
     "default_title": "Bilibili Vocabulary Subtitle",
-    "default_popup": "popup.html"
+    "default_popup": "dist/popup.html"
   },
   "web_accessible_resources": [
     {
       "resources": [
-        "data/*.json"
+        "data/*.json",
+        "dist/overlay.js"
       ],
       "matches": [
-        "https://www.bilibili.com/*",
-        "https://www.youtube.com/*"
+        "http://*/*",
+        "https://*/*"
       ]
     }
-  ]
+  ],
+  "commands": {
+    "toggle-enabled": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+E",
+        "mac": "Command+Shift+E"
+      },
+      "description": "开关字幕替换功能"
+    },
+    "toggle-overlay": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+O",
+        "mac": "Command+Shift+O"
+      },
+      "description": "开关悬浮控制面板"
+    },
+    "increase-ratio": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Up",
+        "mac": "Command+Shift+Up"
+      },
+      "description": "提高词汇替换比例"
+    },
+    "decrease-ratio": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Down",
+        "mac": "Command+Shift+Down"
+      },
+      "description": "降低词汇替换比例"
+    }
+  }
 }

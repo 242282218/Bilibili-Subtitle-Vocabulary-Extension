@@ -1,38 +1,93 @@
 ﻿(function () {
   const DEFAULT_SETTINGS = {
     enabled: true,
+    schemaVersion: 2,
     reviewDanmakuEnabled: false,
     reviewDanmakuSpeed: "normal",
+    webPageEnabled: true,
+    domainRules: {},
     activeLevels: ["CET4", "CET6", "KAOYAN", "IELTS", "TOEFL"],
     replaceRatio: 0.2,
     maxReplaceCount: 2,
     targetCefr: "B2"
   };
+  const sharedSettings = globalThis.SharedSettings || (typeof require === "function" ? require("./sharedSettings.js") : null);
 
-  const PROCESS_DELAY_MS = 80;
-  const TIMELINE_POLL_MS = 220;
-  const TRANSLATION_CACHE_LIMIT = 120;
+  const PROCESS_DELAY_MS = 120;
+  const TIMELINE_POLL_MS = 300;
+  const TRANSLATION_CACHE_LIMIT = 200;
+  const WEB_TEXT_PROCESS_INTERVAL = 1000; // 网页文本处理间隔
+  const TRANSLATION_SETTINGS_KEYS = sharedSettings && Array.isArray(sharedSettings.SETTINGS_STORAGE_KEYS)
+    ? sharedSettings.SETTINGS_STORAGE_KEYS.filter((key) => key !== "reviewDanmakuEnabled" && key !== "reviewDanmakuSpeed")
+    : [
+      "enabled",
+      "activeLevels",
+      "replaceRatio",
+      "maxReplaceCount",
+      "targetCefr",
+      "vocabularyMode",
+      "examPreference",
+      "webPageEnabled",
+      "domainRules",
+      "schemaVersion"
+    ];
+  const RUNTIME_SETTINGS_KEYS = [...TRANSLATION_SETTINGS_KEYS, "reviewDanmakuEnabled", "reviewDanmakuSpeed"];
+  const SETTINGS_STORAGE_KEY_V3 = sharedSettings && sharedSettings.SETTINGS_STORAGE_KEY_V3
+    ? sharedSettings.SETTINGS_STORAGE_KEY_V3
+    : "bili_vocab_settings_v3";
 
   let observer = null;
   let processTimer = null;
   let timelinePollTimer = null;
   let processing = false;
+  let pendingProcess = false;
   let settings = { ...DEFAULT_SETTINGS };
-  const translationCache = new Map();
+  const LRUCacheCtor = globalThis.Utils && typeof globalThis.Utils.LRUCache === "function"
+    ? globalThis.Utils.LRUCache
+    : class SimpleMapCache extends Map {
+      constructor() {
+        super();
+      }
+    };
+  const translationCache = new LRUCacheCtor(TRANSLATION_CACHE_LIMIT);
   let boundVideo = null;
+  let webTextProcessTimer = null;
+  let webTextProcessing = false;
+  let lastWebTextProcessAt = 0;
+  let renderGeneration = 0;
+  let overlayModuleCache = null;
+  let overlayModulePromise = null;
   const HIT_SIGNATURE_DATA_KEY = "biliVocabHitSignature";
   const RENDER_SIGNATURE_DATA_KEY = "biliVocabRenderSignature";
+  const LEARNING_WORD_STATS_STORAGE_KEY = globalThis.LearningState ? globalThis.LearningState.STORAGE_KEYS.WORD_STATS_V2 : "bili_vocab_word_stats_v2";
+  const REVIEW_QUEUE_STORAGE_KEY = globalThis.LearningState ? globalThis.LearningState.STORAGE_KEYS.REVIEW_QUEUE : "bili_vocab_review_queue_v1";
+  const LEARNING_SUMMARY_STORAGE_KEY = globalThis.LearningState ? globalThis.LearningState.STORAGE_KEYS.LEARNING_SUMMARY : "bili_vocab_learning_summary_v1";
 
-  function normalizeText(text) {
-    return String(text || "").replace(/\s+/g, " ").trim();
+  const normalizeText = (globalThis.Utils && globalThis.Utils.normalizeText) || ((text) => String(text || "").replace(/\s+/g, " ").trim());
+  const logError = (globalThis.Utils && globalThis.Utils.logError) || ((context, error) => console.error(`[BiliVocab] ${context}:`, error));
+
+  if (sharedSettings) {
+    Object.assign(DEFAULT_SETTINGS, sharedSettings.DEFAULT_SETTINGS);
   }
 
   function normalizeReviewDanmakuSpeed(speed) {
+    if (sharedSettings) {
+      return sharedSettings.normalizeReviewDanmakuSpeed(speed);
+    }
+
     const normalized = String(speed || DEFAULT_SETTINGS.reviewDanmakuSpeed).trim().toLowerCase();
     return ["slow", "normal", "fast"].includes(normalized) ? normalized : DEFAULT_SETTINGS.reviewDanmakuSpeed;
   }
 
+  function hasMethod(obj, method) {
+    return obj && typeof obj[method] === "function";
+  }
+
   function normalizeSettings(rawSettings) {
+    if (sharedSettings) {
+      return sharedSettings.normalizeSettings(rawSettings);
+    }
+
     const source = { ...DEFAULT_SETTINGS, ...(rawSettings || {}) };
     const activeLevels = Array.isArray(source.activeLevels)
       ? source.activeLevels.map((level) => String(level || "").trim().toUpperCase()).filter(Boolean)
@@ -45,16 +100,70 @@
       activeLevels: activeLevels.length ? Array.from(new Set(activeLevels)) : DEFAULT_SETTINGS.activeLevels.slice(),
       replaceRatio: Math.min(0.3, Math.max(0.1, Number(source.replaceRatio) || DEFAULT_SETTINGS.replaceRatio)),
       maxReplaceCount: Math.min(5, Math.max(1, Math.floor(Number(source.maxReplaceCount) || DEFAULT_SETTINGS.maxReplaceCount))),
-      targetCefr: globalThis.SubtitleTranslator && typeof globalThis.SubtitleTranslator.normalizeTargetCefr === "function"
+      targetCefr: hasMethod(globalThis.SubtitleTranslator, "normalizeTargetCefr")
         ? globalThis.SubtitleTranslator.normalizeTargetCefr(source.targetCefr)
-        : DEFAULT_SETTINGS.targetCefr
+        : DEFAULT_SETTINGS.targetCefr,
+      webPageEnabled: source.webPageEnabled !== false,
+      domainRules: source.domainRules && typeof source.domainRules === "object" ? source.domainRules : {},
+      schemaVersion: Number(source.schemaVersion) || 2
     };
+  }
+
+  function buildRuntimeSettings(baseSettings, updates) {
+    if (sharedSettings && typeof sharedSettings.buildSettingsPayload === "function") {
+      return sharedSettings.buildSettingsPayload(baseSettings, updates);
+    }
+
+    return normalizeSettings({
+      ...(baseSettings || {}),
+      ...(updates || {})
+    });
+  }
+
+  function isCurrentSiteEnabled(runtimeSettings) {
+    if (sharedSettings && typeof sharedSettings.isDomainEnabled === "function") {
+      return sharedSettings.isDomainEnabled(globalThis.location && globalThis.location.hostname, runtimeSettings);
+    }
+    return true;
+  }
+
+  function restoreItemsToSourceText(items) {
+    if (!Array.isArray(items)) {
+      return;
+    }
+
+    items.forEach((item) => {
+      if (!item || !(item.element instanceof HTMLElement)) {
+        return;
+      }
+
+      const sourceText = normalizeText(item.text || SubtitleParser.extractSubtitleText(item.element));
+      SubtitleRenderer.restoreSubtitleElement(item.element, sourceText);
+    });
   }
 
   function getSettings() {
     return new Promise((resolve) => {
-      chrome.storage.local.get(DEFAULT_SETTINGS, (stored) => {
-        settings = normalizeSettings(stored);
+      chrome.storage.local.get(null, (stored) => {
+        if (
+          sharedSettings &&
+          typeof sharedSettings.migrateToV3 === "function" &&
+          typeof sharedSettings.resolveEffectiveRuntime === "function"
+        ) {
+          const nextV3 = sharedSettings.migrateToV3(stored);
+          if (chrome.storage && chrome.storage.local && typeof chrome.storage.local.set === "function") {
+            chrome.storage.local.set({
+              [SETTINGS_STORAGE_KEY_V3]: nextV3
+            });
+          }
+          settings = sharedSettings.resolveEffectiveRuntime(nextV3, {
+            hostname: globalThis.location && globalThis.location.hostname
+          });
+          resolve(settings);
+          return;
+        }
+
+        settings = buildRuntimeSettings(DEFAULT_SETTINGS, stored);
         resolve(settings);
       });
     });
@@ -70,10 +179,7 @@
       return "";
     }
 
-    if (
-      globalThis.SubtitleTranslator &&
-      typeof globalThis.SubtitleTranslator.createSettingsFingerprint === "function"
-    ) {
+    if (hasMethod(globalThis.SubtitleTranslator, "createSettingsFingerprint")) {
       const fingerprint = globalThis.SubtitleTranslator.createSettingsFingerprint(runtimeSettings);
       return `${normalizedText}::${fingerprint}`;
     }
@@ -91,8 +197,10 @@
 
     const normalized = normalizeSettings(runtimeSettings);
     const mode = normalized.enabled ? "enabled" : "disabled";
+    const pageMode = normalized.webPageEnabled ? "page-on" : "page-off";
+    const siteMode = isCurrentSiteEnabled(normalized) ? "site-on" : "site-off";
     const cacheKey = createCacheKey(normalizedText, normalized);
-    return `${mode}::${cacheKey}`;
+    return `${mode}::${pageMode}::${siteMode}::${cacheKey}`;
   }
 
   function isRenderUpToDate(element, sourceText, runtimeSettings) {
@@ -112,11 +220,7 @@
     if (!cacheKey || !translationCache.has(cacheKey)) {
       return null;
     }
-
-    const cachedResult = translationCache.get(cacheKey);
-    translationCache.delete(cacheKey);
-    translationCache.set(cacheKey, cachedResult);
-    return cachedResult;
+    return translationCache.get(cacheKey);
   }
 
   function writeToCache(cacheKey, result) {
@@ -138,18 +242,22 @@
     }
   }
 
-  function scheduleProcess() {
-    if (processTimer) {
-      clearTimeout(processTimer);
-    }
-
-    processTimer = setTimeout(() => {
-      processTimer = null;
-      processAll().catch((error) => {
-        console.error("[BiliVocab] Process failed:", error);
-      });
-    }, PROCESS_DELAY_MS);
-  }
+  const scheduleProcess = (function() {
+    const debouncedProcess = globalThis.Utils && globalThis.Utils.debounce
+      ? globalThis.Utils.debounce(() => {
+          processAll().catch((error) => logError("Process failed", error));
+        }, PROCESS_DELAY_MS)
+      : function() {
+          if (processTimer) {
+            clearTimeout(processTimer);
+          }
+          processTimer = setTimeout(() => {
+            processTimer = null;
+            processAll().catch((error) => logError("Process failed", error));
+          }, PROCESS_DELAY_MS);
+        };
+    return debouncedProcess;
+  })();
 
   async function applyTranslation(element, sourceTextOverride) {
     const currentText = normalizeText(sourceTextOverride || SubtitleParser.extractSubtitleText(element));
@@ -157,6 +265,7 @@
       return;
     }
 
+    const generationAtStart = renderGeneration;
     resetHitTrackingIfSourceChanged(element, currentText);
     const renderSignature = createRenderSignature(currentText, settings);
     if (isRenderUpToDate(element, currentText, settings)) {
@@ -164,6 +273,9 @@
     }
 
     if (!settings.enabled) {
+      if (generationAtStart !== renderGeneration) {
+        return;
+      }
       SubtitleRenderer.restoreSubtitleElement(element, currentText);
       if (element && element.dataset) {
         element.dataset[RENDER_SIGNATURE_DATA_KEY] = renderSignature;
@@ -178,7 +290,11 @@
       writeToCache(cacheKey, result);
     }
 
-    const rendered = SubtitleRenderer.renderSubtitleElement(element, result, currentText);
+    if (generationAtStart !== renderGeneration) {
+      return;
+    }
+
+    const rendered = SubtitleRenderer.renderSubtitleElement(element, result, currentText, settings);
     if (rendered) {
       if (element && element.dataset) {
         element.dataset[RENDER_SIGNATURE_DATA_KEY] = renderSignature;
@@ -219,12 +335,7 @@
   }
 
   function recordRenderedHits(element, result, sourceText) {
-    if (
-      !result ||
-      !Array.isArray(result.tokens) ||
-      !globalThis.VocabularyModule ||
-      typeof globalThis.VocabularyModule.recordHit !== "function"
-    ) {
+    if (!result || !Array.isArray(result.tokens) || !hasMethod(globalThis.VocabularyModule, "recordHit")) {
       return;
     }
 
@@ -256,57 +367,42 @@
   }
 
   function startReviewEngine() {
-    if (!globalThis.SchedulerModule || typeof globalThis.SchedulerModule.startEngine !== "function") {
-      return;
+    if (hasMethod(globalThis.SchedulerModule, "startEngine")) {
+      globalThis.SchedulerModule.startEngine();
     }
-
-    globalThis.SchedulerModule.startEngine();
   }
 
   function stopReviewEngine(clearExistingDanmaku) {
     if (globalThis.SchedulerModule) {
-      if (typeof globalThis.SchedulerModule.stopEngine === "function") {
+      if (hasMethod(globalThis.SchedulerModule, "stopEngine")) {
         globalThis.SchedulerModule.stopEngine();
-      } else if (typeof globalThis.SchedulerModule.pauseEngine === "function") {
+      } else if (hasMethod(globalThis.SchedulerModule, "pauseEngine")) {
         globalThis.SchedulerModule.pauseEngine();
       }
     }
 
-    if (
-      clearExistingDanmaku &&
-      globalThis.DanmakuModule &&
-      typeof globalThis.DanmakuModule.clearDanmaku === "function"
-    ) {
+    if (clearExistingDanmaku && hasMethod(globalThis.DanmakuModule, "clearDanmaku")) {
       globalThis.DanmakuModule.clearDanmaku();
     }
   }
 
   function pauseReviewEngine() {
-    if (!globalThis.SchedulerModule || typeof globalThis.SchedulerModule.pauseEngine !== "function") {
-      return;
+    if (hasMethod(globalThis.SchedulerModule, "pauseEngine")) {
+      globalThis.SchedulerModule.pauseEngine();
     }
-
-    globalThis.SchedulerModule.pauseEngine();
   }
 
   function syncDanmakuSettings() {
-    if (!globalThis.DanmakuModule || typeof globalThis.DanmakuModule.setSpeedPreset !== "function") {
-      return;
+    if (hasMethod(globalThis.DanmakuModule, "setSpeedPreset")) {
+      globalThis.DanmakuModule.setSpeedPreset(settings.reviewDanmakuSpeed);
     }
-
-    globalThis.DanmakuModule.setSpeedPreset(settings.reviewDanmakuSpeed);
   }
 
-  function shouldRunReviewDanmaku(runtimeSettings, playbackState) {
-    const nextSettings = runtimeSettings || {};
-    const state = playbackState || {};
-
-    return (
-      nextSettings.reviewDanmakuEnabled === true &&
-      state.hasVideo === true &&
-      state.paused !== true &&
-      state.ended !== true
-    );
+  function shouldRunReviewDanmaku(runtimeSettings = {}, playbackState = {}) {
+    return runtimeSettings.reviewDanmakuEnabled === true &&
+      playbackState.hasVideo === true &&
+      playbackState.paused !== true &&
+      playbackState.ended !== true;
   }
 
   function getPlaybackState() {
@@ -373,7 +469,7 @@
   function ensureRuntimeBindings() {
     bindVideoPlaybackEvents();
 
-    if (globalThis.DanmakuModule && typeof globalThis.DanmakuModule.initDanmakuContainer === "function") {
+    if (hasMethod(globalThis.DanmakuModule, "initDanmakuContainer")) {
       globalThis.DanmakuModule.initDanmakuContainer();
     }
 
@@ -392,9 +488,33 @@
       return;
     }
 
-    for (let i = 0; i < subtitleItems.length; i += 1) {
-      await applyTranslation(subtitleItems[i].element);
+    if (!isCurrentSiteEnabled(settings)) {
+      restoreItemsToSourceText(subtitleItems);
+      return;
     }
+
+    const webItems = subtitleItems.filter((item) => item && item.mode === "page");
+    const subtitleModeItems = subtitleItems.filter((item) => !item || item.mode !== "page");
+
+    // 批量更新DOM，减少重排重绘
+    await new Promise((resolve) => {
+      requestAnimationFrame(async () => {
+        for (let i = 0; i < subtitleModeItems.length; i += 1) {
+          await applyTranslation(subtitleModeItems[i].element);
+        }
+
+        if (!settings.webPageEnabled) {
+          resolve();
+          return;
+        }
+
+        for (let i = 0; i < webItems.length; i += 1) {
+          await applyTranslation(webItems[i].element, webItems[i].text);
+        }
+
+        resolve();
+      });
+    });
   }
 
   function invalidateRenderedSubtitles() {
@@ -410,14 +530,126 @@
 
   async function processAll() {
     if (processing) {
+      pendingProcess = true;
       return;
     }
 
     processing = true;
+    pendingProcess = false;
     try {
-      await processSubtitles();
+      await Promise.all([
+        processSubtitles(),
+        processWebPageText()
+      ]);
     } finally {
       processing = false;
+      if (pendingProcess) {
+        pendingProcess = false;
+        scheduleProcess();
+      }
+    }
+  }
+
+  // 全网页文本词汇替换功能（Toucan模式）
+  async function processWebPageText() {
+    if (!settings.webPageEnabled || !settings.enabled) {
+      return;
+    }
+
+    const now = Date.now();
+    if (webTextProcessing) {
+      return;
+    }
+
+    const elapsed = now - lastWebTextProcessAt;
+    if (elapsed < WEB_TEXT_PROCESS_INTERVAL) {
+      if (!webTextProcessTimer) {
+        webTextProcessTimer = setTimeout(() => {
+          webTextProcessTimer = null;
+          scheduleProcess();
+        }, WEB_TEXT_PROCESS_INTERVAL - elapsed);
+      }
+      return;
+    }
+
+    webTextProcessing = true;
+    lastWebTextProcessAt = now;
+    try {
+      // 只在视频站外的普通网页启用
+      const hostname = window.location.hostname.toLowerCase();
+      const videoSites = ['bilibili.com', 'youtube.com', 'v.qq.com', 'iqiyi.com', 'netflix.com', 'youku.com'];
+      if (videoSites.some(site => hostname.includes(site))) {
+        return;
+      }
+
+      // 选择所有正文文本节点
+      const textNodes = [];
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: (node) => {
+            // 过滤掉非正文内容
+            if (!node.parentElement || node.parentElement.tagName.match(/^(SCRIPT|STYLE|NOSCRIPT|IFRAME|BUTTON|A|INPUT|TEXTAREA|SELECT|LABEL|NAV|HEADER|FOOTER|ASIDE|PRE|CODE)$/)) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            // 跳过已处理的内容
+            if (node.parentElement.closest('.bili-vocab-word, .bili-vocab-tooltip')) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            // 只处理包含中文的文本
+            const text = node.textContent.trim();
+            if (text.length < 2 || !/[\u4e00-\u9fff]/.test(text)) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            return NodeFilter.FILTER_ACCEPT;
+          }
+        }
+      );
+
+      let node;
+      while ((node = walker.nextNode())) {
+        textNodes.push(node);
+      }
+
+      // 分批处理，避免阻塞页面
+      const batchSize = 20;
+      for (let i = 0; i < textNodes.length; i += batchSize) {
+        const batch = textNodes.slice(i, i + batchSize);
+        await Promise.all(batch.map(node => processTextNode(node)));
+        // 给浏览器喘息时间
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    } finally {
+      webTextProcessing = false;
+    }
+  }
+
+  async function processTextNode(textNode) {
+    try {
+      const generationAtStart = renderGeneration;
+      const text = textNode.textContent;
+      if (!text || text.length < 2) return;
+
+      const cacheKey = createCacheKey(`web:${text}`, settings);
+      let result = translationCache.get(cacheKey);
+      if (!result) {
+        result = await SubtitleTranslator.processSubtitle(text, settings);
+        translationCache.set(cacheKey, result);
+      }
+
+      if (generationAtStart !== renderGeneration) {
+        return;
+      }
+
+      if (result && result.translatedText !== text && textNode.parentNode) {
+        const span = document.createElement('span');
+        span.innerHTML = SubtitleRenderer.renderToHtml(result, text);
+        textNode.parentNode.replaceChild(span, textNode);
+      }
+    } catch (e) {
+      // 单个节点处理失败不影响整体
+      logError('processTextNode', e);
     }
   }
 
@@ -426,12 +658,14 @@
       observer.disconnect();
     }
 
+    const subtitleContainer = document.querySelector(".bpx-player-subtitle-wrap") || document.body;
+
     observer = new MutationObserver(() => {
       ensureRuntimeBindings();
       scheduleProcess();
     });
 
-    observer.observe(document.body, {
+    observer.observe(subtitleContainer, {
       childList: true,
       subtree: true,
       characterData: true
@@ -449,29 +683,54 @@
     }, TIMELINE_POLL_MS);
   }
 
+  function hasTranslationSettingChange(changes) {
+    if (changes && changes[SETTINGS_STORAGE_KEY_V3]) {
+      return true;
+    }
+    return TRANSLATION_SETTINGS_KEYS.some((key) => Boolean(changes && changes[key]));
+  }
+
   function watchStorageChanges() {
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName !== "local") {
         return;
       }
 
-      const translationKeys = ["enabled", "activeLevels", "replaceRatio", "maxReplaceCount", "targetCefr"];
-      const reviewDanmakuChanged = Boolean(changes.reviewDanmakuEnabled);
-      const reviewDanmakuSpeedChanged = Boolean(changes.reviewDanmakuSpeed);
-      const hasTranslationChange = translationKeys.some((key) => Boolean(changes[key]));
-      if (!reviewDanmakuChanged && !reviewDanmakuSpeedChanged && !hasTranslationChange) {
+      const v3Changed = Boolean(changes[SETTINGS_STORAGE_KEY_V3]);
+      const reviewDanmakuChanged = v3Changed || Boolean(changes.reviewDanmakuEnabled);
+      const reviewDanmakuSpeedChanged = v3Changed || Boolean(changes.reviewDanmakuSpeed);
+      const learningStateChanged = Boolean(
+        changes[LEARNING_WORD_STATS_STORAGE_KEY] ||
+        changes[REVIEW_QUEUE_STORAGE_KEY] ||
+        changes[LEARNING_SUMMARY_STORAGE_KEY]
+      );
+      const hasTranslationChange = hasTranslationSettingChange(changes);
+      if (!reviewDanmakuChanged && !reviewDanmakuSpeedChanged && !hasTranslationChange && !learningStateChanged) {
         return;
       }
 
-      const nextSettings = { ...settings };
-      [...translationKeys, "reviewDanmakuEnabled", "reviewDanmakuSpeed"].forEach((key) => {
-        if (!changes[key]) {
-          return;
-        }
-        nextSettings[key] = changes[key].newValue;
-      });
+      if (
+        v3Changed &&
+        sharedSettings &&
+        typeof sharedSettings.normalizeSettingsV3 === "function" &&
+        typeof sharedSettings.resolveEffectiveRuntime === "function"
+      ) {
+        const nextV3 = sharedSettings.normalizeSettingsV3(changes[SETTINGS_STORAGE_KEY_V3].newValue);
+        settings = sharedSettings.resolveEffectiveRuntime(nextV3, {
+          hostname: globalThis.location && globalThis.location.hostname
+        });
+      } else {
+        const updates = {};
+        RUNTIME_SETTINGS_KEYS.forEach((key) => {
+          if (!changes[key]) {
+            return;
+          }
+          updates[key] = changes[key].newValue;
+        });
+        settings = buildRuntimeSettings(settings, updates);
+      }
 
-      settings = normalizeSettings(nextSettings);
+      renderGeneration += 1;
 
       if (reviewDanmakuSpeedChanged) {
         syncDanmakuSettings();
@@ -483,19 +742,90 @@
 
       if (hasTranslationChange) {
         clearTranslationCache();
+        if (webTextProcessTimer) {
+          clearTimeout(webTextProcessTimer);
+          webTextProcessTimer = null;
+        }
         invalidateRenderedSubtitles();
         scheduleProcess();
+      }
+
+      if (learningStateChanged && hasMethod(globalThis.VocabularyModule, "refreshLearningStateFromStorage")) {
+        globalThis.VocabularyModule.refreshLearningStateFromStorage()
+          .then(() => {
+            clearTranslationCache();
+            invalidateRenderedSubtitles();
+            scheduleProcess();
+          })
+          .catch((error) => logError("Learning state refresh failed", error));
       }
     });
   }
 
+  function getOverlayModuleFromGlobal() {
+    const module = globalThis.ReactOverlayModule || globalThis.OverlayPanelModule;
+    if (module && typeof module.mountOverlayPanel === "function") {
+      return module;
+    }
+    return null;
+  }
+
+  async function loadOverlayModule() {
+    const existing = getOverlayModuleFromGlobal();
+    if (existing) {
+      overlayModuleCache = existing;
+      return existing;
+    }
+
+    if (overlayModuleCache) {
+      return overlayModuleCache;
+    }
+
+    if (overlayModulePromise) {
+      return overlayModulePromise;
+    }
+
+    if (
+      typeof chrome === "undefined" ||
+      !chrome.runtime ||
+      typeof chrome.runtime.getURL !== "function"
+    ) {
+      return null;
+    }
+
+    overlayModulePromise = import(chrome.runtime.getURL("dist/overlay.js"))
+      .then((module) => {
+        const globalModule = getOverlayModuleFromGlobal();
+        if (globalModule) {
+          overlayModuleCache = globalModule;
+          return globalModule;
+        }
+        if (module && typeof module.mountOverlayPanel === "function") {
+          overlayModuleCache = module;
+          return module;
+        }
+        return null;
+      })
+      .catch((error) => {
+        logError("Overlay module load failed", error);
+        return null;
+      })
+      .finally(() => {
+        overlayModulePromise = null;
+      });
+
+    return overlayModulePromise;
+  }
+
   async function init() {
+    const overlayModule = await loadOverlayModule();
     if (
       !globalThis.SubtitleParser ||
       !globalThis.SubtitleTranslator ||
       !globalThis.VocabularyModule ||
       !globalThis.SubtitleRenderer ||
-      !globalThis.TooltipModule
+      !globalThis.TooltipModule ||
+      !overlayModule
     ) {
       console.error("[BiliVocab] Required modules are missing.");
       return;
@@ -503,12 +833,16 @@
 
     await Promise.all([
       VocabularyModule.loadVocabulary(),
-      SubtitleParser.loadSubtitleTimeline().catch(() => [])
+      SubtitleParser.loadSubtitleTimeline().catch((error) => {
+        logError("Subtitle timeline load failed", error);
+        return [];
+      })
     ]);
     await getSettings();
     clearTranslationCache();
 
     TooltipModule.init();
+    overlayModule.mountOverlayPanel();
     ensureRuntimeBindings();
     watchStorageChanges();
     observeSubtitleChanges();
@@ -520,20 +854,19 @@
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
-      init().catch((error) => {
-        console.error("[BiliVocab] Initialization failed:", error);
-      });
+      init().catch((error) => logError("Initialization failed", error));
     });
   } else {
-    init().catch((error) => {
-      console.error("[BiliVocab] Initialization failed:", error);
-    });
+    init().catch((error) => logError("Initialization failed", error));
   }
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
+      TRANSLATION_SETTINGS_KEYS,
+      buildRuntimeSettings,
       createRenderSignature,
       createHitTrackingSignature,
+      hasTranslationSettingChange,
       isRenderUpToDate,
       shouldRunReviewDanmaku,
       resetHitTrackingIfSourceChanged,
