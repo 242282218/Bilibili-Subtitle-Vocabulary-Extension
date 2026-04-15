@@ -7,6 +7,9 @@ const os = require("node:os");
 const {
   collectPackEntries,
   buildWindowsArchiveScript,
+  parseZipEntryList,
+  parsePowerShellZipEntries,
+  validateArchiveEntries,
   createZipCommand,
   runPack
 } = require("../scripts/pack-extension.js");
@@ -101,8 +104,25 @@ test("pack extension: runPack should execute command and require archive output"
     const calls = [];
     const runner = (command, args, options) => {
       calls.push({ command, args, options });
-      fs.writeFileSync(outputZip, "zip", "utf8");
-      return { status: 0 };
+      if (command === "zip") {
+        fs.writeFileSync(outputZip, "zip", "utf8");
+        return { status: 0 };
+      }
+      if (command === "unzip") {
+        return {
+          status: 0,
+          stdout: `
+Archive:  ${outputZip}
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+        0  2026-04-16 00:00   dist/
+       34  2026-04-16 00:00   manifest.json
+        0  2026-04-16 00:00   data/
+---------                     -------
+`
+        };
+      }
+      throw new Error(`Unexpected command ${command}`);
     };
 
     const result = runPack({
@@ -111,11 +131,13 @@ test("pack extension: runPack should execute command and require archive output"
       runner
     });
 
-    assert.equal(calls.length, 1);
+    assert.equal(calls.length, 2);
     assert.equal(calls[0].command, "zip");
+    assert.equal(calls[1].command, "unzip");
     assert.match(result.outputZipPath, /extension\.zip$/);
     assert.equal(fs.existsSync(result.outputZipPath), true);
     assert.ok(result.entries.includes("manifest.json"));
+    assert.ok(result.archiveEntries.includes("manifest.json"));
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
   }
@@ -129,7 +151,12 @@ test("pack extension: runPack should fail when command exits non-zero", () => {
         runPack({
           rootDir: workspace,
           platform: "linux",
-          runner: () => ({ status: 1 })
+          runner: (command) => {
+            if (command === "zip") {
+              return { status: 1 };
+            }
+            return { status: 0, stdout: "" };
+          }
         }),
       /exit code 1/
     );
@@ -154,4 +181,66 @@ test("pack extension: runPack should fail when no files matched", () => {
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
   }
+});
+
+test("pack extension: parseZipEntryList should parse unzip output entries", () => {
+  const entries = parseZipEntryList(`
+Archive:  /tmp/extension.zip
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+        0  2026-04-16 00:00   dist/
+      200  2026-04-16 00:00   dist/options.html
+      123  2026-04-16 00:00   manifest.json
+---------                     -------
+`);
+
+  assert.deepEqual(entries, ["dist/", "dist/options.html", "manifest.json"]);
+});
+
+test("pack extension: parsePowerShellZipEntries should normalize backslashes", () => {
+  const entries = parsePowerShellZipEntries("dist\\options.html\r\nmanifest.json\r\n");
+  assert.deepEqual(entries, ["dist/options.html", "manifest.json"]);
+});
+
+test("pack extension: validateArchiveEntries should reject missing required paths", () => {
+  assert.throws(
+    () =>
+      validateArchiveEntries("C:/tmp/extension.zip", {
+        platform: "linux",
+        requiredEntries: ["dist", "manifest.json", "data"],
+        runner: () => ({
+          status: 0,
+          stdout: `
+Archive:  /tmp/extension.zip
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+        0  2026-04-16 00:00   dist/
+      123  2026-04-16 00:00   manifest.json
+---------                     -------
+`
+        })
+      }),
+    /Archive missing required entry: data/
+  );
+});
+
+test("pack extension: validateArchiveEntries should accept nested required paths", () => {
+  const entries = validateArchiveEntries("C:/tmp/extension.zip", {
+    platform: "linux",
+    requiredEntries: ["dist", "manifest.json", "data"],
+    runner: () => ({
+      status: 0,
+      stdout: `
+Archive:  /tmp/extension.zip
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+      123  2026-04-16 00:00   dist/options.html
+      123  2026-04-16 00:00   manifest.json
+      456  2026-04-16 00:00   data/cet4.json
+---------                     -------
+`
+    })
+  });
+
+  assert.ok(entries.includes("data/cet4.json"));
 });

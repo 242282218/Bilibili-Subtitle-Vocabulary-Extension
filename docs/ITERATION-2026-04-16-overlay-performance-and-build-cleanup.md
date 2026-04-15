@@ -545,3 +545,64 @@
 1. 在 GitHub Actions 增加最小 Windows 打包 smoke（仅执行 `pnpm run pack` 并校验 zip 存在）。
 2. 给打包产物加结构完整性校验（zip 内必须包含 manifest/data/dist）。
 3. 若要进一步降低系统依赖，可将非 Windows 分支也统一为 Node 原生 zip 实现。
+
+---
+
+## 补充迭代：打包产物结构校验 + Windows CI Smoke（2026-04-16）
+
+### 当前状态判断
+- `pack` 已跨平台可运行，但此前“只要生成 zip 即判定成功”，缺少对压缩包内容完整性的自动校验。
+- CI 也尚未在 Windows runner 上执行打包链路，跨平台保障不完整。
+
+### 对标项目可借鉴点
+- 成熟扩展项目会把打包视为“产物内容契约”，不仅校验命令退出码，还会验证 zip 内关键目录/文件存在。
+- 对跨平台脚本会做最小 smoke：至少在 Windows runner 执行一次真实打包，避免本地 Linux-only 假阳性。
+
+### 差距清单（按 P0/P1/P2/P3）
+- P1：
+  - 问题：打包成功条件过弱，可能产出缺核心资源的无效 zip。
+  - 影响范围：发布产物可用性。
+  - 根因：缺少 zip 内部结构校验。
+  - 建议改法：在 `runPack` 后强制校验 `dist/`、`manifest.json`、`data/` 存在。
+  - 预期收益：提前阻断“可打包不可用”的产物。
+  - 改动风险：低（失败更早暴露）。
+- P1：
+  - 问题：CI 未覆盖 Windows 打包实跑。
+  - 影响范围：跨平台兼容性信心不足。
+  - 根因：CI job 仅 Linux。
+  - 建议改法：新增 Windows smoke job 执行 `build:extension` + `pack`。
+  - 预期收益：在 PR 阶段提前发现 Windows 回归。
+  - 改动风险：低（新增独立 job）。
+
+### 本轮要做的优化项
+- 在打包脚本加入产物结构校验。
+- 补齐对应单测。
+- 在 CI 增加 Windows 打包 smoke。
+
+### 具体修改方案
+- `bilibili-vocab-extension/scripts/pack-extension.js`
+  - 新增 `REQUIRED_ARCHIVE_ENTRIES` 与 `validateArchiveEntries`。
+  - Linux/macOS 通过 `unzip -l` 解析 entries；Windows 通过 PowerShell `ZipFile` API 读取 entries。
+  - `runPack` 增加“生成 zip -> 校验结构”双阶段。
+- `bilibili-vocab-extension/tests/pack-extension.test.js`
+  - 新增 `parseZipEntryList`、`parsePowerShellZipEntries`、`validateArchiveEntries` 的成功/失败分支测试。
+  - `runPack` 成功用例升级为双命令链路断言（`zip` + `unzip`）。
+- `.github/workflows/ci.yml`
+  - 新增 `pack-windows-smoke` job（windows-latest）。
+  - 执行：安装依赖 -> `build:extension` -> `pack` -> 校验 `extension.zip` 存在。
+
+### 验证方案
+- `node --test tests/pack-extension.test.js`：通过（11/11）。
+- `pnpm run test`：通过（186/186）。
+- `pnpm run lint -- --fix`：通过。
+- `pnpm run typecheck`：通过。
+- `pnpm run build:extension`：通过（overlay size gate pass）。
+- `pnpm run pack`：通过。
+
+### 本轮风险
+- 非 Windows 的结构检查依赖 `unzip` 命令；当前 CI 环境可用，但若未来迁移到极简镜像可能需要改为 Node 内建/第三方 zip 解析。
+
+### 下一轮建议
+1. 将 pack 结构检查抽象成独立脚本，支持对历史产物或 CI artifact 复验。
+2. 在 PR 页面上传 `extension.zip` 作为 artifact，便于人工抽检与回归对比。
+3. 若后续引入更多发布资源，补“必需资源清单”契约测试并绑定版本更新流程。
