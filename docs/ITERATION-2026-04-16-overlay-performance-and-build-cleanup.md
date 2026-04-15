@@ -606,3 +606,61 @@
 1. 将 pack 结构检查抽象成独立脚本，支持对历史产物或 CI artifact 复验。
 2. 在 PR 页面上传 `extension.zip` 作为 artifact，便于人工抽检与回归对比。
 3. 若后续引入更多发布资源，补“必需资源清单”契约测试并绑定版本更新流程。
+
+---
+
+## 补充迭代：CI 打包产物 Artifact + 打包重试稳健性（2026-04-16）
+
+### 当前状态判断
+- `pack-windows-smoke` 已验证“可打包”，但 CI 未留存 `extension.zip`，PR 审阅无法直接下载产物。
+- 本地验证中出现过一次 `Compress-Archive` 文件占用失败，说明 Windows 打包链路存在瞬时不稳定窗口。
+
+### 对标项目可借鉴点
+- 成熟扩展流水线会在打包 job 上传 zip artifact，支持测试/评审直接复用。
+- 对 Windows 文件锁导致的短暂失败，通常采用有限重试而非立即失败，减少偶发红灯。
+
+### 差距清单（按 P0/P1/P2/P3）
+- P1：
+  - 问题：Windows 打包 job 不产出 artifact。
+  - 影响范围：发布链路可观测性与人工验包效率。
+  - 根因：workflow 仅执行 smoke 检查。
+  - 建议改法：在 `pack-windows-smoke` 增加 `upload-artifact` 上传 `extension.zip`。
+  - 预期收益：PR 可直接下载产物验证。
+  - 改动风险：低。
+- P1：
+  - 问题：`Compress-Archive` 遇文件占用会直接失败。
+  - 影响范围：Windows 打包稳定性。
+  - 根因：脚本对瞬时锁竞争无重试。
+  - 建议改法：仅在识别到文件占用类错误时做有限重试（2 次，递增等待）。
+  - 预期收益：降低偶发失败率且不掩盖真实错误。
+  - 改动风险：低。
+
+### 本轮要做的优化项
+- CI 上传 Windows 打包产物 artifact。
+- 打包脚本增加 Windows 锁冲突重试并补单测。
+
+### 具体修改方案
+- `.github/workflows/ci.yml`
+  - 在 `pack-windows-smoke` 新增 `Upload extension package` 步骤。
+  - 上传路径：`${{ env.WORKDIR }}/extension.zip`，缺失则报错。
+- `bilibili-vocab-extension/scripts/pack-extension.js`
+  - 新增 `shouldRetryWindowsPack`、`runPackCommandWithRetry`。
+  - 命中 `CompressArchiveUnauthorizedAccessError` / “being used by another process” 时最多重试 2 次。
+  - 非锁冲突错误保持原语义：直接失败。
+- `bilibili-vocab-extension/tests/pack-extension.test.js`
+  - 新增 `shouldRetryWindowsPack` 匹配测试。
+  - 新增 `runPackCommandWithRetry` 重试成功分支测试。
+
+### 验证方案
+- `node --test tests/pack-extension.test.js`：通过（13/13）。
+- `pnpm run test`：通过（188/188）。
+- `pnpm run lint -- --fix`：通过。
+- `pnpm run build:extension`：通过。
+- `pnpm run pack`：通过。
+
+### 本轮风险
+- 重试策略仅覆盖“可识别的锁冲突文案”；若未来报错文案变化，可能无法命中重试。
+
+### 下一轮建议
+1. 将 README 增补为“开发/构建/打包/CI artifact”完整操作手册。
+2. 如需进一步稳定，可考虑将 Windows 打包迁移到 Node 原生 zip 库，减少 PowerShell 依赖。

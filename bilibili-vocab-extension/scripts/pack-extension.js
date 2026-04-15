@@ -8,6 +8,7 @@ const DEFAULT_INCLUDE_GLOBS = ["*.js", "*.html"];
 const FIXED_INCLUDE_PATHS = ["dist", "manifest.json", "data", "styles.css", "background.js", "contentScript.js"];
 const WIN_ARCHIVE_SCRIPT_FILE = "pack-extension.ps1";
 const REQUIRED_ARCHIVE_ENTRIES = ["dist", "manifest.json", "data"];
+const WINDOWS_PACK_MAX_RETRY = 2;
 
 function listProjectRootFiles(rootDir) {
   return fs.readdirSync(rootDir, { withFileTypes: true }).map((entry) => entry.name);
@@ -175,6 +176,48 @@ function buildWindowsArchiveScript(outputZipPath, entries) {
   ].join("\n");
 }
 
+function shouldRetryWindowsPack(result) {
+  if (!result || result.status === 0) {
+    return false;
+  }
+  const stderr = String(result.stderr || "");
+  const stdout = String(result.stdout || "");
+  const combined = `${stderr}\n${stdout}`.toLowerCase();
+  return (
+    combined.includes("because it is being used by another process") ||
+    combined.includes("compressarchiveunauthorizedaccesserror")
+  );
+}
+
+function sleepSync(milliseconds) {
+  const waitArray = new Int32Array(new SharedArrayBuffer(4));
+  Atomics.wait(waitArray, 0, 0, milliseconds);
+}
+
+function runPackCommandWithRetry(commandSpec, options = {}) {
+  const runner = options.runner || spawnSync;
+  const platform = options.platform || process.platform;
+  const maxRetry = Number.isInteger(options.maxRetry) ? options.maxRetry : WINDOWS_PACK_MAX_RETRY;
+
+  let lastResult = null;
+  for (let attempt = 0; attempt <= maxRetry; attempt += 1) {
+    const result = runner(commandSpec.command, commandSpec.args, commandSpec.options);
+    lastResult = result;
+    if (result.status === 0) {
+      return result;
+    }
+
+    const canRetry = platform === "win32" && shouldRetryWindowsPack(result) && attempt < maxRetry;
+    if (!canRetry) {
+      return result;
+    }
+
+    sleepSync(150 * (attempt + 1));
+  }
+
+  return lastResult || { status: 1 };
+}
+
 function buildWindowsZipCommand(outputZipPath, entries, tempDir) {
   const scriptPath = path.join(tempDir, WIN_ARCHIVE_SCRIPT_FILE);
   const script = buildWindowsArchiveScript(outputZipPath, entries);
@@ -229,7 +272,11 @@ function runPack(options = {}) {
 
     const commandSpec = createZipCommand(rootDir, outputZipPath, entries, options);
     cleanup = commandSpec.cleanup;
-    const result = runner(commandSpec.command, commandSpec.args, commandSpec.options);
+    const result = runPackCommandWithRetry(commandSpec, {
+      runner,
+      platform: options.platform,
+      maxRetry: options.maxRetry
+    });
 
     if (result.status !== 0) {
       throw new Error(`Pack command failed with exit code ${result.status}.`);
@@ -281,6 +328,7 @@ module.exports = {
   FIXED_INCLUDE_PATHS,
   WIN_ARCHIVE_SCRIPT_FILE,
   REQUIRED_ARCHIVE_ENTRIES,
+  WINDOWS_PACK_MAX_RETRY,
   collectPackEntries,
   normalizeOutputZipPath,
   normalizeArchivePathForCheck,
@@ -290,6 +338,8 @@ module.exports = {
   validateArchiveEntries,
   buildPosixZipCommand,
   buildWindowsArchiveScript,
+  shouldRetryWindowsPack,
+  runPackCommandWithRetry,
   createZipCommand,
   runPack
 };

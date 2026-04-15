@@ -10,6 +10,8 @@ const {
   parseZipEntryList,
   parsePowerShellZipEntries,
   validateArchiveEntries,
+  shouldRetryWindowsPack,
+  runPackCommandWithRetry,
   createZipCommand,
   runPack
 } = require("../scripts/pack-extension.js");
@@ -243,4 +245,50 @@ Archive:  /tmp/extension.zip
   });
 
   assert.ok(entries.includes("data/cet4.json"));
+});
+
+test("pack extension: shouldRetryWindowsPack should match lock-related errors", () => {
+  assert.equal(
+    shouldRetryWindowsPack({
+      status: 1,
+      stderr: "ZipArchiveHelper : The process cannot access the file because it is being used by another process."
+    }),
+    true
+  );
+  assert.equal(
+    shouldRetryWindowsPack({
+      status: 1,
+      stderr: "random failure"
+    }),
+    false
+  );
+});
+
+test("pack extension: runPackCommandWithRetry should retry windows lock errors", () => {
+  const calls = [];
+  const result = runPackCommandWithRetry(
+    {
+      command: "powershell",
+      args: ["-NoProfile"],
+      options: {}
+    },
+    {
+      platform: "win32",
+      maxRetry: 2,
+      runner: () => {
+        const current = calls.length;
+        calls.push(current);
+        if (current === 0) {
+          return {
+            status: 1,
+            stderr: "CompressArchiveUnauthorizedAccessError: used by another process"
+          };
+        }
+        return { status: 0, stderr: "" };
+      }
+    }
+  );
+
+  assert.equal(result.status, 0);
+  assert.equal(calls.length, 2);
 });
