@@ -73,6 +73,7 @@
 ### 当前状态判断
 - `pnpm run build` 一度因 `react-ui/src/overlay-settings.ts` 类型冲突失败；`build:extension` 当时仍可通过，存在“打包成功掩盖类型回归”的门禁缺口。
 - 当前已恢复：`lint/test/build/build:extension` 全部通过，且 `build:extension` 先执行 TypeScript 检查。
+- 已补充仓库级 CI（GitHub Actions），在 push/PR 自动执行同一套质量门禁。
 
 ### 对标项目可借鉴点
 - 成熟扩展项目会在所有发布链路前置 typecheck，避免 JS 打包器放过 TS 类型破坏。
@@ -107,6 +108,9 @@
   - 新增 `typecheck` 脚本：`tsc --noEmit`。
   - `build` 改为 `pnpm run typecheck && vite build`。
   - `build:extension` 改为 `pnpm run typecheck && vite build ... && pnpm run check:overlay-size`。
+- `.github/workflows/ci.yml`
+  - 新增 `quality-gates` job，在 `push(main)` 与 `pull_request` 执行 `pnpm run lint`、`pnpm run test`、`pnpm run build`、`pnpm run build:extension`。
+  - 使用 `bilibili-vocab-extension` 作为工作目录，保证 CI 与本地命令路径一致。
 
 ### 验证方案
 - `pnpm run lint -- --fix`：通过。
@@ -116,7 +120,9 @@
 
 ### 本轮风险
 - 本轮修复聚焦类型边界与脚本门禁，未覆盖浏览器真实页面的 overlay 动态加载 E2E 兼容矩阵。
+- CI 目前是单 Node 20 / 单平台（Linux）验证，还未覆盖浏览器端自动化与多版本矩阵。
 
 ### 下一轮建议
 1. 补最小浏览器 E2E（Bilibili/YouTube 首次注入、刷新恢复、站点切换）验证动态加载链路。
 2. 在 CI 中拆分 `typecheck`、`test`、`build:extension` 并缓存依赖，缩短反馈时延。
+3. 增加 Node 版本矩阵或最小跨平台验证，降低环境相关回归风险。
