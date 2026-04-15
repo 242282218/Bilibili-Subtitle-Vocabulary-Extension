@@ -269,3 +269,46 @@
 ### 下一轮建议
 1. 引入浏览器侧 smoke（Playwright）覆盖 overlay 动态加载真实页面行为。
 2. 在 CI 中归档 overlay 体积报告，支持跨提交趋势对比。
+
+---
+
+## 补充迭代：Overlay 体积报告 Artifact 化（2026-04-16）
+
+### 当前状态判断
+- 已有 Step Summary，但缺少可下载的结构化报告，不利于跨提交自动分析。
+
+### 对标项目可借鉴点
+- 成熟项目会将关键质量门禁结果输出为 JSON artifact，便于后续做趋势看板或告警集成。
+
+### 差距清单（按 P0/P1/P2/P3）
+- P2：
+  - 问题：overlay 体积数据未沉淀为可复用产物。
+  - 影响范围：无法低成本做历史对比和自动化消费。
+  - 根因：门禁脚本只输出日志和 summary，没有结构化文件。
+  - 建议改法：脚本产出 `overlay-size-report.json`，CI 上传 artifact。
+  - 预期收益：支持跨提交趋势追踪与后续自动分析。
+  - 改动风险：低（脚本/CI增强）。
+
+### 本轮要做的优化项
+- 生成 overlay 体积结构化报告，并在 `build-extension` job 上传 artifact。
+
+### 具体修改方案
+- `bilibili-vocab-extension/scripts/check-overlay-size.js`
+  - 新增 `OVERLAY_REPORT_FILE` 指向 `dist/overlay-size-report.json`。
+  - 新增 `writeOverlaySizeReport(rawKb, gzipKb)` 输出时间戳、预算、实际值与结果状态。
+  - 保持原预算门禁与退出码逻辑不变。
+- `.github/workflows/ci.yml`
+  - 在 `build-extension` job 追加 `actions/upload-artifact@v4` 上传 `dist/overlay-size-report.json`（`if: always()`）。
+
+### 验证方案
+- `pnpm run build:extension`：通过。
+- 校验 `dist/overlay-size-report.json`：
+  - 包含 `budgetKb`、`actualKb`、`result.overall` 字段；
+  - 当前结果为 `pass`，数值与门禁日志一致。
+
+### 本轮风险
+- 目前 artifact 仅保留单文件，若后续需趋势可视化，还需追加汇总脚本或外部分析流程。
+
+### 下一轮建议
+1. 引入浏览器侧 smoke（Playwright）覆盖 overlay 动态加载真实页面行为。
+2. 增加一个聚合脚本，将历史 artifact 汇总成趋势图数据。
