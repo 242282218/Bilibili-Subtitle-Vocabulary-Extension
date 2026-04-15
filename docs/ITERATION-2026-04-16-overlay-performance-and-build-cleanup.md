@@ -312,3 +312,46 @@
 ### 下一轮建议
 1. 引入浏览器侧 smoke（Playwright）覆盖 overlay 动态加载真实页面行为。
 2. 增加一个聚合脚本，将历史 artifact 汇总成趋势图数据。
+
+---
+
+## 补充迭代：Overlay 门禁脚本可测性与回归覆盖（2026-04-16）
+
+### 当前状态判断
+- `check-overlay-size.js` 已承担构建阻断职责，但此前是纯 CLI 写法，路径固定且无单测，脚本回归只能靠构建日志发现。
+
+### 对标项目可借鉴点
+- 成熟项目会把关键门禁脚本拆成“可复用函数 + CLI 外壳”，让 CI、本地脚本、自动化测试共享同一逻辑，降低回归盲区。
+
+### 差距清单（按 P0/P1/P2/P3）
+- P1：
+  - 问题：门禁脚本缺少自动化测试，预算解析与产物写入分支没有回归保护。
+  - 影响范围：体积门禁稳定性、CI 诊断可用性。
+  - 根因：脚本以进程退出为中心实现，缺少可直接调用的纯函数接口。
+  - 建议改法：抽离核心计算逻辑并补 CLI 级测试。
+  - 预期收益：降低脚本回归导致的“误放行/误阻断”风险。
+  - 改动风险：低（保持原预算语义与退出码语义不变）。
+
+### 本轮要做的优化项
+- 将体积门禁核心逻辑拆分为可直接调用函数，并支持自定义输入/输出路径。
+- 新增 `check-overlay-size` 自动化测试，覆盖通过/超预算/无效预算分支。
+
+### 具体修改方案
+- `bilibili-vocab-extension/scripts/check-overlay-size.js`
+  - 新增 `runOverlaySizeCheck`、`createReport`、`evaluateBudgets` 等可复用函数。
+  - 新增 `OVERLAY_SIZE_FILE`、`OVERLAY_SIZE_REPORT_FILE` 环境变量，支持测试与 CI 复用不同路径。
+  - CLI 层改为 `runCli()` 包装，保留原有失败退出码与日志语义。
+  - 报告写入前自动创建父目录，避免路径切换时因目录缺失导致报告写入失败。
+- `bilibili-vocab-extension/tests/check-overlay-size.test.js`
+  - 新增 4 个用例：预算内通过并写 summary/report、超预算标记失败、无效预算 CLI 非 0 退出、`createReport` 结果判定。
+
+### 验证方案
+- `node --test tests/check-overlay-size.test.js`：通过（4/4）。
+- 后续在本轮收尾验证中复验仓库门禁（`lint/test/build/build:extension`）。
+
+### 本轮风险
+- 本轮新增测试聚焦 Node 环境脚本，不覆盖浏览器运行时链路。
+
+### 下一轮建议
+1. 引入浏览器侧 smoke（Playwright）覆盖 overlay 动态加载真实页面行为。
+2. 为 overlay 体积报告补充历史趋势聚合脚本（按 artifact 批量汇总）。

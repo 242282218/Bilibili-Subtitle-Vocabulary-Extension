@@ -2,38 +2,73 @@ const fs = require("node:fs");
 const path = require("node:path");
 const zlib = require("node:zlib");
 
-const OVERLAY_FILE = path.resolve(__dirname, "..", "dist", "overlay.js");
-const OVERLAY_REPORT_FILE = path.resolve(__dirname, "..", "dist", "overlay-size-report.json");
-const RAW_BUDGET_KB = Number(process.env.OVERLAY_SIZE_BUDGET_RAW_KB || 260);
-const GZIP_BUDGET_KB = Number(process.env.OVERLAY_SIZE_BUDGET_GZIP_KB || 70);
+const DEFAULT_OVERLAY_FILE = path.resolve(__dirname, "..", "dist", "overlay.js");
+const DEFAULT_OVERLAY_REPORT_FILE = path.resolve(__dirname, "..", "dist", "overlay-size-report.json");
+const DEFAULT_RAW_BUDGET_KB = 260;
+const DEFAULT_GZIP_BUDGET_KB = 70;
 
 function toKb(bytes) {
   return Number((bytes / 1024).toFixed(2));
 }
 
-function fail(message) {
-  console.error(`[overlay-size-check] ${message}`);
-  process.exit(1);
+function parseBudget(rawValue, fallback) {
+  if (rawValue == null || rawValue === "") {
+    return fallback;
+  }
+  return Number(rawValue);
 }
 
-function writeGithubSummary(rawKb, gzipKb) {
-  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+function assertPositiveBudget(rawBudgetKb, gzipBudgetKb) {
+  if (!Number.isFinite(rawBudgetKb) || rawBudgetKb <= 0) {
+    throw new Error("Invalid raw size budget. Use OVERLAY_SIZE_BUDGET_RAW_KB with a positive number.");
+  }
+  if (!Number.isFinite(gzipBudgetKb) || gzipBudgetKb <= 0) {
+    throw new Error("Invalid gzip size budget. Use OVERLAY_SIZE_BUDGET_GZIP_KB with a positive number.");
+  }
+}
+
+function evaluateBudgets(rawKb, gzipKb, rawBudgetKb, gzipBudgetKb) {
+  const rawPass = rawKb <= rawBudgetKb;
+  const gzipPass = gzipKb <= gzipBudgetKb;
+  return {
+    raw: rawPass ? "pass" : "fail",
+    gzip: gzipPass ? "pass" : "fail",
+    overall: rawPass && gzipPass ? "pass" : "fail"
+  };
+}
+
+function createReport(rawKb, gzipKb, rawBudgetKb, gzipBudgetKb) {
+  return {
+    checkedAt: new Date().toISOString(),
+    file: "dist/overlay.js",
+    budgetKb: {
+      raw: rawBudgetKb,
+      gzip: gzipBudgetKb
+    },
+    actualKb: {
+      raw: rawKb,
+      gzip: gzipKb
+    },
+    result: evaluateBudgets(rawKb, gzipKb, rawBudgetKb, gzipBudgetKb)
+  };
+}
+
+function writeGithubSummary(summaryPath, report) {
   if (!summaryPath) {
     return;
   }
 
-  const rawPass = rawKb <= RAW_BUDGET_KB;
-  const gzipPass = gzipKb <= GZIP_BUDGET_KB;
-  const overallPass = rawPass && gzipPass;
+  const rawPass = report.result.raw === "pass";
+  const gzipPass = report.result.gzip === "pass";
   const lines = [
     "### Overlay Size Gate",
     "",
     "| Metric | Actual | Budget | Result |",
     "| --- | ---: | ---: | --- |",
-    `| Raw | ${rawKb} KB | ${RAW_BUDGET_KB} KB | ${rawPass ? "OK" : "Exceeded"} |`,
-    `| Gzip | ${gzipKb} KB | ${GZIP_BUDGET_KB} KB | ${gzipPass ? "OK" : "Exceeded"} |`,
+    `| Raw | ${report.actualKb.raw} KB | ${report.budgetKb.raw} KB | ${rawPass ? "OK" : "Exceeded"} |`,
+    `| Gzip | ${report.actualKb.gzip} KB | ${report.budgetKb.gzip} KB | ${gzipPass ? "OK" : "Exceeded"} |`,
     "",
-    `Overall: ${overallPass ? "PASS" : "FAIL"}`,
+    `Overall: ${report.result.overall === "pass" ? "PASS" : "FAIL"}`,
     ""
   ];
 
@@ -44,59 +79,77 @@ function writeGithubSummary(rawKb, gzipKb) {
   }
 }
 
-function writeOverlaySizeReport(rawKb, gzipKb) {
-  const rawPass = rawKb <= RAW_BUDGET_KB;
-  const gzipPass = gzipKb <= GZIP_BUDGET_KB;
-  const report = {
-    checkedAt: new Date().toISOString(),
-    file: "dist/overlay.js",
-    budgetKb: {
-      raw: RAW_BUDGET_KB,
-      gzip: GZIP_BUDGET_KB
-    },
-    actualKb: {
-      raw: rawKb,
-      gzip: gzipKb
-    },
-    result: {
-      raw: rawPass ? "pass" : "fail",
-      gzip: gzipPass ? "pass" : "fail",
-      overall: rawPass && gzipPass ? "pass" : "fail"
-    }
-  };
-
+function writeOverlaySizeReport(reportPath, report) {
   try {
-    fs.writeFileSync(OVERLAY_REPORT_FILE, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+    fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+    fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   } catch (error) {
     console.warn(`[overlay-size-check] Failed to write report: ${error && error.message ? error.message : error}`);
   }
 }
 
-if (!Number.isFinite(RAW_BUDGET_KB) || RAW_BUDGET_KB <= 0) {
-  fail("Invalid raw size budget. Use OVERLAY_SIZE_BUDGET_RAW_KB with a positive number.");
+function runOverlaySizeCheck(options = {}) {
+  const overlayFile = path.resolve(options.overlayFile || process.env.OVERLAY_SIZE_FILE || DEFAULT_OVERLAY_FILE);
+  const reportFile = path.resolve(
+    options.reportFile || process.env.OVERLAY_SIZE_REPORT_FILE || DEFAULT_OVERLAY_REPORT_FILE
+  );
+  const summaryPath = options.summaryPath || process.env.GITHUB_STEP_SUMMARY || "";
+  const rawBudgetKb = parseBudget(options.rawBudgetKb, parseBudget(process.env.OVERLAY_SIZE_BUDGET_RAW_KB, DEFAULT_RAW_BUDGET_KB));
+  const gzipBudgetKb = parseBudget(options.gzipBudgetKb, parseBudget(process.env.OVERLAY_SIZE_BUDGET_GZIP_KB, DEFAULT_GZIP_BUDGET_KB));
+
+  assertPositiveBudget(rawBudgetKb, gzipBudgetKb);
+
+  if (!fs.existsSync(overlayFile)) {
+    throw new Error(`Missing ${overlayFile}. Run 'pnpm run build:extension' before this check.`);
+  }
+
+  const rawBuffer = fs.readFileSync(overlayFile);
+  const gzipBuffer = zlib.gzipSync(rawBuffer);
+  const rawKb = toKb(rawBuffer.byteLength);
+  const gzipKb = toKb(gzipBuffer.byteLength);
+  const report = createReport(rawKb, gzipKb, rawBudgetKb, gzipBudgetKb);
+
+  writeGithubSummary(summaryPath, report);
+  writeOverlaySizeReport(reportFile, report);
+
+  return {
+    overlayFile,
+    reportFile,
+    report
+  };
 }
 
-if (!Number.isFinite(GZIP_BUDGET_KB) || GZIP_BUDGET_KB <= 0) {
-  fail("Invalid gzip size budget. Use OVERLAY_SIZE_BUDGET_GZIP_KB with a positive number.");
+function runCli() {
+  try {
+    const { report } = runOverlaySizeCheck();
+    console.log(
+      `[overlay-size-check] overlay.js raw=${report.actualKb.raw}KB (budget ${report.budgetKb.raw}KB), gzip=${report.actualKb.gzip}KB (budget ${report.budgetKb.gzip}KB)`
+    );
+
+    if (report.result.overall !== "pass") {
+      console.error("[overlay-size-check] Overlay bundle exceeds budget.");
+      process.exit(1);
+    }
+
+    console.log("[overlay-size-check] Passed.");
+  } catch (error) {
+    console.error(`[overlay-size-check] ${error && error.message ? error.message : error}`);
+    process.exit(1);
+  }
 }
 
-if (!fs.existsSync(OVERLAY_FILE)) {
-  fail(`Missing ${OVERLAY_FILE}. Run 'pnpm run build:extension' before this check.`);
+if (require.main === module) {
+  runCli();
 }
 
-const rawBuffer = fs.readFileSync(OVERLAY_FILE);
-const gzipBuffer = zlib.gzipSync(rawBuffer);
-const rawKb = toKb(rawBuffer.byteLength);
-const gzipKb = toKb(gzipBuffer.byteLength);
-
-console.log(
-  `[overlay-size-check] overlay.js raw=${rawKb}KB (budget ${RAW_BUDGET_KB}KB), gzip=${gzipKb}KB (budget ${GZIP_BUDGET_KB}KB)`
-);
-writeGithubSummary(rawKb, gzipKb);
-writeOverlaySizeReport(rawKb, gzipKb);
-
-if (rawKb > RAW_BUDGET_KB || gzipKb > GZIP_BUDGET_KB) {
-  fail("Overlay bundle exceeds budget.");
-}
-
-console.log("[overlay-size-check] Passed.");
+module.exports = {
+  DEFAULT_OVERLAY_FILE,
+  DEFAULT_OVERLAY_REPORT_FILE,
+  DEFAULT_RAW_BUDGET_KB,
+  DEFAULT_GZIP_BUDGET_KB,
+  parseBudget,
+  toKb,
+  evaluateBudgets,
+  createReport,
+  runOverlaySizeCheck
+};
