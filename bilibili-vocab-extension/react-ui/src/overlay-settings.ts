@@ -7,7 +7,7 @@ import type {
   SettingsV3,
 } from './settings-bridge';
 
-interface SharedSettingsApi {
+type OverlaySharedSettingsApi = {
   SETTINGS_STORAGE_KEY_V3?: string;
   CEFR_LEVELS?: string[];
   REVIEW_SPEEDS?: string[];
@@ -16,15 +16,9 @@ interface SharedSettingsApi {
   getDefaultSettingsV3?: () => SettingsV3;
   migrateToV3?: (value: unknown) => SettingsV3;
   getProfileConfigById?: (value: SettingsV3, profileId: ProfileId) => ProfileConfig;
-}
+};
 
 type ProfileOption = { id: ProfileId; name: string; builtin: boolean };
-
-declare global {
-  interface Window {
-    SharedSettings?: SharedSettingsApi;
-  }
-}
 
 const BUILTIN_PROFILE_IDS: BuiltinProfileId[] = ['gentle', 'balanced', 'intensive'];
 const FALLBACK_LEVELS = ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL'];
@@ -84,11 +78,12 @@ const FALLBACK_DEFAULT_SETTINGS: SettingsV3 = {
   },
 };
 
-function readSharedSettings(): SharedSettingsApi {
-  if (typeof window === 'undefined' || !window.SharedSettings) {
+function readSharedSettings(): OverlaySharedSettingsApi {
+  if (typeof window === 'undefined') {
     return {};
   }
-  return window.SharedSettings;
+  const shared = (window as Window & { SharedSettings?: OverlaySharedSettingsApi }).SharedSettings;
+  return shared && typeof shared === 'object' ? shared : {};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -216,6 +211,9 @@ function normalizeSettingsV3Fallback(value: unknown): SettingsV3 {
   const source = isRecord(value) ? value : {};
   const defaults = cloneSettings(FALLBACK_DEFAULT_SETTINGS);
   const rawBuiltin = isRecord(source.profilesBuiltin) ? source.profilesBuiltin : {};
+  const rawBuiltinGentle = isRecord(rawBuiltin.gentle) ? rawBuiltin.gentle : {};
+  const rawBuiltinBalanced = isRecord(rawBuiltin.balanced) ? rawBuiltin.balanced : {};
+  const rawBuiltinIntensive = isRecord(rawBuiltin.intensive) ? rawBuiltin.intensive : {};
   const customProfiles = Array.isArray(source.profilesCustom)
     ? source.profilesCustom
         .filter((item) => isRecord(item))
@@ -246,15 +244,15 @@ function normalizeSettingsV3Fallback(value: unknown): SettingsV3 {
     profilesBuiltin: {
       gentle: normalizeProfileConfigFallback({
         ...defaults.profilesBuiltin.gentle,
-        ...rawBuiltin.gentle,
+        ...rawBuiltinGentle,
       }),
       balanced: normalizeProfileConfigFallback({
         ...defaults.profilesBuiltin.balanced,
-        ...rawBuiltin.balanced,
+        ...rawBuiltinBalanced,
       }),
       intensive: normalizeProfileConfigFallback({
         ...defaults.profilesBuiltin.intensive,
-        ...rawBuiltin.intensive,
+        ...rawBuiltinIntensive,
       }),
     },
     profilesCustom: customProfiles,
@@ -335,15 +333,15 @@ export function setActiveProfileConfig(
 
 export function listProfileOptions(settings: SettingsV3): ProfileOption[] {
   const normalized = normalizeSettingsV3(settings);
-  const builtins = BUILTIN_PROFILE_IDS.map((id) => ({
+  const builtins: ProfileOption[] = BUILTIN_PROFILE_IDS.map((id) => ({
     id,
     name: FALLBACK_PROFILE_LABELS[id],
     builtin: true,
   }));
-  const custom = normalized.profilesCustom.map((item) => ({
+  const custom: ProfileOption[] = normalized.profilesCustom.map((item) => ({
     id: item.id,
     name: item.name,
     builtin: false,
   }));
-  return builtins.concat(custom);
+  return [...builtins, ...custom];
 }
