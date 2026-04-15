@@ -229,3 +229,43 @@
 ### 下一轮建议
 1. 引入浏览器侧 smoke（Playwright）覆盖 overlay 动态加载真实页面行为。
 2. 将 `check:overlay-size` 结果写入 CI summary，形成趋势观察面板。
+
+---
+
+## 补充迭代：Overlay 体积门禁 CI Summary（2026-04-16）
+
+### 当前状态判断
+- `check:overlay-size` 已能阻断超预算，但 CI 页面缺少可读的结构化结果展示。
+
+### 对标项目可借鉴点
+- 成熟 CI 会把体积门禁结果写入 Step Summary，便于在 PR 页面直接查看关键指标，无需翻日志。
+
+### 差距清单（按 P0/P1/P2/P3）
+- P2：
+  - 问题：overlay 体积结果仅存在于控制台日志。
+  - 影响范围：评审时读取成本高，趋势对比困难。
+  - 根因：门禁脚本未输出 GitHub Summary。
+  - 建议改法：在脚本中检测 `GITHUB_STEP_SUMMARY` 并输出表格。
+  - 预期收益：提升门禁可读性与评审效率。
+  - 改动风险：低（脚本输出增强）。
+
+### 本轮要做的优化项
+- 为 `check:overlay-size` 增加 GitHub Step Summary 输出（raw/gzip 与预算对比）。
+
+### 具体修改方案
+- `bilibili-vocab-extension/scripts/check-overlay-size.js`
+  - 新增 `writeGithubSummary(rawKb, gzipKb)`；
+  - 当存在 `GITHUB_STEP_SUMMARY` 时输出 markdown 表格与 PASS/FAIL 总结；
+  - 保持原有退出码语义不变（超预算仍 `exit(1)`）。
+
+### 验证方案
+- 本地注入 `GITHUB_STEP_SUMMARY` 临时文件运行 `node scripts/check-overlay-size.js`：
+  - 校验 summary 文件包含 Raw/Gzip 对比表与 Overall 结果。
+- `pnpm run build:extension`：通过，`check:overlay-size` 仍按预算门禁执行并通过。
+
+### 本轮风险
+- Summary 仅在 GitHub Actions 环境输出；其他 CI 平台仍需从控制台日志读取。
+
+### 下一轮建议
+1. 引入浏览器侧 smoke（Playwright）覆盖 overlay 动态加载真实页面行为。
+2. 在 CI 中归档 overlay 体积报告，支持跨提交趋势对比。

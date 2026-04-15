@@ -15,6 +15,34 @@ function fail(message) {
   process.exit(1);
 }
 
+function writeGithubSummary(rawKb, gzipKb) {
+  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+  if (!summaryPath) {
+    return;
+  }
+
+  const rawPass = rawKb <= RAW_BUDGET_KB;
+  const gzipPass = gzipKb <= GZIP_BUDGET_KB;
+  const overallPass = rawPass && gzipPass;
+  const lines = [
+    "### Overlay Size Gate",
+    "",
+    "| Metric | Actual | Budget | Result |",
+    "| --- | ---: | ---: | --- |",
+    `| Raw | ${rawKb} KB | ${RAW_BUDGET_KB} KB | ${rawPass ? "OK" : "Exceeded"} |`,
+    `| Gzip | ${gzipKb} KB | ${GZIP_BUDGET_KB} KB | ${gzipPass ? "OK" : "Exceeded"} |`,
+    "",
+    `Overall: ${overallPass ? "PASS" : "FAIL"}`,
+    ""
+  ];
+
+  try {
+    fs.appendFileSync(summaryPath, `${lines.join("\n")}\n`, "utf8");
+  } catch (error) {
+    console.warn(`[overlay-size-check] Failed to write GitHub summary: ${error && error.message ? error.message : error}`);
+  }
+}
+
 if (!Number.isFinite(RAW_BUDGET_KB) || RAW_BUDGET_KB <= 0) {
   fail("Invalid raw size budget. Use OVERLAY_SIZE_BUDGET_RAW_KB with a positive number.");
 }
@@ -35,6 +63,7 @@ const gzipKb = toKb(gzipBuffer.byteLength);
 console.log(
   `[overlay-size-check] overlay.js raw=${rawKb}KB (budget ${RAW_BUDGET_KB}KB), gzip=${gzipKb}KB (budget ${GZIP_BUDGET_KB}KB)`
 );
+writeGithubSummary(rawKb, gzipKb);
 
 if (rawKb > RAW_BUDGET_KB || gzipKb > GZIP_BUDGET_KB) {
   fail("Overlay bundle exceeds budget.");
