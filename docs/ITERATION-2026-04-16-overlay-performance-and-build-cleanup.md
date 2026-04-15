@@ -65,3 +65,58 @@
 1. 补充浏览器 E2E 场景验证（页面首次打开、刷新、切标签、站点切换）。
 2. 增加跨入口配置一致性测试，覆盖 overlay/options/popup 三端互操作。
 3. 在 CI 中单独运行 `check:overlay-size` 并记录趋势。
+
+---
+
+## 补充迭代：Build 类型门禁回归修复（2026-04-16）
+
+### 当前状态判断
+- `pnpm run build` 一度因 `react-ui/src/overlay-settings.ts` 类型冲突失败；`build:extension` 当时仍可通过，存在“打包成功掩盖类型回归”的门禁缺口。
+- 当前已恢复：`lint/test/build/build:extension` 全部通过，且 `build:extension` 先执行 TypeScript 检查。
+
+### 对标项目可借鉴点
+- 成熟扩展项目会在所有发布链路前置 typecheck，避免 JS 打包器放过 TS 类型破坏。
+- 当出现“双实现边界”时（共享设置桥接与 overlay fallback），会优先统一类型边界，避免重复全局声明导致冲突。
+
+### 差距清单（按 P0/P1/P2/P3）
+- P0：
+  - 问题：`overlay-settings.ts` 重复声明 `Window.SharedSettings`，与 `settings-bridge.ts` 发生合并冲突，`tsc` 失败。
+  - 影响范围：`pnpm run build`/CI 类型门禁。
+  - 根因：同名全局属性在不同模块用不同类型别名声明，且 fallback 中对 `unknown` 直接 spread。
+  - 建议改法：移除重复全局声明，使用局部类型收窄；对象展开前做 `isRecord` 守卫。
+  - 预期收益：恢复严格类型构建稳定性。
+  - 改动风险：低（仅类型与归一化路径改动）。
+- P1：
+  - 问题：`build:extension` 之前未包含 typecheck。
+  - 影响范围：发布链路可漏过 TS 回归。
+  - 根因：构建脚本只串联 vite build 与体积门禁。
+  - 建议改法：新增 `typecheck` 脚本并接入 `build` 与 `build:extension`。
+  - 预期收益：构建门禁信号一致。
+  - 改动风险：低（脚本编排层改动）。
+
+### 本轮要做的优化项
+- 修复 `overlay-settings` 类型冲突与不安全展开，恢复 `pnpm run build`。
+- 将 `typecheck` 前置到 `build:extension`，对齐所有发布路径门禁。
+
+### 具体修改方案
+- `bilibili-vocab-extension/react-ui/src/overlay-settings.ts`
+  - 删除重复 `declare global interface Window.SharedSettings`，改为局部 `OverlaySharedSettingsApi` 收窄读取。
+  - 对 `profilesBuiltin.{gentle,balanced,intensive}` 先做 `isRecord` 判断再展开，消除 spread `unknown` 错误。
+  - `listProfileOptions` 明确 `ProfileOption[]` 类型，避免 `concat` 推断冲突。
+- `bilibili-vocab-extension/package.json`
+  - 新增 `typecheck` 脚本：`tsc --noEmit`。
+  - `build` 改为 `pnpm run typecheck && vite build`。
+  - `build:extension` 改为 `pnpm run typecheck && vite build ... && pnpm run check:overlay-size`。
+
+### 验证方案
+- `pnpm run lint -- --fix`：通过。
+- `pnpm run test`：通过（162/162）。
+- `pnpm run build`：通过（TypeScript 与 Vite 均通过）。
+- `pnpm run build:extension`：通过，日志确认先执行 `typecheck`，随后打包与 overlay 体积门禁通过（raw `222.9KB` / gzip `57.26KB`）。
+
+### 本轮风险
+- 本轮修复聚焦类型边界与脚本门禁，未覆盖浏览器真实页面的 overlay 动态加载 E2E 兼容矩阵。
+
+### 下一轮建议
+1. 补最小浏览器 E2E（Bilibili/YouTube 首次注入、刷新恢复、站点切换）验证动态加载链路。
+2. 在 CI 中拆分 `typecheck`、`test`、`build:extension` 并缓存依赖，缩短反馈时延。
