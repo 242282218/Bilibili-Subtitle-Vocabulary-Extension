@@ -3,8 +3,8 @@ const path = require("node:path");
 const zlib = require("node:zlib");
 
 const OVERLAY_FILE = path.resolve(__dirname, "..", "dist", "overlay.js");
-const RAW_BUDGET_KB = Number(process.env.OVERLAY_SIZE_BUDGET_RAW_KB || 500);
-const GZIP_BUDGET_KB = Number(process.env.OVERLAY_SIZE_BUDGET_GZIP_KB || 155);
+const RAW_BUDGET_KB = Number(process.env.OVERLAY_SIZE_BUDGET_RAW_KB || 260);
+const GZIP_BUDGET_KB = Number(process.env.OVERLAY_SIZE_BUDGET_GZIP_KB || 70);
 
 function toKb(bytes) {
   return Number((bytes / 1024).toFixed(2));

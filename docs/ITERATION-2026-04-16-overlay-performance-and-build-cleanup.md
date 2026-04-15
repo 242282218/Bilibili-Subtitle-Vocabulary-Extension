@@ -44,7 +44,7 @@
   - `contentScript.js` 新增 `loadOverlayModule()`，在初始化阶段通过 `import(chrome.runtime.getURL("dist/overlay.js"))` 动态加载 overlay。
   - `manifest.json` 移除 `content_scripts` 中的 `dist/overlay.js` 静态注入，并将其加入 `web_accessible_resources`。
 - 质量门禁与契约
-  - 新增 `scripts/check-overlay-size.js`，默认校验 overlay raw/gzip 阈值。
+  - 新增 `scripts/check-overlay-size.js`，默认校验 overlay raw/gzip 阈值（`260KB / 70KB`）。
   - `package.json` 的 `build:extension` 接入 `check:overlay-size`。
   - `tests/react-ui-contract.test.js` 同步为动态加载契约断言。
 
