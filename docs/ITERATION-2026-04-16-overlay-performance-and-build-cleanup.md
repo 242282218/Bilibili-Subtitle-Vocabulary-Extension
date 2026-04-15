@@ -445,3 +445,43 @@
 ### 下一轮建议
 1. 引入浏览器侧 smoke（Playwright）覆盖 overlay 动态加载真实页面行为。
 2. 在 CI 增加手动触发的 baseline 刷新工作流（仅维护分支可用，避免 PR 自动改基线）。
+
+---
+
+## 补充迭代：手动触发的 Baseline 刷新工作流（2026-04-16）
+
+### 当前状态判断
+- 本地已有 `refresh:overlay-baseline`，但团队协作时仍缺少统一的 CI 入口来执行“构建→刷新→导出差异”。
+
+### 对标项目可借鉴点
+- 成熟项目通常把“观测基线更新”放在手动触发工作流，而不是默认 CI 自动提交，避免 PR 流程出现无意配置漂移。
+
+### 差距清单（按 P0/P1/P2/P3）
+- P2：
+  - 问题：基线刷新动作依赖本地环境，缺少团队可复用的 CI 执行通道。
+  - 影响范围：协作维护 baseline 的可重复性。
+  - 根因：尚未提供 workflow_dispatch 入口与变更产物导出。
+  - 建议改法：新增手动工作流，执行构建与刷新后上传 baseline/patch artifact。
+  - 预期收益：任何维护者可在 CI 中复现刷新结果并下载变更。
+  - 改动风险：低（不自动提交，不影响默认质量门禁流程）。
+
+### 本轮要做的优化项
+- 新增 `overlay-baseline-refresh` 工作流（workflow_dispatch）。
+- 产出 baseline patch artifact，便于人工审阅后再决定是否提交。
+
+### 具体修改方案
+- `.github/workflows/overlay-baseline-refresh.yml`
+  - 手动触发后执行：依赖安装 → `build:extension` → `refresh:overlay-baseline`。
+  - 基于 `git diff` 生成 `overlay-size-baseline.patch`。
+  - 当 baseline 有变化时上传 artifact（baseline json + patch），并写入 Step Summary。
+
+### 验证方案
+- 本地命令侧复验：`pnpm run lint -- --fix`、`pnpm run test`、`pnpm run build:extension` 全通过。
+- 工作流语义审查：默认不改主 CI，不自动提交，仅在手动触发后导出结果。
+
+### 本轮风险
+- 该工作流当前只导出 artifact，不会自动开 PR；仍需人工应用 patch 并提交。
+
+### 下一轮建议
+1. 引入浏览器侧 smoke（Playwright）覆盖 overlay 动态加载真实页面行为。
+2. 如需要进一步自动化，可在受控分支上增加“手动触发后自动开 PR”步骤。

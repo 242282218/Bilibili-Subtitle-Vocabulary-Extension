@@ -1,0 +1,76 @@
+name: overlay-baseline-refresh
+
+on:
+  workflow_dispatch:
+
+env:
+  WORKDIR: bilibili-vocab-extension
+  NODE_VERSION: "20"
+  PNPM_VERSION: "9"
+
+jobs:
+  refresh-baseline:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKDIR }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+          cache-dependency-path: ${{ env.WORKDIR }}/package.json
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build extension and generate overlay report
+        run: pnpm run build:extension
+
+      - name: Refresh overlay baseline
+        run: pnpm run refresh:overlay-baseline
+
+      - name: Create baseline patch
+        id: baseline_patch
+        working-directory: .
+        shell: bash
+        run: |
+          git diff -- "${WORKDIR}/config/overlay-size-baseline.json" > overlay-size-baseline.patch
+          if [[ -s overlay-size-baseline.patch ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload refreshed baseline artifact
+        if: steps.baseline_patch.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: overlay-size-baseline
+          path: |
+            bilibili-vocab-extension/config/overlay-size-baseline.json
+            overlay-size-baseline.patch
+
+      - name: Write workflow summary
+        shell: bash
+        run: |
+          {
+            echo "### Overlay Baseline Refresh"
+            echo ""
+            if [[ "${{ steps.baseline_patch.outputs.changed }}" == "true" ]]; then
+              echo "- Baseline changed: yes"
+              echo "- Artifact: \`overlay-size-baseline\` (includes baseline json + patch)"
+            else
+              echo "- Baseline changed: no"
+              echo "- Artifact upload skipped"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
