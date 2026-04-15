@@ -400,3 +400,48 @@
 ### 下一轮建议
 1. 引入浏览器侧 smoke（Playwright）覆盖 overlay 动态加载真实页面行为。
 2. 为 baseline 更新补充脚本（例如从最新通过构建报告自动刷新基线）。
+
+---
+
+## 补充迭代：Overlay 基线自动刷新脚本（2026-04-16）
+
+### 当前状态判断
+- 基线文件已引入，但维护仍依赖手工编辑，容易出现“报告已更新、基线未同步”的操作偏差。
+
+### 对标项目可借鉴点
+- 成熟项目会提供“从最新构建产物刷新基线”的标准脚本，把人工步骤收敛为可复用命令，降低维护误差。
+
+### 差距清单（按 P0/P1/P2/P3）
+- P2：
+  - 问题：基线更新无标准化入口，存在手工改错风险。
+  - 影响范围：体积趋势判断准确性。
+  - 根因：缺少从结构化报告到基线文件的自动同步脚本。
+  - 建议改法：新增 `refresh-overlay-size-baseline`，直接消费 `dist/overlay-size-report.json`。
+  - 预期收益：减少手工维护步骤，确保 baseline 与最新可验证报告一致。
+  - 改动风险：低（只改观测配置文件，不影响门禁阻断语义）。
+
+### 本轮要做的优化项
+- 新增基线刷新脚本与 npm 命令。
+- 补齐脚本测试，覆盖正常刷新、报告缺失、报告字段非法分支。
+
+### 具体修改方案
+- `bilibili-vocab-extension/scripts/refresh-overlay-size-baseline.js`
+  - 新增 `refreshOverlaySizeBaseline` 与 `normalizeReport`。
+  - 默认读取 `dist/overlay-size-report.json`，写入 `config/overlay-size-baseline.json`。
+  - 支持环境变量覆盖路径：`OVERLAY_SIZE_REPORT_FILE`、`OVERLAY_SIZE_BASELINE_FILE`。
+- `bilibili-vocab-extension/package.json`
+  - 新增 `refresh:overlay-baseline` 脚本。
+- `bilibili-vocab-extension/tests/refresh-overlay-size-baseline.test.js`
+  - 新增 4 个用例：成功刷新、缺少 `actualKb`、非正数体积、CLI 缺文件退出。
+
+### 验证方案
+- `node --test tests/refresh-overlay-size-baseline.test.js`：通过（4/4）。
+- `pnpm run refresh:overlay-baseline`：通过，基线文件刷新成功。
+- 后续在本轮收尾验证中复验仓库门禁（`lint/test/build/build:extension`）。
+
+### 本轮风险
+- 若未先执行 `build:extension` 就直接刷新，脚本会失败并提示缺少报告；该行为是有意的（避免用旧数据覆盖基线）。
+
+### 下一轮建议
+1. 引入浏览器侧 smoke（Playwright）覆盖 overlay 动态加载真实页面行为。
+2. 在 CI 增加手动触发的 baseline 刷新工作流（仅维护分支可用，避免 PR 自动改基线）。
