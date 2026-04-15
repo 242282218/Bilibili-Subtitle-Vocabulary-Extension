@@ -485,3 +485,63 @@
 ### 下一轮建议
 1. 引入浏览器侧 smoke（Playwright）覆盖 overlay 动态加载真实页面行为。
 2. 如需要进一步自动化，可在受控分支上增加“手动触发后自动开 PR”步骤。
+
+---
+
+## 补充迭代：跨平台打包链路修复（2026-04-16）
+
+### 当前状态判断
+- 质量门禁（`lint/typecheck/test/build:extension`）可通过，但发布打包命令 `pnpm run pack` 在 Windows 不可用。
+- 现有 `pack` 依赖 `zip -r`，属于 Unix 命令，Windows PowerShell/CMD 默认无该命令。
+- 这会导致“功能可构建但产物不可打包”，直接影响部署可行性。
+
+### 对标项目可借鉴点
+- 成熟扩展项目会使用“Node 脚本 + 平台分支”封装打包流程，而不是把 OS 相关命令硬编码在 package script 中。
+- 打包脚本会同时具备：可测试的纯函数、失败即非零退出、固定输出路径和文件清单。
+
+### 差距清单（按 P0/P1/P2/P3）
+- P1：
+  - 问题：`pack` 命令跨平台不一致（Windows 失败）。
+  - 影响范围：本地发布验证、CI 扩展产物生成、团队协作可重复性。
+  - 根因：`package.json` 直接调用 `zip` 外部命令。
+  - 建议改法：改为 Node 脚本，Windows 使用 `Compress-Archive`，非 Windows 保持 `zip -r`。
+  - 预期收益：统一 `pnpm run pack` 在主流平台的可用性。
+  - 改动风险：低（仅打包入口与测试新增，不影响运行时代码）。
+- P2：
+  - 问题：打包脚本行为缺少自动化回归覆盖。
+  - 建议改法：补测试覆盖条目收集、平台分支、失败路径。
+  - 风险：低。
+
+### 本轮要做的优化项
+- 用 Node 脚本替换 `pack` 的 OS 绑定命令。
+- 补齐打包脚本测试，确保后续迭代可回归。
+- 复验构建与打包链路，确认不引入新回归。
+
+### 具体修改方案
+- `bilibili-vocab-extension/scripts/pack-extension.js`
+  - 新增跨平台打包入口：
+    - Windows：生成临时 PowerShell 脚本，调用 `Compress-Archive`。
+    - 非 Windows：执行 `zip -r`（保持现有打包结构）。
+  - 固定包含 `dist/`、`manifest.json`、`data/`、`styles.css`、`background.js`、`contentScript.js`，并附加根目录 `*.js`/`*.html`。
+  - 命令失败或未产出 zip 时抛错并退出非 0。
+- `bilibili-vocab-extension/package.json`
+  - `pack` 从 `zip -r ...` 改为 `node scripts/pack-extension.js`。
+- `bilibili-vocab-extension/tests/pack-extension.test.js`
+  - 新增 7 个用例覆盖：条目收集、Windows/非 Windows 命令分支、单引号转义、命令失败、空输入失败。
+
+### 验证方案
+- `node --test tests/pack-extension.test.js`：通过（7/7）。
+- `pnpm run test`：通过（182/182）。
+- `pnpm run lint -- --fix`：通过。
+- `pnpm run typecheck`：通过。
+- `pnpm run build:extension`：通过（含 overlay size gate）。
+- `pnpm run pack`：通过，生成 `extension.zip`。
+
+### 本轮风险
+- Windows 路径中若包含复杂字符，仍依赖 PowerShell 字符串转义正确性；当前已有单引号转义覆盖，但建议后续在 CI Windows runner 再实测一次。
+- 打包条目采用“固定清单 + 根目录 glob”策略，若未来新增关键资源目录，需要同步更新脚本清单。
+
+### 下一轮建议
+1. 在 GitHub Actions 增加最小 Windows 打包 smoke（仅执行 `pnpm run pack` 并校验 zip 存在）。
+2. 给打包产物加结构完整性校验（zip 内必须包含 manifest/data/dist）。
+3. 若要进一步降低系统依赖，可将非 Windows 分支也统一为 Node 原生 zip 实现。

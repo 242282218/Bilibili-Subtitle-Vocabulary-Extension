@@ -14,7 +14,7 @@
     "test": "node --test tests/*.test.js",
     "test:ui": "vitest run --root .",
     "test:coverage": "vitest run --root . --coverage",
-    "pack": "zip -r extension.zip dist/ manifest.json data/ styles.css background.js contentScript.js *.js *.html"
+    "pack": "node scripts/pack-extension.js"
   },
   "dependencies": {
     "react": "^18.3.1",
