@@ -2,12 +2,34 @@
 
 在 Bilibili 和 YouTube 字幕中插入英文词汇，帮助你在看视频时被动记忆单词。
 
-## 安装
+## 环境要求
+
+- Node.js 20+
+- pnpm 9+
+
+## 本地开发
+
+1. 安装依赖：`cd bilibili-vocab-extension && pnpm install`
+2. 本地 UI 开发：`pnpm run dev`
+3. 质量门禁：
+   - `pnpm run lint -- --fix`
+   - `pnpm run typecheck`
+   - `pnpm run test`
+4. 构建扩展产物：`pnpm run build:extension`
+5. 打包发布产物：`pnpm run pack`（输出 `bilibili-vocab-extension/extension.zip`）
+
+## 浏览器安装
 
 1. 下载或克隆本项目
 2. 打开 Chrome/Edge 扩展管理页 (`chrome://extensions/` 或 `edge://extensions/`)
 3. 开启「开发者模式」
 4. 点击「加载已解压的扩展程序」，选择 `bilibili-vocab-extension` 目录
+
+## 构建后加载说明
+
+- `manifest.json` 已配置 `dist/options.html` 与 `dist/popup.html`。
+- 本地调试前建议先执行一次 `pnpm run build:extension`，确保 `dist/` 下页面与 overlay 产物为最新。
+- 若仅修改内容脚本逻辑（非 React UI），可直接刷新扩展重载验证。
 
 ## 使用
 
