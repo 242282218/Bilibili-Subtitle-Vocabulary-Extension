@@ -355,3 +355,48 @@
 ### 下一轮建议
 1. 引入浏览器侧 smoke（Playwright）覆盖 overlay 动态加载真实页面行为。
 2. 为 overlay 体积报告补充历史趋势聚合脚本（按 artifact 批量汇总）。
+
+---
+
+## 补充迭代：Overlay 体积基线趋势输出（2026-04-16）
+
+### 当前状态判断
+- overlay 门禁已有预算阈值与单次报告，但缺少“与历史基线相比”的漂移视角，无法快速判断体积变化方向。
+
+### 对标项目可借鉴点
+- 成熟项目会把“预算阻断”和“基线趋势”分离：预算用于 hard gate，基线用于 review 阶段快速识别体积漂移。
+
+### 差距清单（按 P0/P1/P2/P3）
+- P2：
+  - 问题：`overlay-size-report.json` 只有预算/实际值，没有基线差值。
+  - 影响范围：PR 评审时难以快速判断是“逼近预算”还是“持续下降”。
+  - 根因：脚本未读取基线文件，也未输出 delta 指标。
+  - 建议改法：引入可选基线文件，报告和 summary 同步输出 baseline/delta。
+  - 预期收益：降低体积回归识别成本，便于持续优化追踪。
+  - 改动风险：低（只增强观测，不改变门禁退出码语义）。
+
+### 本轮要做的优化项
+- 为 overlay 体积门禁新增可选基线输入，并在报告与 summary 输出 delta 指标。
+- 为基线分支补齐自动化测试（有效基线、缺失基线、无效基线）。
+
+### 具体修改方案
+- `bilibili-vocab-extension/scripts/check-overlay-size.js`
+  - 新增 `DEFAULT_OVERLAY_BASELINE_FILE` 与 `OVERLAY_SIZE_BASELINE_FILE` 支持。
+  - 新增 `readBaseline/normalizeBaseline`，基线无效时仅告警并忽略，不阻断门禁。
+  - `createReport` 支持输出 `baselineKb` 与 `deltaKb`（可选字段）。
+  - `writeGithubSummary` 在存在基线时追加 `Baseline/Delta` 列。
+- `bilibili-vocab-extension/config/overlay-size-baseline.json`
+  - 新增初始基线（raw `222.9KB` / gzip `57.26KB`），作为后续漂移比较参考。
+- `bilibili-vocab-extension/tests/check-overlay-size.test.js`
+  - 新增/增强用例：基线生效写入、缺失基线忽略、无效基线忽略、CLI 无效预算退出。
+
+### 验证方案
+- `node --test tests/check-overlay-size.test.js`：通过（5/5）。
+- 后续在本轮收尾验证中复验仓库门禁（`lint/test/build/build:extension`）。
+
+### 本轮风险
+- 基线文件需要在“明确接受体积变化”后维护更新，否则 delta 会长期偏正或偏负。
+
+### 下一轮建议
+1. 引入浏览器侧 smoke（Playwright）覆盖 overlay 动态加载真实页面行为。
+2. 为 baseline 更新补充脚本（例如从最新通过构建报告自动刷新基线）。

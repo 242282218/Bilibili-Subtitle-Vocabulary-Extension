@@ -4,11 +4,16 @@ const zlib = require("node:zlib");
 
 const DEFAULT_OVERLAY_FILE = path.resolve(__dirname, "..", "dist", "overlay.js");
 const DEFAULT_OVERLAY_REPORT_FILE = path.resolve(__dirname, "..", "dist", "overlay-size-report.json");
+const DEFAULT_OVERLAY_BASELINE_FILE = path.resolve(__dirname, "..", "config", "overlay-size-baseline.json");
 const DEFAULT_RAW_BUDGET_KB = 260;
 const DEFAULT_GZIP_BUDGET_KB = 70;
 
 function toKb(bytes) {
   return Number((bytes / 1024).toFixed(2));
+}
+
+function toRoundedKb(value) {
+  return Number(Number(value).toFixed(2));
 }
 
 function parseBudget(rawValue, fallback) {
@@ -37,8 +42,44 @@ function evaluateBudgets(rawKb, gzipKb, rawBudgetKb, gzipBudgetKb) {
   };
 }
 
-function createReport(rawKb, gzipKb, rawBudgetKb, gzipBudgetKb) {
+function normalizeBaseline(rawBaseline) {
+  if (!rawBaseline || typeof rawBaseline !== "object") {
+    return null;
+  }
+
+  const raw = Number(rawBaseline.raw);
+  const gzip = Number(rawBaseline.gzip);
+  if (!Number.isFinite(raw) || raw <= 0 || !Number.isFinite(gzip) || gzip <= 0) {
+    return null;
+  }
+
   return {
+    raw: toRoundedKb(raw),
+    gzip: toRoundedKb(gzip)
+  };
+}
+
+function readBaseline(baselineFile) {
+  if (!baselineFile || !fs.existsSync(baselineFile)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(baselineFile, "utf8"));
+    const baseline = normalizeBaseline(parsed);
+    if (!baseline) {
+      console.warn(`[overlay-size-check] Ignored invalid baseline payload in ${baselineFile}`);
+      return null;
+    }
+    return baseline;
+  } catch (error) {
+    console.warn(`[overlay-size-check] Failed to read baseline file: ${error && error.message ? error.message : error}`);
+    return null;
+  }
+}
+
+function createReport(rawKb, gzipKb, rawBudgetKb, gzipBudgetKb, baselineKb) {
+  const report = {
     checkedAt: new Date().toISOString(),
     file: "dist/overlay.js",
     budgetKb: {
@@ -51,6 +92,19 @@ function createReport(rawKb, gzipKb, rawBudgetKb, gzipBudgetKb) {
     },
     result: evaluateBudgets(rawKb, gzipKb, rawBudgetKb, gzipBudgetKb)
   };
+
+  if (baselineKb) {
+    report.baselineKb = {
+      raw: baselineKb.raw,
+      gzip: baselineKb.gzip
+    };
+    report.deltaKb = {
+      raw: toRoundedKb(rawKb - baselineKb.raw),
+      gzip: toRoundedKb(gzipKb - baselineKb.gzip)
+    };
+  }
+
+  return report;
 }
 
 function writeGithubSummary(summaryPath, report) {
@@ -60,17 +114,28 @@ function writeGithubSummary(summaryPath, report) {
 
   const rawPass = report.result.raw === "pass";
   const gzipPass = report.result.gzip === "pass";
-  const lines = [
-    "### Overlay Size Gate",
-    "",
-    "| Metric | Actual | Budget | Result |",
-    "| --- | ---: | ---: | --- |",
-    `| Raw | ${report.actualKb.raw} KB | ${report.budgetKb.raw} KB | ${rawPass ? "OK" : "Exceeded"} |`,
-    `| Gzip | ${report.actualKb.gzip} KB | ${report.budgetKb.gzip} KB | ${gzipPass ? "OK" : "Exceeded"} |`,
-    "",
-    `Overall: ${report.result.overall === "pass" ? "PASS" : "FAIL"}`,
-    ""
-  ];
+  const hasBaseline = Boolean(report.baselineKb && report.deltaKb);
+  const lines = ["### Overlay Size Gate", ""];
+
+  if (hasBaseline) {
+    lines.push("| Metric | Actual | Budget | Baseline | Delta | Result |");
+    lines.push("| --- | ---: | ---: | ---: | ---: | --- |");
+    lines.push(
+      `| Raw | ${report.actualKb.raw} KB | ${report.budgetKb.raw} KB | ${report.baselineKb.raw} KB | ${report.deltaKb.raw} KB | ${rawPass ? "OK" : "Exceeded"} |`
+    );
+    lines.push(
+      `| Gzip | ${report.actualKb.gzip} KB | ${report.budgetKb.gzip} KB | ${report.baselineKb.gzip} KB | ${report.deltaKb.gzip} KB | ${gzipPass ? "OK" : "Exceeded"} |`
+    );
+  } else {
+    lines.push("| Metric | Actual | Budget | Result |");
+    lines.push("| --- | ---: | ---: | --- |");
+    lines.push(`| Raw | ${report.actualKb.raw} KB | ${report.budgetKb.raw} KB | ${rawPass ? "OK" : "Exceeded"} |`);
+    lines.push(`| Gzip | ${report.actualKb.gzip} KB | ${report.budgetKb.gzip} KB | ${gzipPass ? "OK" : "Exceeded"} |`);
+  }
+
+  lines.push("");
+  lines.push(`Overall: ${report.result.overall === "pass" ? "PASS" : "FAIL"}`);
+  lines.push("");
 
   try {
     fs.appendFileSync(summaryPath, `${lines.join("\n")}\n`, "utf8");
@@ -93,9 +158,18 @@ function runOverlaySizeCheck(options = {}) {
   const reportFile = path.resolve(
     options.reportFile || process.env.OVERLAY_SIZE_REPORT_FILE || DEFAULT_OVERLAY_REPORT_FILE
   );
+  const baselineFile = path.resolve(
+    options.baselineFile || process.env.OVERLAY_SIZE_BASELINE_FILE || DEFAULT_OVERLAY_BASELINE_FILE
+  );
   const summaryPath = options.summaryPath || process.env.GITHUB_STEP_SUMMARY || "";
-  const rawBudgetKb = parseBudget(options.rawBudgetKb, parseBudget(process.env.OVERLAY_SIZE_BUDGET_RAW_KB, DEFAULT_RAW_BUDGET_KB));
-  const gzipBudgetKb = parseBudget(options.gzipBudgetKb, parseBudget(process.env.OVERLAY_SIZE_BUDGET_GZIP_KB, DEFAULT_GZIP_BUDGET_KB));
+  const rawBudgetKb = parseBudget(
+    options.rawBudgetKb,
+    parseBudget(process.env.OVERLAY_SIZE_BUDGET_RAW_KB, DEFAULT_RAW_BUDGET_KB)
+  );
+  const gzipBudgetKb = parseBudget(
+    options.gzipBudgetKb,
+    parseBudget(process.env.OVERLAY_SIZE_BUDGET_GZIP_KB, DEFAULT_GZIP_BUDGET_KB)
+  );
 
   assertPositiveBudget(rawBudgetKb, gzipBudgetKb);
 
@@ -107,7 +181,8 @@ function runOverlaySizeCheck(options = {}) {
   const gzipBuffer = zlib.gzipSync(rawBuffer);
   const rawKb = toKb(rawBuffer.byteLength);
   const gzipKb = toKb(gzipBuffer.byteLength);
-  const report = createReport(rawKb, gzipKb, rawBudgetKb, gzipBudgetKb);
+  const baselineKb = readBaseline(baselineFile);
+  const report = createReport(rawKb, gzipKb, rawBudgetKb, gzipBudgetKb, baselineKb);
 
   writeGithubSummary(summaryPath, report);
   writeOverlaySizeReport(reportFile, report);
@@ -115,6 +190,7 @@ function runOverlaySizeCheck(options = {}) {
   return {
     overlayFile,
     reportFile,
+    baselineFile,
     report
   };
 }
@@ -145,10 +221,14 @@ if (require.main === module) {
 module.exports = {
   DEFAULT_OVERLAY_FILE,
   DEFAULT_OVERLAY_REPORT_FILE,
+  DEFAULT_OVERLAY_BASELINE_FILE,
   DEFAULT_RAW_BUDGET_KB,
   DEFAULT_GZIP_BUDGET_KB,
   parseBudget,
   toKb,
+  toRoundedKb,
+  normalizeBaseline,
+  readBaseline,
   evaluateBudgets,
   createReport,
   runOverlaySizeCheck
