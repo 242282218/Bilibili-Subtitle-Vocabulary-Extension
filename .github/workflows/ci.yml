@@ -14,12 +14,21 @@ on:
       - "bilibili-vocab-extension/**"
       - "docs/**"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  WORKDIR: bilibili-vocab-extension
+  NODE_VERSION: "20"
+  PNPM_VERSION: "9"
+
 jobs:
-  quality-gates:
+  lint:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: bilibili-vocab-extension
+        working-directory: ${{ env.WORKDIR }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,12 +36,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+          cache-dependency-path: ${{ env.WORKDIR }}/package.json
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: ${{ env.PNPM_VERSION }}
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
@@ -40,11 +51,83 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKDIR }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+          cache-dependency-path: ${{ env.WORKDIR }}/package.json
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
       - name: Test
         run: pnpm run test
 
+  build-react-ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKDIR }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+          cache-dependency-path: ${{ env.WORKDIR }}/package.json
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
       - name: Build React UI
         run: pnpm run build
+
+  build-extension:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKDIR }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+          cache-dependency-path: ${{ env.WORKDIR }}/package.json
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build Extension Bundle
         run: pnpm run build:extension

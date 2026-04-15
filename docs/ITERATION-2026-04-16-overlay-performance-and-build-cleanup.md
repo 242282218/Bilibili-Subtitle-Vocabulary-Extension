@@ -126,3 +126,61 @@
 1. 补最小浏览器 E2E（Bilibili/YouTube 首次注入、刷新恢复、站点切换）验证动态加载链路。
 2. 在 CI 中拆分 `typecheck`、`test`、`build:extension` 并缓存依赖，缩短反馈时延。
 3. 增加 Node 版本矩阵或最小跨平台验证，降低环境相关回归风险。
+
+---
+
+## 补充迭代：动态加载回退测试 + CI 并行门禁（2026-04-16）
+
+### 当前状态判断
+- `contentScript` 动态加载已有字符串契约测试，但缺少运行时回退分支自动化断言。
+- CI 虽已覆盖 `lint/test/build/build:extension`，但仍是单 job 串行，反馈耗时偏高。
+
+### 对标项目可借鉴点
+- 成熟浏览器扩展项目会把“动态模块加载成功/失败/缓存”作为独立单测维度，避免只靠静态字符串断言。
+- 生产级 CI 常将 lint/test/build 拆分并行，同时配置依赖缓存和并发取消，提升反馈速度并节省资源。
+
+### 差距清单（按 P0/P1/P2/P3）
+- P1：
+  - 问题：overlay 动态加载缺少异常/回退路径行为测试。
+  - 影响范围：加载失败或缓存失效时可能静默回归。
+  - 根因：此前只验证“是否包含 import 语句”，未验证分支行为。
+  - 建议改法：导出最小测试钩子，补分支单测。
+  - 预期收益：降低动态加载链路回归风险。
+  - 改动风险：低（仅测试可见导出）。
+- P2：
+  - 问题：CI 单 job 串行导致反馈慢。
+  - 影响范围：PR 迭代效率与故障定位速度。
+  - 根因：任务未并行、依赖缓存策略缺失、旧流水线不取消。
+  - 建议改法：拆分为并行 jobs + pnpm cache + concurrency cancel。
+  - 预期收益：更快失败反馈与更低资源浪费。
+  - 改动风险：低（工作流编排层）。
+
+### 本轮要做的优化项
+- 为 overlay 动态加载补齐回退路径自动化测试。
+- 重构 CI 为并行门禁并启用缓存，保持原有覆盖范围不降级。
+
+### 具体修改方案
+- `bilibili-vocab-extension/contentScript.js`
+  - 在 Node 导出分支新增 `loadOverlayModule` 与 `__resetOverlayModuleStateForTest`，仅供测试使用。
+- `bilibili-vocab-extension/tests/contentScript-overlay-loader.test.js`
+  - 新增 4 个用例：全局模块命中、runtime 缺失回退、成功加载缓存复用、无效模块重试回退。
+- `.github/workflows/ci.yml`
+  - 引入 `concurrency`（同分支新流水线触发时取消旧运行）。
+  - 将单 job 拆分为 `lint` / `test` / `build-react-ui` / `build-extension` 四个并行 jobs。
+  - 使用 `actions/setup-node` 的 `cache: pnpm` 与 `cache-dependency-path`。
+
+### 验证方案
+- `node --test tests/contentScript-overlay-loader.test.js tests/contentScript-hit-tracking.test.js`：通过。
+- `pnpm run lint -- --fix`：通过。
+- `pnpm run test`：通过（166/166）。
+- `pnpm run build`：通过。
+- `pnpm run build:extension`：通过（含 `typecheck` 与 `check:overlay-size`）。
+
+### 本轮风险
+- CI 缓存键目前基于 `package.json`，若依赖解析策略变化仍可能出现缓存抖动。
+- 浏览器真实环境兼容矩阵（尤其不同 Chromium 版本）仍未完全自动化覆盖。
+
+### 下一轮建议
+1. 落地最小 Playwright smoke：Bilibili/YouTube 打开页面后 overlay 可挂载与可交互。
+2. 引入 Node 版本矩阵（20 + 22）验证依赖兼容性。
+3. 追加 CI 产物留存（overlay 体积日志）用于趋势追踪。
