@@ -184,3 +184,48 @@
 1. 落地最小 Playwright smoke：Bilibili/YouTube 打开页面后 overlay 可挂载与可交互。
 2. 引入 Node 版本矩阵（20 + 22）验证依赖兼容性。
 3. 追加 CI 产物留存（overlay 体积日志）用于趋势追踪。
+
+---
+
+## 补充迭代：CI Node 矩阵兼容性加固（2026-04-16）
+
+### 当前状态判断
+- 已完成并行门禁与缓存，但运行时环境仍以 Node 20 为单点，无法提前暴露版本兼容问题。
+
+### 对标项目可借鉴点
+- 成熟前端/扩展项目常将快速门禁（lint/test）做多版本 Node 矩阵，构建门禁维持单版本以平衡时延与覆盖。
+
+### 差距清单（按 P0/P1/P2/P3）
+- P2：
+  - 问题：CI 缺少跨 Node 版本兼容验证。
+  - 影响范围：升级 Node 或依赖后可能出现延迟暴雷。
+  - 根因：流水线为单版本配置。
+  - 建议改法：为 lint/test 增加 Node 20/22 矩阵，构建任务保持单版本。
+  - 预期收益：更早发现生态兼容问题，且总耗时可控。
+  - 改动风险：低（CI 编排）。
+
+### 本轮要做的优化项
+- 为 `lint` 与 `test` job 增加 Node 20/22 矩阵，保持 `build-react-ui` 与 `build-extension` 单版本执行。
+
+### 具体修改方案
+- `.github/workflows/ci.yml`
+  - `lint`/`test` 增加 `strategy.matrix.node-version: [20, 22]`，并关闭 `fail-fast` 以保留完整版本结果。
+  - `actions/setup-node` 在矩阵 job 使用 `matrix.node-version`。
+  - `build-react-ui`/`build-extension` 继续使用 `env.NODE_VERSION=20`，控制构建时长。
+
+### 验证方案
+- 本地复验质量门禁命令：
+  - `pnpm run lint -- --fix`：通过。
+  - `pnpm run test`：通过（166/166）。
+  - `pnpm run build`：通过。
+  - `pnpm run build:extension`：通过（含 overlay 体积门禁）。
+- 工作流结构审查：
+  - `lint` 与 `test` 已切换矩阵版本；
+  - 构建 job 仍为单版本，符合“快门禁多版本、重构建单版本”策略。
+
+### 本轮风险
+- Node 22 下若未来引入原生模块依赖，可能出现平台细分问题，仍需后续在真实 CI 运行中观察。
+
+### 下一轮建议
+1. 引入浏览器侧 smoke（Playwright）覆盖 overlay 动态加载真实页面行为。
+2. 将 `check:overlay-size` 结果写入 CI summary，形成趋势观察面板。

@@ -26,6 +26,10 @@ env:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["20", "22"]
     defaults:
       run:
         working-directory: ${{ env.WORKDIR }}
@@ -36,7 +40,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: ${{ matrix.node-version }}
           cache: "pnpm"
           cache-dependency-path: ${{ env.WORKDIR }}/package.json
 
@@ -53,6 +57,10 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["20", "22"]
     defaults:
       run:
         working-directory: ${{ env.WORKDIR }}
@@ -63,7 +71,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: ${{ matrix.node-version }}
           cache: "pnpm"
           cache-dependency-path: ${{ env.WORKDIR }}/package.json
 
