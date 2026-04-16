@@ -18,6 +18,13 @@
 4. 构建扩展产物：`pnpm run build:extension`
 5. 打包发布产物：`pnpm run pack`（输出 `bilibili-vocab-extension/extension.zip`）
 
+### 行尾规范（Windows 首次同步）
+
+- 仓库使用 `.gitattributes` 统一文本文件为 LF。
+- 若你在拉取前已产生 CRLF 噪声改动，可在仓库根目录执行一次：
+  - `git add --renormalize .`
+  - `git status` 确认仅为行尾归一化后再继续开发。
+
 ## 浏览器安装
 
 1. 下载或克隆本项目
