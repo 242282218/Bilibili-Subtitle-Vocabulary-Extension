@@ -18,6 +18,7 @@
   const TRANSLATION_CACHE_LIMIT = 200;
   const WEB_TEXT_PROCESS_INTERVAL = 1000; // 网页文本处理间隔
   const LEGACY_WEB_TEXT_PIPELINE_FLAG = "__BILI_VOCAB_ENABLE_LEGACY_WEB_TEXT_PIPELINE__";
+  const VIDEO_SITE_HOSTS = ["bilibili.com", "youtube.com", "v.qq.com", "iqiyi.com", "netflix.com", "youku.com"];
   const TRANSLATION_SETTINGS_KEYS = sharedSettings && Array.isArray(sharedSettings.SETTINGS_STORAGE_KEYS)
     ? sharedSettings.SETTINGS_STORAGE_KEYS.filter((key) => key !== "reviewDanmakuEnabled" && key !== "reviewDanmakuSpeed")
     : [
@@ -82,6 +83,23 @@
 
   function hasMethod(obj, method) {
     return obj && typeof obj[method] === "function";
+  }
+
+  function isVideoSiteHost(hostname) {
+    const normalized = String(hostname || "").toLowerCase();
+    return VIDEO_SITE_HOSTS.some((site) => normalized === site || normalized.endsWith(`.${site}`) || normalized.includes(site));
+  }
+
+  function shouldEnableTimelinePolling(hostname) {
+    const currentHost = typeof hostname === "string"
+      ? hostname
+      : (globalThis.location && globalThis.location.hostname);
+    if (isVideoSiteHost(currentHost)) {
+      return true;
+    }
+
+    const doc = globalThis.document;
+    return Boolean(doc && typeof doc.querySelector === "function" && doc.querySelector("video"));
   }
 
   function runInAnimationFrame(task) {
@@ -603,8 +621,7 @@
     try {
       // 只在视频站外的普通网页启用
       const hostname = window.location.hostname.toLowerCase();
-      const videoSites = ['bilibili.com', 'youtube.com', 'v.qq.com', 'iqiyi.com', 'netflix.com', 'youku.com'];
-      if (videoSites.some(site => hostname.includes(site))) {
+      if (isVideoSiteHost(hostname)) {
         return;
       }
 
@@ -688,6 +705,7 @@
 
     observer = new MutationObserver(() => {
       ensureRuntimeBindings();
+      startTimelinePolling();
       scheduleProcess();
     });
 
@@ -699,8 +717,18 @@
   }
 
   function startTimelinePolling() {
+    const shouldPoll = shouldEnableTimelinePolling();
+
+    if (!shouldPoll) {
+      if (timelinePollTimer) {
+        clearInterval(timelinePollTimer);
+        timelinePollTimer = null;
+      }
+      return;
+    }
+
     if (timelinePollTimer) {
-      clearInterval(timelinePollTimer);
+      return;
     }
 
     timelinePollTimer = setInterval(() => {
@@ -899,6 +927,8 @@
       recordRenderedHits,
       loadOverlayModule,
       runInAnimationFrame,
+      isVideoSiteHost,
+      shouldEnableTimelinePolling,
       shouldRestoreWebItems,
       shouldRunLegacyWebTextPipeline,
       __resetOverlayModuleStateForTest() {

@@ -5,6 +5,7 @@ const previousDocument = global.document;
 const previousChrome = global.chrome;
 const previousVocabularyModule = global.VocabularyModule;
 const previousRequestAnimationFrame = global.requestAnimationFrame;
+const previousLocation = global.location;
 
 global.document = {
   readyState: "loading",
@@ -234,6 +235,29 @@ test("shouldRunLegacyWebTextPipeline: should stay off by default and allow expli
   delete global.__BILI_VOCAB_ENABLE_LEGACY_WEB_TEXT_PIPELINE__;
 });
 
+test("isVideoSiteHost: should recognize supported video hosts", () => {
+  assert.equal(contentScript.isVideoSiteHost("www.youtube.com"), true);
+  assert.equal(contentScript.isVideoSiteHost("www.bilibili.com"), true);
+  assert.equal(contentScript.isVideoSiteHost("docs.example.com"), false);
+});
+
+test("shouldEnableTimelinePolling: should only enable polling for video hosts or pages with video element", () => {
+  const previousQuerySelector = global.document.querySelector;
+  try {
+    global.location = { hostname: "www.youtube.com" };
+    assert.equal(contentScript.shouldEnableTimelinePolling(), true);
+
+    global.location = { hostname: "docs.example.com" };
+    global.document.querySelector = () => null;
+    assert.equal(contentScript.shouldEnableTimelinePolling(), false);
+
+    global.document.querySelector = (selector) => (selector === "video" ? {} : null);
+    assert.equal(contentScript.shouldEnableTimelinePolling(), true);
+  } finally {
+    global.document.querySelector = previousQuerySelector;
+  }
+});
+
 test("runInAnimationFrame: should execute frame task", async () => {
   global.requestAnimationFrame = (callback) => {
     callback();
@@ -276,4 +300,5 @@ test.after(() => {
   global.chrome = previousChrome;
   global.VocabularyModule = previousVocabularyModule;
   global.requestAnimationFrame = previousRequestAnimationFrame;
+  global.location = previousLocation;
 });
