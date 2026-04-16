@@ -4,13 +4,13 @@ import {
   migrateToV3,
   normalizeSettingsV3,
 } from './settings-bridge';
+import { MESSAGE_TYPES, sendRuntimeMessage } from './runtime-messaging';
 
 const LEARNING_SUMMARY_STORAGE_KEY = 'bili_vocab_learning_summary_v1';
 const VOCABULARY_BOOK_STORAGE_KEY = 'bili_vocab_word_stats_v2';
 const LEARNING_STREAK_STORAGE_KEY = 'bili_vocab_learning_streak_v1';
 const ADAPTIVE_TUNING_STORAGE_KEY = 'bili_vocab_adaptive_tuning_v1';
 const EXPERIENCE_METRICS_STORAGE_KEY = 'bili_vocab_experience_metrics_v1';
-const ADAPTIVE_MANUAL_OVERRIDE_MS = 20 * 60 * 1000;
 const METRIC_COUNTER_KEYS = [
   'contextMisreplaceReported',
   'contextMisreplaceHigh',
@@ -212,29 +212,6 @@ function normalizeExperienceMetricsState(input: unknown): ExperienceMetricsState
   };
 }
 
-function applyMetricCountersToState(
-  state: ExperienceMetricsState,
-  counterKeys: MetricCounterKey[],
-  now = Date.now()
-): ExperienceMetricsState {
-  const timestamp = normalizeTimestamp(now) || Date.now();
-  const nextCounters = normalizeMetricCounterMap(state.counters);
-  const nextDaily = { ...state.daily };
-  const dayKey = toDayKey(timestamp);
-  const dayCounters = normalizeMetricCounterMap(nextDaily[dayKey]);
-  counterKeys.forEach((key) => {
-    nextCounters[key] += 1;
-    dayCounters[key] += 1;
-  });
-  nextDaily[dayKey] = dayCounters;
-  return {
-    schemaVersion: 1,
-    updatedAt: timestamp,
-    counters: nextCounters,
-    daily: nextDaily,
-  };
-}
-
 function listWindowDayKeys(days: number, now = Date.now()): string[] {
   const normalizedDays = clampWindowDays(days);
   const timestamp = normalizeTimestamp(now) || Date.now();
@@ -413,32 +390,12 @@ export async function loadSettingsV3(): Promise<SettingsV3> {
 export async function saveSettingsV3(settings: SettingsV3): Promise<SettingsV3> {
   const normalized = normalizeSettingsV3(settings);
   return enqueueStorageMutation(async () => {
-    const now = Date.now();
-    const payload = await readStorage<Record<string, unknown>>([
-      ADAPTIVE_TUNING_STORAGE_KEY,
-      EXPERIENCE_METRICS_STORAGE_KEY,
-    ]);
-    const adaptiveState =
-      payload[ADAPTIVE_TUNING_STORAGE_KEY] &&
-      typeof payload[ADAPTIVE_TUNING_STORAGE_KEY] === 'object'
-        ? (payload[ADAPTIVE_TUNING_STORAGE_KEY] as Record<string, unknown>)
-        : {};
-    const nextMetrics = applyMetricCountersToState(
-      normalizeExperienceMetricsState(payload[EXPERIENCE_METRICS_STORAGE_KEY]),
-      ['adaptiveManualOverride'],
-      now
-    );
-
-    await writeStorage({
-      [ADAPTIVE_TUNING_STORAGE_KEY]: {
-        ...adaptiveState,
-        enabled: adaptiveState.enabled !== false,
-        manualOverrideUntil: now + ADAPTIVE_MANUAL_OVERRIDE_MS,
-      },
-      [EXPERIENCE_METRICS_STORAGE_KEY]: nextMetrics,
-      [SETTINGS_STORAGE_KEY_V3]: normalized,
+    const persisted = await sendRuntimeMessage<SettingsV3>(MESSAGE_TYPES.SETTINGS_COMMIT, {
+      settings: normalized,
+      markManualOverride: true,
+      now: Date.now(),
     });
-    return normalized;
+    return normalizeSettingsV3(persisted);
   });
 }
 
@@ -449,30 +406,14 @@ export async function readAdaptiveTuningState(): Promise<AdaptiveTuningState> {
 
 export async function setAdaptiveTuningEnabled(enabled: boolean): Promise<AdaptiveTuningState> {
   return enqueueStorageMutation(async () => {
-    const now = Date.now();
-    const payload = await readStorage<Record<string, unknown>>([
-      ADAPTIVE_TUNING_STORAGE_KEY,
-      EXPERIENCE_METRICS_STORAGE_KEY,
-    ]);
-    const source =
-      payload[ADAPTIVE_TUNING_STORAGE_KEY] &&
-      typeof payload[ADAPTIVE_TUNING_STORAGE_KEY] === 'object'
-        ? (payload[ADAPTIVE_TUNING_STORAGE_KEY] as Record<string, unknown>)
-        : {};
-    const nextRaw = {
-      ...source,
-      enabled: enabled !== false,
-    };
-    const nextMetrics = applyMetricCountersToState(
-      normalizeExperienceMetricsState(payload[EXPERIENCE_METRICS_STORAGE_KEY]),
-      [enabled !== false ? 'adaptiveToggleEnabled' : 'adaptiveToggleDisabled'],
-      now
+    const nextRaw = await sendRuntimeMessage<Record<string, unknown>>(
+      MESSAGE_TYPES.ADAPTIVE_SET_ENABLED,
+      {
+        enabled: enabled !== false,
+        now: Date.now(),
+      }
     );
-    await writeStorage({
-      [ADAPTIVE_TUNING_STORAGE_KEY]: nextRaw,
-      [EXPERIENCE_METRICS_STORAGE_KEY]: nextMetrics,
-    });
-    return normalizeAdaptiveTuningState(nextRaw, now);
+    return normalizeAdaptiveTuningState(nextRaw, Date.now());
   });
 }
 

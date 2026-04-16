@@ -1,20 +1,20 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
-const ts = require("typescript");
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const ts = require('typescript');
 
 const OVERLAY_STORAGE_SOURCE_PATH = path.join(
   __dirname,
-  "..",
-  "react-ui",
-  "src",
-  "overlay-storage.ts"
+  '..',
+  'react-ui',
+  'src',
+  'overlay-storage.ts'
 );
-const SETTINGS_STORAGE_KEY_V3 = "bili_vocab_settings_v3";
-const ADAPTIVE_TUNING_STORAGE_KEY = "bili_vocab_adaptive_tuning_v1";
-const EXPERIENCE_METRICS_STORAGE_KEY = "bili_vocab_experience_metrics_v1";
+const OVERLAY_STORAGE_SOURCE_DIR = path.dirname(OVERLAY_STORAGE_SOURCE_PATH);
+const SETTINGS_STORAGE_KEY_V3 = 'bili_vocab_settings_v3';
+const EXPERIENCE_METRICS_STORAGE_KEY = 'bili_vocab_experience_metrics_v1';
 
 function cloneValue(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -51,7 +51,7 @@ function pickPayload(state, keys) {
 }
 
 function createOverlayStorageModule(options = {}) {
-  const source = fs.readFileSync(OVERLAY_STORAGE_SOURCE_PATH, "utf8");
+  const source = fs.readFileSync(OVERLAY_STORAGE_SOURCE_PATH, 'utf8');
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
@@ -63,6 +63,17 @@ function createOverlayStorageModule(options = {}) {
   const storageState = cloneValue(options.initialState || {});
   const runtime = {
     lastError: null,
+    sendMessage(message, callback) {
+      if (typeof options.sendMessageImpl === 'function') {
+        options.sendMessageImpl({ message, callback, state: storageState, runtime });
+        return;
+      }
+      runtime.lastError = { message: 'sendMessage unavailable' };
+      if (typeof callback === 'function') {
+        callback(undefined);
+      }
+      runtime.lastError = null;
+    },
   };
   const moduleRef = { exports: {} };
   const MockDate = createMockDate(options.now || 1700000000000);
@@ -70,19 +81,19 @@ function createOverlayStorageModule(options = {}) {
     storage: {
       local: {
         get(keys, callback) {
-          if (typeof options.getImpl === "function") {
+          if (typeof options.getImpl === 'function') {
             options.getImpl({ keys, callback, state: storageState, runtime });
             return;
           }
           callback(pickPayload(storageState, keys));
         },
         set(payload, callback) {
-          if (typeof options.setImpl === "function") {
+          if (typeof options.setImpl === 'function') {
             options.setImpl({ payload, callback, state: storageState, runtime });
             return;
           }
           Object.assign(storageState, cloneValue(payload));
-          if (typeof callback === "function") {
+          if (typeof callback === 'function') {
             callback();
           }
         },
@@ -98,7 +109,7 @@ function createOverlayStorageModule(options = {}) {
     module: moduleRef,
     exports: moduleRef.exports,
     require(id) {
-      if (id === "./overlay-settings") {
+      if (id === './overlay-settings') {
         return {
           SETTINGS_STORAGE_KEY_V3,
           migrateToV3(payload) {
@@ -108,6 +119,34 @@ function createOverlayStorageModule(options = {}) {
             return settings;
           },
         };
+      }
+      if (id === './runtime-messaging') {
+        return {
+          MESSAGE_TYPES: {
+            SETTINGS_COMMIT: 'BILI_VOCAB_SETTINGS_COMMIT',
+          },
+          hasRuntimeMessaging() {
+            return true;
+          },
+          sendRuntimeMessage(type, payload) {
+            return new Promise((resolve, reject) => {
+              chrome.runtime.sendMessage({ type, payload }, (response) => {
+                if (runtime.lastError) {
+                  reject(new Error(runtime.lastError.message));
+                  return;
+                }
+                if (!response || response.ok !== true) {
+                  reject(new Error((response && response.error) || 'runtime bridge failed'));
+                  return;
+                }
+                resolve(response.payload);
+              });
+            });
+          },
+        };
+      }
+      if (id.startsWith('.')) {
+        return require(path.resolve(OVERLAY_STORAGE_SOURCE_DIR, id));
       }
       return require(id);
     },
@@ -120,17 +159,17 @@ function createOverlayStorageModule(options = {}) {
   };
   sandbox.globalThis = sandbox;
 
-  vm.runInNewContext(transpiled, sandbox, { filename: "overlay-storage.js" });
+  vm.runInNewContext(transpiled, sandbox, { filename: 'overlay-storage.js' });
   return {
     module: moduleRef.exports,
     storageState,
   };
 }
 
-test("react overlay storage resilience: readStorage should reject on chrome runtime read error", async () => {
+test('react overlay storage resilience: readStorage should reject on chrome runtime read error', async () => {
   const { module: overlayStorage } = createOverlayStorageModule({
     getImpl({ callback, runtime }) {
-      runtime.lastError = { message: "overlay storage unavailable" };
+      runtime.lastError = { message: 'overlay storage unavailable' };
       callback(undefined);
       runtime.lastError = null;
     },
@@ -139,72 +178,62 @@ test("react overlay storage resilience: readStorage should reject on chrome runt
   await assert.rejects(overlayStorage.readStorage(null), /overlay storage unavailable/);
 });
 
-test("react overlay storage resilience: saveOverlaySettingsV3 should reject on chrome runtime write error", async () => {
+test('react overlay storage resilience: saveOverlaySettingsV3 should reject on chrome runtime write error', async () => {
   const { module: overlayStorage } = createOverlayStorageModule({
-    initialState: {
-      [ADAPTIVE_TUNING_STORAGE_KEY]: {},
-      [EXPERIENCE_METRICS_STORAGE_KEY]: {},
-    },
-    setImpl({ callback, runtime }) {
-      runtime.lastError = { message: "overlay write failed" };
-      callback();
+    sendMessageImpl({ callback, runtime }) {
+      runtime.lastError = { message: 'overlay write failed' };
+      callback(undefined);
       runtime.lastError = null;
     },
   });
 
   await assert.rejects(
-    overlayStorage.saveOverlaySettingsV3({ schemaVersion: 3, activeProfileId: "balanced" }),
+    overlayStorage.saveOverlaySettingsV3({ schemaVersion: 3, activeProfileId: 'balanced' }),
     /overlay write failed/
   );
 });
 
-test("react overlay storage resilience: concurrent saveOverlaySettingsV3 should preserve manual override metrics", async () => {
-  const now = 1700000000000;
-  const dayKey = new Date(now).toISOString().slice(0, 10);
+test('react overlay storage resilience: saveOverlaySettingsV3 should delegate without rewriting metrics payload', async () => {
   const { module: overlayStorage, storageState } = createOverlayStorageModule({
-    now,
     initialState: {
-      [ADAPTIVE_TUNING_STORAGE_KEY]: {
-        enabled: true,
-      },
       [EXPERIENCE_METRICS_STORAGE_KEY]: {
         schemaVersion: 1,
-        updatedAt: null,
+        updatedAt: 1700000000000,
         counters: {
-          adaptiveManualOverride: 0,
+          adaptiveManualOverride: 2,
         },
-        daily: {},
+        daily: {
+          '2023-11-14': {
+            adaptiveManualOverride: 2,
+          },
+        },
+        events: [{ type: 'adaptive-toggle', at: 1700000000000, enabled: true }],
       },
     },
-    getImpl({ keys, callback, state, runtime }) {
+    sendMessageImpl({ message, callback, state, runtime }) {
       setTimeout(() => {
         runtime.lastError = null;
-        callback(pickPayload(state, keys));
-      }, 5);
-    },
-    setImpl({ payload, callback, state, runtime }) {
-      setTimeout(() => {
-        runtime.lastError = null;
-        Object.assign(state, cloneValue(payload));
-        if (typeof callback === "function") {
-          callback();
+        if (message.type !== 'BILI_VOCAB_SETTINGS_COMMIT') {
+          callback({ ok: false, error: 'unexpected message' });
+          return;
         }
+        state[SETTINGS_STORAGE_KEY_V3] = cloneValue(message.payload.settings);
+        callback({
+          ok: true,
+          payload: cloneValue(message.payload.settings),
+        });
       }, 5);
     },
   });
 
   await Promise.all([
-    overlayStorage.saveOverlaySettingsV3({ schemaVersion: 3, activeProfileId: "gentle" }),
-    overlayStorage.saveOverlaySettingsV3({ schemaVersion: 3, activeProfileId: "balanced" }),
+    overlayStorage.saveOverlaySettingsV3({ schemaVersion: 3, activeProfileId: 'gentle' }),
+    overlayStorage.saveOverlaySettingsV3({ schemaVersion: 3, activeProfileId: 'balanced' }),
   ]);
 
-  assert.equal(storageState[SETTINGS_STORAGE_KEY_V3].activeProfileId, "balanced");
-  assert.equal(
-    storageState[EXPERIENCE_METRICS_STORAGE_KEY].counters.adaptiveManualOverride,
-    2
-  );
-  assert.equal(
-    storageState[EXPERIENCE_METRICS_STORAGE_KEY].daily[dayKey].adaptiveManualOverride,
-    2
-  );
+  assert.equal(storageState[SETTINGS_STORAGE_KEY_V3].activeProfileId, 'balanced');
+  assert.equal(storageState[EXPERIENCE_METRICS_STORAGE_KEY].counters.adaptiveManualOverride, 2);
+  assert.deepEqual(storageState[EXPERIENCE_METRICS_STORAGE_KEY].events, [
+    { type: 'adaptive-toggle', at: 1700000000000, enabled: true },
+  ]);
 });

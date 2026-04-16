@@ -1,14 +1,15 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
-const ts = require("typescript");
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const ts = require('typescript');
 
-const STORAGE_SOURCE_PATH = path.join(__dirname, "..", "react-ui", "src", "storage.ts");
-const SETTINGS_STORAGE_KEY_V3 = "bili_vocab_settings_v3";
-const ADAPTIVE_TUNING_STORAGE_KEY = "bili_vocab_adaptive_tuning_v1";
-const EXPERIENCE_METRICS_STORAGE_KEY = "bili_vocab_experience_metrics_v1";
+const STORAGE_SOURCE_PATH = path.join(__dirname, '..', 'react-ui', 'src', 'storage.ts');
+const STORAGE_SOURCE_DIR = path.dirname(STORAGE_SOURCE_PATH);
+const SETTINGS_STORAGE_KEY_V3 = 'bili_vocab_settings_v3';
+const ADAPTIVE_TUNING_STORAGE_KEY = 'bili_vocab_adaptive_tuning_v1';
+const EXPERIENCE_METRICS_STORAGE_KEY = 'bili_vocab_experience_metrics_v1';
 
 function cloneValue(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -45,7 +46,7 @@ function pickPayload(state, keys) {
 }
 
 function createStorageModule(options = {}) {
-  const source = fs.readFileSync(STORAGE_SOURCE_PATH, "utf8");
+  const source = fs.readFileSync(STORAGE_SOURCE_PATH, 'utf8');
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
@@ -60,6 +61,17 @@ function createStorageModule(options = {}) {
     openOptionsPage() {
       return Promise.resolve();
     },
+    sendMessage(message, callback) {
+      if (typeof options.sendMessageImpl === 'function') {
+        options.sendMessageImpl({ message, callback, state: storageState, runtime });
+        return;
+      }
+      runtime.lastError = { message: 'sendMessage unavailable' };
+      if (typeof callback === 'function') {
+        callback(undefined);
+      }
+      runtime.lastError = null;
+    },
   };
   const moduleRef = { exports: {} };
   const MockDate = createMockDate(options.now || 1700000000000);
@@ -67,19 +79,19 @@ function createStorageModule(options = {}) {
     storage: {
       local: {
         get(keys, callback) {
-          if (typeof options.getImpl === "function") {
+          if (typeof options.getImpl === 'function') {
             options.getImpl({ keys, callback, state: storageState, runtime });
             return;
           }
           callback(pickPayload(storageState, keys));
         },
         set(payload, callback) {
-          if (typeof options.setImpl === "function") {
+          if (typeof options.setImpl === 'function') {
             options.setImpl({ payload, callback, state: storageState, runtime });
             return;
           }
           Object.assign(storageState, cloneValue(payload));
-          if (typeof callback === "function") {
+          if (typeof callback === 'function') {
             callback();
           }
         },
@@ -100,7 +112,7 @@ function createStorageModule(options = {}) {
     module: moduleRef,
     exports: moduleRef.exports,
     require(id) {
-      if (id === "./settings-bridge") {
+      if (id === './settings-bridge') {
         return {
           SETTINGS_STORAGE_KEY_V3,
           migrateToV3(payload) {
@@ -110,6 +122,35 @@ function createStorageModule(options = {}) {
             return settings;
           },
         };
+      }
+      if (id === './runtime-messaging') {
+        return {
+          MESSAGE_TYPES: {
+            SETTINGS_COMMIT: 'BILI_VOCAB_SETTINGS_COMMIT',
+            ADAPTIVE_SET_ENABLED: 'BILI_VOCAB_ADAPTIVE_SET_ENABLED',
+          },
+          hasRuntimeMessaging() {
+            return true;
+          },
+          sendRuntimeMessage(type, payload) {
+            return new Promise((resolve, reject) => {
+              chrome.runtime.sendMessage({ type, payload }, (response) => {
+                if (runtime.lastError) {
+                  reject(new Error(runtime.lastError.message));
+                  return;
+                }
+                if (!response || response.ok !== true) {
+                  reject(new Error((response && response.error) || 'runtime bridge failed'));
+                  return;
+                }
+                resolve(response.payload);
+              });
+            });
+          },
+        };
+      }
+      if (id.startsWith('.')) {
+        return require(path.resolve(STORAGE_SOURCE_DIR, id));
       }
       return require(id);
     },
@@ -123,7 +164,7 @@ function createStorageModule(options = {}) {
   };
   sandbox.globalThis = sandbox;
 
-  vm.runInNewContext(transpiled, sandbox, { filename: "storage.js" });
+  vm.runInNewContext(transpiled, sandbox, { filename: 'storage.js' });
   return {
     module: moduleRef.exports,
     storageState,
@@ -131,10 +172,10 @@ function createStorageModule(options = {}) {
   };
 }
 
-test("react ui storage resilience: readStorage should reject on chrome runtime read error", async () => {
+test('react ui storage resilience: readStorage should reject on chrome runtime read error', async () => {
   const { module: storageModule } = createStorageModule({
     getImpl({ callback, runtime }) {
-      runtime.lastError = { message: "storage unavailable" };
+      runtime.lastError = { message: 'storage unavailable' };
       callback(undefined);
       runtime.lastError = null;
     },
@@ -143,17 +184,17 @@ test("react ui storage resilience: readStorage should reject on chrome runtime r
   await assert.rejects(storageModule.readStorage(null), /storage unavailable/);
 });
 
-test("react ui storage resilience: loadSettingsV3 should not overwrite storage after read failure", async () => {
+test('react ui storage resilience: loadSettingsV3 should not overwrite storage after read failure', async () => {
   let setCalls = 0;
   const { module: storageModule } = createStorageModule({
     getImpl({ callback, runtime }) {
-      runtime.lastError = { message: "storage unavailable" };
+      runtime.lastError = { message: 'storage unavailable' };
       callback(undefined);
       runtime.lastError = null;
     },
     setImpl({ callback }) {
       setCalls += 1;
-      if (typeof callback === "function") {
+      if (typeof callback === 'function') {
         callback();
       }
     },
@@ -163,53 +204,78 @@ test("react ui storage resilience: loadSettingsV3 should not overwrite storage a
   assert.equal(setCalls, 0);
 });
 
-test("react ui storage resilience: concurrent saveSettingsV3 should preserve manual override metrics", async () => {
-  const now = 1700000000000;
-  const dayKey = new Date(now).toISOString().slice(0, 10);
+test('react ui storage resilience: saveSettingsV3 should delegate without rewriting metrics payload', async () => {
   const { module: storageModule, storageState } = createStorageModule({
-    now,
     initialState: {
-      [ADAPTIVE_TUNING_STORAGE_KEY]: {
-        enabled: true,
-      },
       [EXPERIENCE_METRICS_STORAGE_KEY]: {
         schemaVersion: 1,
-        updatedAt: null,
+        updatedAt: 1700000000000,
         counters: {
-          adaptiveManualOverride: 0,
+          adaptiveManualOverride: 3,
         },
-        daily: {},
+        daily: {
+          '2023-11-14': {
+            adaptiveManualOverride: 3,
+          },
+        },
+        events: [{ type: 'context-misreplace', at: 1700000000000 }],
       },
     },
-    getImpl({ keys, callback, state, runtime }) {
+    sendMessageImpl({ message, callback, state, runtime }) {
       setTimeout(() => {
         runtime.lastError = null;
-        callback(pickPayload(state, keys));
-      }, 5);
-    },
-    setImpl({ payload, callback, state, runtime }) {
-      setTimeout(() => {
-        runtime.lastError = null;
-        Object.assign(state, cloneValue(payload));
-        if (typeof callback === "function") {
-          callback();
+        if (message.type !== 'BILI_VOCAB_SETTINGS_COMMIT') {
+          callback({ ok: false, error: 'unexpected message' });
+          return;
         }
+        state[SETTINGS_STORAGE_KEY_V3] = cloneValue(message.payload.settings);
+        callback({
+          ok: true,
+          payload: cloneValue(message.payload.settings),
+        });
       }, 5);
     },
   });
 
   await Promise.all([
-    storageModule.saveSettingsV3({ schemaVersion: 3, activeProfileId: "gentle" }),
-    storageModule.saveSettingsV3({ schemaVersion: 3, activeProfileId: "balanced" }),
+    storageModule.saveSettingsV3({ schemaVersion: 3, activeProfileId: 'gentle' }),
+    storageModule.saveSettingsV3({ schemaVersion: 3, activeProfileId: 'balanced' }),
   ]);
 
-  assert.equal(storageState[SETTINGS_STORAGE_KEY_V3].activeProfileId, "balanced");
-  assert.equal(
-    storageState[EXPERIENCE_METRICS_STORAGE_KEY].counters.adaptiveManualOverride,
-    2
-  );
-  assert.equal(
-    storageState[EXPERIENCE_METRICS_STORAGE_KEY].daily[dayKey].adaptiveManualOverride,
-    2
-  );
+  assert.equal(storageState[SETTINGS_STORAGE_KEY_V3].activeProfileId, 'balanced');
+  assert.equal(storageState[EXPERIENCE_METRICS_STORAGE_KEY].counters.adaptiveManualOverride, 3);
+  assert.deepEqual(storageState[EXPERIENCE_METRICS_STORAGE_KEY].events, [
+    { type: 'context-misreplace', at: 1700000000000 },
+  ]);
+});
+
+test('react ui storage resilience: setAdaptiveTuningEnabled should delegate to runtime bridge', async () => {
+  const now = 1700000000000;
+  const { module: storageModule } = createStorageModule({
+    initialState: {
+      [ADAPTIVE_TUNING_STORAGE_KEY]: {
+        enabled: false,
+      },
+    },
+    sendMessageImpl({ message, callback, runtime }) {
+      setTimeout(() => {
+        runtime.lastError = null;
+        if (message.type !== 'BILI_VOCAB_ADAPTIVE_SET_ENABLED') {
+          callback({ ok: false, error: 'unexpected message' });
+          return;
+        }
+        callback({
+          ok: true,
+          payload: {
+            enabled: true,
+            manualOverrideUntil: now + 60 * 1000,
+          },
+        });
+      }, 5);
+    },
+  });
+
+  const nextState = await storageModule.setAdaptiveTuningEnabled(true);
+  assert.equal(nextState.enabled, true);
+  assert.equal(nextState.manualOverrideActive, true);
 });

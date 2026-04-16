@@ -1,10 +1,8 @@
 import { SETTINGS_STORAGE_KEY_V3, migrateToV3, normalizeSettingsV3 } from './overlay-settings';
 import type { SettingsV3 } from './overlay-settings';
+import { MESSAGE_TYPES, sendRuntimeMessage } from './runtime-messaging';
 
 const LEARNING_SUMMARY_STORAGE_KEY = 'bili_vocab_learning_summary_v1';
-const ADAPTIVE_TUNING_STORAGE_KEY = 'bili_vocab_adaptive_tuning_v1';
-const EXPERIENCE_METRICS_STORAGE_KEY = 'bili_vocab_experience_metrics_v1';
-const ADAPTIVE_MANUAL_OVERRIDE_MS = 20 * 60 * 1000;
 
 export interface LearningSummary {
   todayCount: number;
@@ -55,10 +53,6 @@ function toPositiveInt(value: unknown): number {
   return Math.floor(parsed);
 }
 
-function toDayKey(timestamp: number): string {
-  return new Date(timestamp).toISOString().slice(0, 10);
-}
-
 function normalizeLearningSummary(value: unknown): LearningSummary {
   const source = isRecord(value) ? value : {};
   const recentWords = Array.isArray(source.recentWords)
@@ -76,30 +70,6 @@ function normalizeLearningSummary(value: unknown): LearningSummary {
     newCount: toPositiveInt(source.newCount),
     masteredCount: toPositiveInt(source.masteredCount),
     recentWords: recentWords.slice(0, 5),
-  };
-}
-
-function bumpAdaptiveManualOverrideMetric(metrics: unknown, now: number): Record<string, unknown> {
-  const source = isRecord(metrics) ? metrics : {};
-  const countersSource = isRecord(source.counters) ? source.counters : {};
-  const dailySource = isRecord(source.daily) ? source.daily : {};
-  const dayKey = toDayKey(now);
-  const dayCountersSource = isRecord(dailySource[dayKey]) ? dailySource[dayKey] : {};
-  return {
-    ...source,
-    schemaVersion: 1,
-    updatedAt: now,
-    counters: {
-      ...countersSource,
-      adaptiveManualOverride: toPositiveInt(countersSource.adaptiveManualOverride) + 1,
-    },
-    daily: {
-      ...dailySource,
-      [dayKey]: {
-        ...dayCountersSource,
-        adaptiveManualOverride: toPositiveInt(dayCountersSource.adaptiveManualOverride) + 1,
-      },
-    },
   };
 }
 
@@ -151,27 +121,12 @@ export async function loadOverlaySettingsV3(): Promise<SettingsV3> {
 export async function saveOverlaySettingsV3(settings: SettingsV3): Promise<SettingsV3> {
   const normalized = normalizeSettingsV3(settings);
   return enqueueStorageMutation(async () => {
-    const now = Date.now();
-    const payload = await readStorage<Record<string, unknown>>([
-      ADAPTIVE_TUNING_STORAGE_KEY,
-      EXPERIENCE_METRICS_STORAGE_KEY,
-    ]);
-    const adaptiveRaw = isRecord(payload[ADAPTIVE_TUNING_STORAGE_KEY])
-      ? payload[ADAPTIVE_TUNING_STORAGE_KEY]
-      : {};
-    await writeStorage({
-      [SETTINGS_STORAGE_KEY_V3]: normalized,
-      [ADAPTIVE_TUNING_STORAGE_KEY]: {
-        ...adaptiveRaw,
-        enabled: adaptiveRaw.enabled !== false,
-        manualOverrideUntil: now + ADAPTIVE_MANUAL_OVERRIDE_MS,
-      },
-      [EXPERIENCE_METRICS_STORAGE_KEY]: bumpAdaptiveManualOverrideMetric(
-        payload[EXPERIENCE_METRICS_STORAGE_KEY],
-        now
-      ),
+    const persisted = await sendRuntimeMessage<SettingsV3>(MESSAGE_TYPES.SETTINGS_COMMIT, {
+      settings: normalized,
+      markManualOverride: true,
+      now: Date.now(),
     });
-    return normalized;
+    return normalizeSettingsV3(persisted);
   });
 }
 
