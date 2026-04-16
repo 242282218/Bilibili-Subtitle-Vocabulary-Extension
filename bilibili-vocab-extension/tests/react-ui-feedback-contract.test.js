@@ -35,3 +35,17 @@ test("react ui feedback contract: popup should render status code and suggestion
   assert.match(source, /feedback && feedback\.suggestion/);
   assert.match(source, /冲突范围：\{conflict\.summary\}/);
 });
+
+test("react ui feedback contract: onSave should keep error feedback when persistence fails", () => {
+  const optionsSource = readProjectFile("react-ui/src/options-main.tsx");
+  const popupSource = readProjectFile("react-ui/src/popup-main.tsx");
+
+  assert.match(
+    optionsSource,
+    /const persisted = await save\('配置已保存并应用到扩展。'\);[\s\S]*if \(!persisted\)\s*\{\s*return;\s*\}/
+  );
+  assert.match(
+    popupSource,
+    /const persisted = await save\('策略已保存。'\);[\s\S]*if \(!persisted\)\s*\{\s*return;\s*\}/
+  );
+});

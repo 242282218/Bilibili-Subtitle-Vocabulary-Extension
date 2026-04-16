@@ -229,7 +229,10 @@ function PopupApp() {
   }
 
   async function onSave() {
-    await save('策略已保存。');
+    const persisted = await save('策略已保存。');
+    if (!persisted) {
+      return;
+    }
     const [nextAdaptive, nextMetrics] = await Promise.all([
       readAdaptiveTuningState(),
       readExperienceMetricsSnapshot(7),
