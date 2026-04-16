@@ -87,7 +87,7 @@
 
   function isVideoSiteHost(hostname) {
     const normalized = String(hostname || "").toLowerCase();
-    return VIDEO_SITE_HOSTS.some((site) => normalized === site || normalized.endsWith(`.${site}`) || normalized.includes(site));
+    return VIDEO_SITE_HOSTS.some((site) => normalized === site || normalized.endsWith(`.${site}`));
   }
 
   function shouldEnableTimelinePolling(hostname) {

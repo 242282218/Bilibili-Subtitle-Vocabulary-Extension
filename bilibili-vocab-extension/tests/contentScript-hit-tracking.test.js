@@ -239,6 +239,8 @@ test("isVideoSiteHost: should recognize supported video hosts", () => {
   assert.equal(contentScript.isVideoSiteHost("www.youtube.com"), true);
   assert.equal(contentScript.isVideoSiteHost("www.bilibili.com"), true);
   assert.equal(contentScript.isVideoSiteHost("docs.example.com"), false);
+  assert.equal(contentScript.isVideoSiteHost("notyoutube.com"), false);
+  assert.equal(contentScript.isVideoSiteHost("youtube.com.evil.org"), false);
 });
 
 test("shouldEnableTimelinePolling: should only enable polling for video hosts or pages with video element", () => {
