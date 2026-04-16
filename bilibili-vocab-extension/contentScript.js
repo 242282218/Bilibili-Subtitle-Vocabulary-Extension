@@ -718,15 +718,41 @@
         return;
       }
 
-      if (result && result.translatedText !== text && textNode.parentNode) {
+      if (shouldReplaceWebTextNode(result, text) && textNode.parentNode) {
         const span = document.createElement('span');
-        span.innerHTML = SubtitleRenderer.renderToHtml(result, text);
+        span.innerHTML = renderWebTextReplacementHtml(result, text, settings);
         textNode.parentNode.replaceChild(span, textNode);
       }
     } catch (e) {
       // 单个节点处理失败不影响整体
       logError('processTextNode', e);
     }
+  }
+
+  function shouldReplaceWebTextNode(result, sourceText) {
+    if (!result || typeof result !== "object") {
+      return false;
+    }
+
+    const normalizedSource = normalizeText(sourceText);
+    const normalizedMixedText = normalizeText(result.mixedText);
+    if (normalizedMixedText) {
+      return normalizedMixedText !== normalizedSource;
+    }
+
+    if (!Array.isArray(result.tokens)) {
+      return false;
+    }
+
+    return result.tokens.some((token) => token && token.type === "word");
+  }
+
+  function renderWebTextReplacementHtml(result, sourceText, runtimeSettings) {
+    if (!globalThis.SubtitleRenderer || typeof globalThis.SubtitleRenderer.renderToHtml !== "function") {
+      return "";
+    }
+
+    return globalThis.SubtitleRenderer.renderToHtml(result, sourceText, runtimeSettings);
   }
 
   function observeSubtitleChanges() {
@@ -987,6 +1013,8 @@
       shouldRefreshSubtitleObserver,
       shouldRestoreWebItems,
       shouldRunLegacyWebTextPipeline,
+      shouldReplaceWebTextNode,
+      renderWebTextReplacementHtml,
       __resetOverlayModuleStateForTest() {
         overlayModuleCache = null;
         overlayModulePromise = null;

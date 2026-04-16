@@ -7,6 +7,7 @@ const previousVocabularyModule = global.VocabularyModule;
 const previousRequestAnimationFrame = global.requestAnimationFrame;
 const previousLocation = global.location;
 const previousHTMLVideoElement = global.HTMLVideoElement;
+const previousSubtitleRenderer = global.SubtitleRenderer;
 
 class FakeVideoElement {
   constructor({ paused = false, ended = false } = {}) {
@@ -217,6 +218,53 @@ test("createRenderSignature: should include web page mode so page toggle trigger
   assert.notEqual(enabledSignature, disabledSignature);
 });
 
+test("shouldReplaceWebTextNode: should skip no-op replacements after normalization", () => {
+  assert.equal(
+    contentScript.shouldReplaceWebTextNode(
+      {
+        mixedText: "保持原样",
+        tokens: [{ type: "text", text: "保持原样" }]
+      },
+      "  保持原样  "
+    ),
+    false
+  );
+});
+
+test("shouldReplaceWebTextNode: should keep real replacements", () => {
+  assert.equal(
+    contentScript.shouldReplaceWebTextNode(
+      {
+        mixedText: "我想system学习",
+        tokens: [
+          { type: "text", text: "我想" },
+          { type: "word", word: "system" },
+          { type: "text", text: "学习" }
+        ]
+      },
+      "我想系统学习"
+    ),
+    true
+  );
+});
+
+test("renderWebTextReplacementHtml: should pass runtime settings to renderer", () => {
+  let capturedArgs = null;
+  global.SubtitleRenderer = {
+    renderToHtml(...args) {
+      capturedArgs = args;
+      return "<span>ok</span>";
+    }
+  };
+
+  const result = { mixedText: "我想system学习" };
+  const settings = { bilingualMode: "bilingual" };
+  const html = contentScript.renderWebTextReplacementHtml(result, "我想系统学习", settings);
+
+  assert.equal(html, "<span>ok</span>");
+  assert.deepEqual(capturedArgs, [result, "我想系统学习", settings]);
+});
+
 test("buildRuntimeSettings: should merge updates on top of runtime baseline", () => {
   const next = contentScript.buildRuntimeSettings(
     {
@@ -413,4 +461,5 @@ test.after(() => {
   global.requestAnimationFrame = previousRequestAnimationFrame;
   global.location = previousLocation;
   global.HTMLVideoElement = previousHTMLVideoElement;
+  global.SubtitleRenderer = previousSubtitleRenderer;
 });
