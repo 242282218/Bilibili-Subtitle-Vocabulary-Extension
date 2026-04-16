@@ -992,17 +992,61 @@ function readLearningDashboard(callback) {
   });
 }
 
-function persistLearningDashboard() {
+function buildNextQuickReviewState(word, nextRecord, now) {
+  return {
+    ...quickReviewState,
+    stats: {
+      ...quickReviewState.stats,
+      [word]: nextRecord
+    },
+    queue: learningState.syncReviewQueue(quickReviewState.queue, nextRecord, now)
+  };
+}
+
+function persistLearningDashboard(nextState, callback) {
+  const state = nextState && typeof nextState === "object" ? nextState : quickReviewState;
+  const committedState = learningState
+    ? {
+      ...state,
+      summary: learningState.buildLearningSummary(state.stats, state.queue)
+    }
+    : state;
+
   if (!learningState || typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) {
+    if (typeof callback === "function") {
+      callback(null, committedState);
+    }
     return;
   }
 
-  quickReviewState.summary = learningState.buildLearningSummary(quickReviewState.stats, quickReviewState.queue);
   chrome.storage.local.set({
-    [LEARNING_WORD_STATS_STORAGE_KEY]: quickReviewState.stats,
-    [REVIEW_QUEUE_STORAGE_KEY]: quickReviewState.queue,
-    [LEARNING_SUMMARY_STORAGE_KEY]: quickReviewState.summary
+    [LEARNING_WORD_STATS_STORAGE_KEY]: committedState.stats,
+    [REVIEW_QUEUE_STORAGE_KEY]: committedState.queue,
+    [LEARNING_SUMMARY_STORAGE_KEY]: committedState.summary
+  }, () => {
+    if (typeof callback === "function") {
+      callback(getChromeRuntimeError(), committedState);
+    }
   });
+}
+
+function persistQuickReviewAdaptiveFeedback(normalizedAction, now) {
+  if (!adaptiveTuning || typeof adaptiveTuning.persistFeedback !== "function") {
+    return;
+  }
+
+  try {
+    const result = adaptiveTuning.persistFeedback(normalizedAction, { now });
+    if (result && typeof result.then === "function") {
+      result.then((outcome) => {
+        if (outcome && outcome.applied) {
+          showToast("已根据最近反馈自动微调学习策略");
+        }
+      }).catch(() => {});
+    }
+  } catch (_error) {
+    // Ignore adaptive tuning failures to keep quick review responsive.
+  }
 }
 
 function handleQuickReviewFeedback(feedback) {
@@ -1021,33 +1065,27 @@ function handleQuickReviewFeedback(feedback) {
   const nextRecord = typeof learningState.applyLearningAction === "function"
     ? learningState.applyLearningAction(record, normalizedAction, now)
     : learningState.applyReviewFeedback(record, normalizedAction, now);
-  quickReviewState.stats[word] = nextRecord;
-  quickReviewState.queue = learningState.syncReviewQueue(quickReviewState.queue, nextRecord, now);
-  persistLearningDashboard();
-  renderLearningSummary();
-  renderQuickReviewCard();
+  const nextState = buildNextQuickReviewState(word, nextRecord, now);
 
-  const actionText = feedback === "know" ? "已标记为认识" : feedback === "fuzzy" ? "已标记为模糊" : "已标记为不认识";
-  const adaptiveHint = adaptiveTuning && typeof adaptiveTuning.getAdaptiveHint === "function"
-    ? adaptiveTuning.getAdaptiveHint(null, now)
-    : "";
-  setStatus(adaptiveHint ? `${actionText} · ${adaptiveHint}` : actionText);
-  showToast(`${word} · ${actionText}`);
-
-  if (adaptiveTuning && typeof adaptiveTuning.persistFeedback === "function") {
-    try {
-      const result = adaptiveTuning.persistFeedback(normalizedAction, { now });
-      if (result && typeof result.then === "function") {
-        result.then((outcome) => {
-          if (outcome && outcome.applied) {
-            showToast("已根据最近反馈自动微调学习策略");
-          }
-        }).catch(() => {});
-      }
-    } catch (_error) {
-      // Ignore adaptive tuning failures to keep quick review responsive.
+  persistLearningDashboard(nextState, (runtimeError, committedState) => {
+    if (runtimeError) {
+      setStatus("快速复习保存失败，请重试");
+      showToast("复习结果未保存");
+      return;
     }
-  }
+
+    quickReviewState = committedState;
+    renderLearningSummary();
+    renderQuickReviewCard();
+
+    const actionText = feedback === "know" ? "已标记为认识" : feedback === "fuzzy" ? "已标记为模糊" : "已标记为不认识";
+    const adaptiveHint = adaptiveTuning && typeof adaptiveTuning.getAdaptiveHint === "function"
+      ? adaptiveTuning.getAdaptiveHint(null, now)
+      : "";
+    setStatus(adaptiveHint ? `${actionText} · ${adaptiveHint}` : actionText);
+    showToast(`${word} · ${actionText}`);
+    persistQuickReviewAdaptiveFeedback(normalizedAction, now);
+  });
 }
 
 function setActiveLevels(levels) {
