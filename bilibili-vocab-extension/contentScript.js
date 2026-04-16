@@ -102,6 +102,18 @@
     return Boolean(doc && typeof doc.querySelector === "function" && doc.querySelector("video"));
   }
 
+  function shouldObserveDomMutations(runtimeSettings, hostname) {
+    const currentHost = typeof hostname === "string"
+      ? hostname
+      : (globalThis.location && globalThis.location.hostname);
+
+    if (shouldEnableTimelinePolling(currentHost)) {
+      return true;
+    }
+
+    return shouldRestoreWebItems(runtimeSettings) === false;
+  }
+
   function runInAnimationFrame(task) {
     const scheduleFrame = typeof globalThis.requestAnimationFrame === "function"
       ? globalThis.requestAnimationFrame.bind(globalThis)
@@ -699,9 +711,15 @@
   function observeSubtitleChanges() {
     if (observer) {
       observer.disconnect();
+      observer = null;
     }
 
-    const subtitleContainer = document.querySelector(".bpx-player-subtitle-wrap") || document.body;
+    const subtitleContainer = document.querySelector(".bpx-player-subtitle-wrap");
+    const shouldObserveBody = shouldObserveDomMutations(settings);
+    const observeTarget = subtitleContainer || (shouldObserveBody ? document.body : null);
+    if (!observeTarget) {
+      return;
+    }
 
     observer = new MutationObserver(() => {
       ensureRuntimeBindings();
@@ -709,7 +727,7 @@
       scheduleProcess();
     });
 
-    observer.observe(subtitleContainer, {
+    observer.observe(observeTarget, {
       childList: true,
       subtree: true,
       characterData: true
@@ -801,6 +819,8 @@
           webTextProcessTimer = null;
         }
         invalidateRenderedSubtitles();
+        observeSubtitleChanges();
+        startTimelinePolling();
         scheduleProcess();
       }
 
@@ -929,6 +949,7 @@
       runInAnimationFrame,
       isVideoSiteHost,
       shouldEnableTimelinePolling,
+      shouldObserveDomMutations,
       shouldRestoreWebItems,
       shouldRunLegacyWebTextPipeline,
       __resetOverlayModuleStateForTest() {

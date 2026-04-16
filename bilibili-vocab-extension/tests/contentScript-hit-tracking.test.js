@@ -258,6 +258,30 @@ test("shouldEnableTimelinePolling: should only enable polling for video hosts or
   }
 });
 
+test("shouldObserveDomMutations: should skip body observer only on non-video pages with web mode disabled", () => {
+  const previousQuerySelector = global.document.querySelector;
+  try {
+    global.document.querySelector = () => null;
+
+    assert.equal(
+      contentScript.shouldObserveDomMutations({ webPageEnabled: false }, "docs.example.com"),
+      false
+    );
+
+    assert.equal(
+      contentScript.shouldObserveDomMutations({ webPageEnabled: true }, "docs.example.com"),
+      true
+    );
+
+    assert.equal(
+      contentScript.shouldObserveDomMutations({ webPageEnabled: false }, "www.youtube.com"),
+      true
+    );
+  } finally {
+    global.document.querySelector = previousQuerySelector;
+  }
+});
+
 test("runInAnimationFrame: should execute frame task", async () => {
   global.requestAnimationFrame = (callback) => {
     callback();
