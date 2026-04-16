@@ -121,6 +121,32 @@ function hasChromeStorage(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome.storage) && Boolean(chrome.storage.local);
 }
 
+function getChromeRuntimeError(fallbackMessage: string): Error | null {
+  if (typeof chrome === 'undefined' || !chrome.runtime) {
+    return null;
+  }
+  const runtimeError = chrome.runtime.lastError;
+  if (!runtimeError) {
+    return null;
+  }
+  const message =
+    typeof runtimeError.message === 'string' && runtimeError.message.trim()
+      ? runtimeError.message.trim()
+      : fallbackMessage;
+  return new Error(message);
+}
+
+let storageMutationQueue = Promise.resolve();
+
+function enqueueStorageMutation<T>(task: () => Promise<T>): Promise<T> {
+  const nextTask = storageMutationQueue.then(task, task);
+  storageMutationQueue = nextTask.then(
+    () => undefined,
+    () => undefined
+  );
+  return nextTask;
+}
+
 function hasChromeTabs(): boolean {
   return (
     typeof chrome !== 'undefined' && Boolean(chrome.tabs) && typeof chrome.tabs.query === 'function'
@@ -345,8 +371,13 @@ export function readStorage<T extends Record<string, unknown>>(keys?: string[] |
   if (!hasChromeStorage()) {
     return Promise.resolve({} as T);
   }
-  return new Promise<T>((resolve) => {
+  return new Promise<T>((resolve, reject) => {
     chrome.storage.local.get(keys || null, (payload) => {
+      const runtimeError = getChromeRuntimeError('chrome.storage.local.get failed');
+      if (runtimeError) {
+        reject(runtimeError);
+        return;
+      }
       resolve((payload || {}) as T);
     });
   });
@@ -356,47 +387,59 @@ export function writeStorage(payload: Record<string, unknown>): Promise<void> {
   if (!hasChromeStorage()) {
     return Promise.resolve();
   }
-  return new Promise<void>((resolve) => {
-    chrome.storage.local.set(payload, () => resolve());
+  return new Promise<void>((resolve, reject) => {
+    chrome.storage.local.set(payload, () => {
+      const runtimeError = getChromeRuntimeError('chrome.storage.local.set failed');
+      if (runtimeError) {
+        reject(runtimeError);
+        return;
+      }
+      resolve();
+    });
   });
 }
 
 export async function loadSettingsV3(): Promise<SettingsV3> {
-  const allPayload = await readStorage<Record<string, unknown>>(null);
-  const settingsV3 = normalizeSettingsV3(migrateToV3(allPayload));
-  await writeStorage({
-    [SETTINGS_STORAGE_KEY_V3]: settingsV3,
+  return enqueueStorageMutation(async () => {
+    const allPayload = await readStorage<Record<string, unknown>>(null);
+    const settingsV3 = normalizeSettingsV3(migrateToV3(allPayload));
+    await writeStorage({
+      [SETTINGS_STORAGE_KEY_V3]: settingsV3,
+    });
+    return settingsV3;
   });
-  return settingsV3;
 }
 
 export async function saveSettingsV3(settings: SettingsV3): Promise<SettingsV3> {
   const normalized = normalizeSettingsV3(settings);
-  const now = Date.now();
-  const payload = await readStorage<Record<string, unknown>>([
-    ADAPTIVE_TUNING_STORAGE_KEY,
-    EXPERIENCE_METRICS_STORAGE_KEY,
-  ]);
-  const adaptiveState =
-    payload[ADAPTIVE_TUNING_STORAGE_KEY] && typeof payload[ADAPTIVE_TUNING_STORAGE_KEY] === 'object'
-      ? (payload[ADAPTIVE_TUNING_STORAGE_KEY] as Record<string, unknown>)
-      : {};
-  const nextMetrics = applyMetricCountersToState(
-    normalizeExperienceMetricsState(payload[EXPERIENCE_METRICS_STORAGE_KEY]),
-    ['adaptiveManualOverride'],
-    now
-  );
+  return enqueueStorageMutation(async () => {
+    const now = Date.now();
+    const payload = await readStorage<Record<string, unknown>>([
+      ADAPTIVE_TUNING_STORAGE_KEY,
+      EXPERIENCE_METRICS_STORAGE_KEY,
+    ]);
+    const adaptiveState =
+      payload[ADAPTIVE_TUNING_STORAGE_KEY] &&
+      typeof payload[ADAPTIVE_TUNING_STORAGE_KEY] === 'object'
+        ? (payload[ADAPTIVE_TUNING_STORAGE_KEY] as Record<string, unknown>)
+        : {};
+    const nextMetrics = applyMetricCountersToState(
+      normalizeExperienceMetricsState(payload[EXPERIENCE_METRICS_STORAGE_KEY]),
+      ['adaptiveManualOverride'],
+      now
+    );
 
-  await writeStorage({
-    [ADAPTIVE_TUNING_STORAGE_KEY]: {
-      ...adaptiveState,
-      enabled: adaptiveState.enabled !== false,
-      manualOverrideUntil: now + ADAPTIVE_MANUAL_OVERRIDE_MS,
-    },
-    [EXPERIENCE_METRICS_STORAGE_KEY]: nextMetrics,
-    [SETTINGS_STORAGE_KEY_V3]: normalized,
+    await writeStorage({
+      [ADAPTIVE_TUNING_STORAGE_KEY]: {
+        ...adaptiveState,
+        enabled: adaptiveState.enabled !== false,
+        manualOverrideUntil: now + ADAPTIVE_MANUAL_OVERRIDE_MS,
+      },
+      [EXPERIENCE_METRICS_STORAGE_KEY]: nextMetrics,
+      [SETTINGS_STORAGE_KEY_V3]: normalized,
+    });
+    return normalized;
   });
-  return normalized;
 }
 
 export async function readAdaptiveTuningState(): Promise<AdaptiveTuningState> {
@@ -405,29 +448,32 @@ export async function readAdaptiveTuningState(): Promise<AdaptiveTuningState> {
 }
 
 export async function setAdaptiveTuningEnabled(enabled: boolean): Promise<AdaptiveTuningState> {
-  const now = Date.now();
-  const payload = await readStorage<Record<string, unknown>>([
-    ADAPTIVE_TUNING_STORAGE_KEY,
-    EXPERIENCE_METRICS_STORAGE_KEY,
-  ]);
-  const source =
-    payload[ADAPTIVE_TUNING_STORAGE_KEY] && typeof payload[ADAPTIVE_TUNING_STORAGE_KEY] === 'object'
-      ? (payload[ADAPTIVE_TUNING_STORAGE_KEY] as Record<string, unknown>)
-      : {};
-  const nextRaw = {
-    ...source,
-    enabled: enabled !== false,
-  };
-  const nextMetrics = applyMetricCountersToState(
-    normalizeExperienceMetricsState(payload[EXPERIENCE_METRICS_STORAGE_KEY]),
-    [enabled !== false ? 'adaptiveToggleEnabled' : 'adaptiveToggleDisabled'],
-    now
-  );
-  await writeStorage({
-    [ADAPTIVE_TUNING_STORAGE_KEY]: nextRaw,
-    [EXPERIENCE_METRICS_STORAGE_KEY]: nextMetrics,
+  return enqueueStorageMutation(async () => {
+    const now = Date.now();
+    const payload = await readStorage<Record<string, unknown>>([
+      ADAPTIVE_TUNING_STORAGE_KEY,
+      EXPERIENCE_METRICS_STORAGE_KEY,
+    ]);
+    const source =
+      payload[ADAPTIVE_TUNING_STORAGE_KEY] &&
+      typeof payload[ADAPTIVE_TUNING_STORAGE_KEY] === 'object'
+        ? (payload[ADAPTIVE_TUNING_STORAGE_KEY] as Record<string, unknown>)
+        : {};
+    const nextRaw = {
+      ...source,
+      enabled: enabled !== false,
+    };
+    const nextMetrics = applyMetricCountersToState(
+      normalizeExperienceMetricsState(payload[EXPERIENCE_METRICS_STORAGE_KEY]),
+      [enabled !== false ? 'adaptiveToggleEnabled' : 'adaptiveToggleDisabled'],
+      now
+    );
+    await writeStorage({
+      [ADAPTIVE_TUNING_STORAGE_KEY]: nextRaw,
+      [EXPERIENCE_METRICS_STORAGE_KEY]: nextMetrics,
+    });
+    return normalizeAdaptiveTuningState(nextRaw, now);
   });
-  return normalizeAdaptiveTuningState(nextRaw, now);
 }
 
 export async function readExperienceMetricsSnapshot(days = 7): Promise<ExperienceMetricsSnapshot> {

@@ -47,10 +47,22 @@ function OverlayApp() {
   });
 
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
-      const summaryPayload = await readLearningSummary();
-      setSummary(summaryPayload);
+      try {
+        const summaryPayload = await readLearningSummary();
+        if (!cancelled) {
+          setSummary(summaryPayload);
+        }
+      } catch {
+        if (!cancelled) {
+          setStatus('学习概览读取失败，请稍后重试。');
+        }
+      }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const profileOptions = useMemo(() => {
@@ -96,10 +108,13 @@ function OverlayApp() {
   }
 
   async function persistImmediate(next: SettingsV3, message: string) {
-    setWorkingDirect(next);
-    const persisted = await saveOverlaySettingsV3(next);
-    setWorkingDirect(persisted);
-    setStatus(message);
+    try {
+      const persisted = await saveOverlaySettingsV3(next);
+      setWorkingDirect(persisted);
+      setStatus(message);
+    } catch {
+      setStatus('保存失败，请重试。');
+    }
   }
 
   const hideOverlay = async () => {

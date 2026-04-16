@@ -82,18 +82,39 @@ function PopupApp() {
   );
   const [pendingUndo, setPendingUndo] = useState<PendingUndoAction | null>(null);
 
+  function applyAdaptiveSnapshot(
+    nextAdaptive: AdaptiveTuningState,
+    nextMetrics: ExperienceMetricsSnapshot
+  ) {
+    setAdaptiveState(nextAdaptive);
+    setExperienceMetrics(nextMetrics);
+  }
+
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
-      const [summaryPayload, currentHostname, streakPayload] = await Promise.all([
-        readLearningSummary(),
-        getCurrentTabHostname(),
-        readLearningStreak(),
-      ]);
-      setSummary(summaryPayload);
-      setHostname(normalizeHostname(currentHostname));
-      setStreak(streakPayload);
-      setStatus('已加载当前策略，可快速调整后手动保存。');
+      try {
+        const [summaryPayload, currentHostname, streakPayload] = await Promise.all([
+          readLearningSummary(),
+          getCurrentTabHostname(),
+          readLearningStreak(),
+        ]);
+        if (cancelled) {
+          return;
+        }
+        setSummary(summaryPayload);
+        setHostname(normalizeHostname(currentHostname));
+        setStreak(streakPayload);
+        setStatus('已加载当前策略，可快速调整后手动保存。');
+      } catch {
+        if (!cancelled) {
+          setStatus('学习概览读取失败，请稍后重试。');
+        }
+      }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -129,14 +150,17 @@ function PopupApp() {
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([readAdaptiveTuningState(), readExperienceMetricsSnapshot(7)]).then(
-      ([nextAdaptive, nextMetrics]) => {
+    void Promise.all([readAdaptiveTuningState(), readExperienceMetricsSnapshot(7)])
+      .then(([nextAdaptive, nextMetrics]) => {
         if (!cancelled) {
-          setAdaptiveState(nextAdaptive);
-          setExperienceMetrics(nextMetrics);
+          applyAdaptiveSnapshot(nextAdaptive, nextMetrics);
         }
-      }
-    );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStatus('自动调优状态读取失败，请稍后重试。');
+        }
+      });
     const unsubscribeAdaptive = subscribeAdaptiveTuningState((next) => {
       setAdaptiveState(next);
     });
@@ -233,26 +257,34 @@ function PopupApp() {
     if (!persisted) {
       return;
     }
-    const [nextAdaptive, nextMetrics] = await Promise.all([
-      readAdaptiveTuningState(),
-      readExperienceMetricsSnapshot(7),
-    ]);
-    setAdaptiveState(nextAdaptive);
-    setExperienceMetrics(nextMetrics);
     setPendingUndo(null);
-    setStatus(`策略已保存。${nextAdaptive.hint}`);
+    try {
+      const [nextAdaptive, nextMetrics] = await Promise.all([
+        readAdaptiveTuningState(),
+        readExperienceMetricsSnapshot(7),
+      ]);
+      applyAdaptiveSnapshot(nextAdaptive, nextMetrics);
+      setStatus(`策略已保存。${nextAdaptive.hint}`);
+    } catch {
+      setStatus('策略已保存，但自动调优状态刷新失败，请稍后重试。');
+    }
   }
 
   async function onToggleAdaptive(checked: boolean) {
-    const [nextAdaptive, nextMetrics] = await Promise.all([
-      setAdaptiveTuningEnabled(checked),
-      readExperienceMetricsSnapshot(7),
-    ]);
-    setAdaptiveState(nextAdaptive);
-    setExperienceMetrics(nextMetrics);
-    setStatus(
-      checked ? '已启用自动调优，后续会按反馈自动微调。' : '已关闭自动调优，后续仅按手动参数运行。'
-    );
+    try {
+      const [nextAdaptive, nextMetrics] = await Promise.all([
+        setAdaptiveTuningEnabled(checked),
+        readExperienceMetricsSnapshot(7),
+      ]);
+      applyAdaptiveSnapshot(nextAdaptive, nextMetrics);
+      setStatus(
+        checked
+          ? '已启用自动调优，后续会按反馈自动微调。'
+          : '已关闭自动调优，后续仅按手动参数运行。'
+      );
+    } catch {
+      setStatus('切换自动调优失败，请稍后重试。');
+    }
   }
 
   async function handleExportVocabularyBook(format: 'json' | 'csv') {

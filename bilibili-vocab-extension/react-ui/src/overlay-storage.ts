@@ -17,6 +17,32 @@ function hasChromeStorage(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome.storage) && Boolean(chrome.storage.local);
 }
 
+function getChromeRuntimeError(fallbackMessage: string): Error | null {
+  if (typeof chrome === 'undefined' || !chrome.runtime) {
+    return null;
+  }
+  const runtimeError = chrome.runtime.lastError;
+  if (!runtimeError) {
+    return null;
+  }
+  const message =
+    typeof runtimeError.message === 'string' && runtimeError.message.trim()
+      ? runtimeError.message.trim()
+      : fallbackMessage;
+  return new Error(message);
+}
+
+let storageMutationQueue = Promise.resolve();
+
+function enqueueStorageMutation<T>(task: () => Promise<T>): Promise<T> {
+  const nextTask = storageMutationQueue.then(task, task);
+  storageMutationQueue = nextTask.then(
+    () => undefined,
+    () => undefined
+  );
+  return nextTask;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === 'object';
 }
@@ -83,8 +109,13 @@ export async function readStorage<T extends Record<string, unknown>>(
   if (!hasChromeStorage()) {
     return {} as T;
   }
-  return new Promise<T>((resolve) => {
+  return new Promise<T>((resolve, reject) => {
     chrome.storage.local.get(keys || null, (payload) => {
+      const runtimeError = getChromeRuntimeError('chrome.storage.local.get failed');
+      if (runtimeError) {
+        reject(runtimeError);
+        return;
+      }
       resolve((payload || {}) as T);
     });
   });
@@ -94,43 +125,54 @@ export async function writeStorage(payload: Record<string, unknown>): Promise<vo
   if (!hasChromeStorage()) {
     return;
   }
-  await new Promise<void>((resolve) => {
-    chrome.storage.local.set(payload, () => resolve());
+  await new Promise<void>((resolve, reject) => {
+    chrome.storage.local.set(payload, () => {
+      const runtimeError = getChromeRuntimeError('chrome.storage.local.set failed');
+      if (runtimeError) {
+        reject(runtimeError);
+        return;
+      }
+      resolve();
+    });
   });
 }
 
 export async function loadOverlaySettingsV3(): Promise<SettingsV3> {
-  const allPayload = await readStorage<Record<string, unknown>>(null);
-  const settingsV3 = normalizeSettingsV3(migrateToV3(allPayload));
-  await writeStorage({
-    [SETTINGS_STORAGE_KEY_V3]: settingsV3,
+  return enqueueStorageMutation(async () => {
+    const allPayload = await readStorage<Record<string, unknown>>(null);
+    const settingsV3 = normalizeSettingsV3(migrateToV3(allPayload));
+    await writeStorage({
+      [SETTINGS_STORAGE_KEY_V3]: settingsV3,
+    });
+    return settingsV3;
   });
-  return settingsV3;
 }
 
 export async function saveOverlaySettingsV3(settings: SettingsV3): Promise<SettingsV3> {
   const normalized = normalizeSettingsV3(settings);
-  const now = Date.now();
-  const payload = await readStorage<Record<string, unknown>>([
-    ADAPTIVE_TUNING_STORAGE_KEY,
-    EXPERIENCE_METRICS_STORAGE_KEY,
-  ]);
-  const adaptiveRaw = isRecord(payload[ADAPTIVE_TUNING_STORAGE_KEY])
-    ? payload[ADAPTIVE_TUNING_STORAGE_KEY]
-    : {};
-  await writeStorage({
-    [SETTINGS_STORAGE_KEY_V3]: normalized,
-    [ADAPTIVE_TUNING_STORAGE_KEY]: {
-      ...adaptiveRaw,
-      enabled: adaptiveRaw.enabled !== false,
-      manualOverrideUntil: now + ADAPTIVE_MANUAL_OVERRIDE_MS,
-    },
-    [EXPERIENCE_METRICS_STORAGE_KEY]: bumpAdaptiveManualOverrideMetric(
-      payload[EXPERIENCE_METRICS_STORAGE_KEY],
-      now
-    ),
+  return enqueueStorageMutation(async () => {
+    const now = Date.now();
+    const payload = await readStorage<Record<string, unknown>>([
+      ADAPTIVE_TUNING_STORAGE_KEY,
+      EXPERIENCE_METRICS_STORAGE_KEY,
+    ]);
+    const adaptiveRaw = isRecord(payload[ADAPTIVE_TUNING_STORAGE_KEY])
+      ? payload[ADAPTIVE_TUNING_STORAGE_KEY]
+      : {};
+    await writeStorage({
+      [SETTINGS_STORAGE_KEY_V3]: normalized,
+      [ADAPTIVE_TUNING_STORAGE_KEY]: {
+        ...adaptiveRaw,
+        enabled: adaptiveRaw.enabled !== false,
+        manualOverrideUntil: now + ADAPTIVE_MANUAL_OVERRIDE_MS,
+      },
+      [EXPERIENCE_METRICS_STORAGE_KEY]: bumpAdaptiveManualOverrideMetric(
+        payload[EXPERIENCE_METRICS_STORAGE_KEY],
+        now
+      ),
+    });
+    return normalized;
   });
-  return normalized;
 }
 
 export async function readLearningSummary(): Promise<LearningSummary> {

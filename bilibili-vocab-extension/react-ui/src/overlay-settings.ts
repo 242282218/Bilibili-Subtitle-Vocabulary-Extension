@@ -207,6 +207,13 @@ function normalizeOverlayStateFallback(value: unknown): OverlayState {
   };
 }
 
+function isSameProfileConfigFallback(left: unknown, right: unknown): boolean {
+  return (
+    JSON.stringify(normalizeProfileConfigFallback(left)) ===
+    JSON.stringify(normalizeProfileConfigFallback(right))
+  );
+}
+
 function normalizeSettingsV3Fallback(value: unknown): SettingsV3 {
   const source = isRecord(value) ? value : {};
   const defaults = cloneSettings(FALLBACK_DEFAULT_SETTINGS);
@@ -292,7 +299,44 @@ export function migrateToV3(input: unknown): SettingsV3 {
   if (isRecord(input) && SETTINGS_STORAGE_KEY_V3 in input) {
     return normalizeSettingsV3(input[SETTINGS_STORAGE_KEY_V3]);
   }
-  return normalizeSettingsV3(input);
+  if (isRecord(input) && Number(input.schemaVersion) === 3 && isRecord(input.profilesBuiltin)) {
+    return normalizeSettingsV3(input);
+  }
+
+  const source = isRecord(input) ? input : {};
+  const defaults = cloneSettings(FALLBACK_DEFAULT_SETTINGS);
+  const normalizedLegacyProfile = normalizeProfileConfigFallback(source);
+  const next = {
+    ...defaults,
+    globalControls: {
+      reviewDanmakuEnabled: source.reviewDanmakuEnabled === true,
+      webPageEnabled: source.webPageEnabled !== false,
+      siteRules: normalizeDomainRulesFallback(source.domainRules),
+      overlayState: normalizeOverlayStateFallback({
+        hidden: source.overlayPanelHidden,
+        collapsed: source.overlayPanelCollapsed,
+        width: source.overlayPanelWidth,
+        height: source.overlayPanelHeight,
+        offsetRight: source.overlayPanelOffsetRight,
+        offsetBottom: source.overlayPanelOffsetBottom,
+      }),
+    },
+  };
+
+  if (!isSameProfileConfigFallback(normalizedLegacyProfile, next.profilesBuiltin.balanced)) {
+    next.profilesCustom = [
+      {
+        id: 'legacy-imported',
+        name: '历史配置',
+        config: normalizedLegacyProfile,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+    ];
+    next.activeProfileId = 'legacy-imported';
+  }
+
+  return normalizeSettingsV3(next);
 }
 
 export function getProfileConfigById(settings: SettingsV3, profileId: ProfileId): ProfileConfig {
