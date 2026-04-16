@@ -107,6 +107,14 @@
     return shouldRestoreWebItems(runtimeSettings) === false;
   }
 
+  function shouldRetargetSubtitleObserver(currentTarget, subtitleContainer) {
+    const doc = globalThis.document;
+    if (!doc || currentTarget !== doc.body) {
+      return false;
+    }
+    return Boolean(subtitleContainer && subtitleContainer !== doc.body);
+  }
+
   function runInAnimationFrame(task) {
     const scheduleFrame = typeof globalThis.requestAnimationFrame === "function"
       ? globalThis.requestAnimationFrame.bind(globalThis)
@@ -717,6 +725,11 @@
     observer = new MutationObserver(() => {
       ensureRuntimeBindings();
       startTimelinePolling();
+      const latestSubtitleContainer = document.querySelector(".bpx-player-subtitle-wrap");
+      if (shouldRetargetSubtitleObserver(observeTarget, latestSubtitleContainer)) {
+        // Why: once subtitle root appears, stop observing whole document to reduce mutation volume.
+        observeSubtitleChanges();
+      }
       scheduleProcess();
     });
 
@@ -943,6 +956,7 @@
       isVideoSiteHost,
       shouldEnableTimelinePolling,
       shouldObserveDomMutations,
+      shouldRetargetSubtitleObserver,
       shouldRestoreWebItems,
       shouldRunLegacyWebTextPipeline,
       __resetOverlayModuleStateForTest() {

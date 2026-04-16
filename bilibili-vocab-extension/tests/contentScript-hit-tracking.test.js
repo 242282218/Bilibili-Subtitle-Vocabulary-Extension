@@ -284,6 +284,28 @@ test("shouldObserveDomMutations: should skip body observer only on non-video pag
   }
 });
 
+test("shouldRetargetSubtitleObserver: should switch from body observer to subtitle container when available", () => {
+  const subtitleContainer = {};
+  assert.equal(
+    contentScript.shouldRetargetSubtitleObserver(global.document.body, subtitleContainer),
+    true
+  );
+});
+
+test("shouldRetargetSubtitleObserver: should keep current observer target when container is missing or already targeted", () => {
+  const subtitleContainer = {};
+
+  assert.equal(
+    contentScript.shouldRetargetSubtitleObserver(global.document.body, null),
+    false
+  );
+
+  assert.equal(
+    contentScript.shouldRetargetSubtitleObserver(subtitleContainer, subtitleContainer),
+    false
+  );
+});
+
 test("runInAnimationFrame: should execute frame task", async () => {
   global.requestAnimationFrame = (callback) => {
     callback();
