@@ -49,3 +49,18 @@ test("normalizeStoredSettings: 应保留独立复习弹幕速度档位", () => {
   assert.equal(fast.reviewDanmakuSpeed, "fast");
   assert.equal(fallback.reviewDanmakuSpeed, "normal");
 });
+
+test("normalizeStoredSettings: 应归一化站点规则并回写 schemaVersion", () => {
+  const normalized = background.normalizeStoredSettings({
+    domainRules: {
+      "Example.COM": { enabled: false },
+      "invalid host": { enabled: false }
+    },
+    schemaVersion: 99
+  });
+
+  assert.deepEqual(normalized.domainRules, {
+    "example.com": { enabled: false }
+  });
+  assert.equal(normalized.schemaVersion, 2);
+});
