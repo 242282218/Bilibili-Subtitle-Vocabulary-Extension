@@ -1,22 +1,76 @@
 ﻿(function (globalScope) {
   const SUBTITLE_SELECTORS = [
+    // Bilibili
     ".bpx-player-subtitle-wrap .bpx-player-subtitle-panel-text",
     ".bpx-player-subtitle-wrap .bpx-player-subtitle-panel > span",
     ".bpx-player-subtitle-wrap span",
     ".bilibili-player-video-subtitle .bilibili-player-video-subtitle-item-text",
     ".bilibili-player-video-subtitle span",
+    // YouTube
     ".ytp-caption-window-container .ytp-caption-segment",
-    ".ytp-caption-window-container span.ytp-caption-segment"
+    ".ytp-caption-window-container span.ytp-caption-segment",
+    // 腾讯视频
+    ".txp-subtitle .txp-subtitle-text",
+    ".txp-subtitle-item span",
+    ".txp-caption span",
+    // 爱奇艺
+    ".iqp-subtitle-content",
+    ".iqp-subtitle-text span",
+    ".iqiyi-player-subtitle span",
+    // Netflix
+    ".player-timedtext-text-container span",
+    ".nf-player-caption span",
+    // 优酷
+    ".kui-subtitle-text",
+    ".youku-player-subtitle span",
+    ".yk-caption span"
+  ];
+
+  const GENERIC_TEXT_SELECTORS = [
+    "article p",
+    "main p",
+    "main li",
+    "main blockquote",
+    "main h1",
+    "main h2",
+    "main h3",
+    "[role='main'] p",
+    "[role='main'] li",
+    ".article p",
+    ".article li",
+    ".post-content p",
+    ".post-content li",
+    ".entry-content p",
+    ".entry-content li",
+    ".markdown p",
+    ".markdown li"
   ];
 
   const PLAYER_CONTAINER_SELECTORS = [
+    // Bilibili
     ".bpx-player-container",
     ".bpx-player-video-area",
     ".bilibili-player-video-wrap",
     "#bilibili-player",
+    // YouTube
     "#movie_player",
     ".html5-video-player",
-    "ytd-player"
+    "ytd-player",
+    // 腾讯视频
+    ".txp-player",
+    ".txp-video-wrap",
+    "#腾讯视频播放器",
+    // 爱奇艺
+    ".iqp-player",
+    ".iqiyi-player-wrap",
+    "#iqiyi-player",
+    // Netflix
+    ".nf-player-container",
+    ".watch-video--player-view",
+    // 优酷
+    ".kui-player",
+    ".youku-player-container",
+    "#ykPlayer"
   ];
 
   const EXCLUDED_ANCESTOR_SELECTORS = [
@@ -34,6 +88,24 @@
     ".ytp-tooltip",
     ".ytp-chrome-top",
     ".ytp-chrome-bottom",
+    "nav",
+    "header",
+    "footer",
+    "aside",
+    "form",
+    "pre",
+    "code",
+    "kbd",
+    "samp",
+    "script",
+    "style",
+    "noscript",
+    "iframe",
+    "svg",
+    "canvas",
+    "[contenteditable='true']",
+    "[role='textbox']",
+    "[role='button']",
     "[role='menu']",
     "button",
     "a",
@@ -44,13 +116,27 @@
   ];
 
   const HEURISTIC_SELECTORS = [
+    // Bilibili
     ".bpx-player-subtitle-wrap [class*='subtitle']",
     ".bpx-player-subtitle-wrap span",
     ".bilibili-player-video-subtitle [class*='text']",
     ".bilibili-player-video-subtitle span",
+    // YouTube
     ".ytp-caption-window-container .caption-window",
     ".ytp-caption-window-container .ytp-caption-segment",
-    ".ytp-caption-window-container span.ytp-caption-segment"
+    ".ytp-caption-window-container span.ytp-caption-segment",
+    // 腾讯视频
+    ".txp-subtitle [class*='subtitle']",
+    ".txp-subtitle span",
+    // 爱奇艺
+    ".iqp-subtitle [class*='subtitle']",
+    ".iqp-subtitle span",
+    // Netflix
+    ".player-timedtext [class*='text']",
+    ".nf-player-caption span",
+    // 优酷
+    ".kui-subtitle [class*='subtitle']",
+    ".kui-subtitle span"
   ];
 
   const PLAYER_API_ENDPOINT = "https://api.bilibili.com/x/player/v2";
@@ -58,18 +144,41 @@
   let subtitleTimeline = [];
   let subtitleTimelinePromise = null;
 
-  function normalizeText(rawText) {
-    return String(rawText || "").replace(/\s+/g, " ").trim();
+  const normalizeText = (globalThis.Utils && globalThis.Utils.normalizeText) || ((text) => String(text || "").replace(/\s+/g, " ").trim());
+
+  function isHostOrSubdomain(hostname, domain) {
+    const host = String(hostname || "").trim().toLowerCase().replace(/\.+$/, "");
+    const normalizedDomain = String(domain || "").trim().toLowerCase().replace(/\.+$/, "");
+    if (!host || !normalizedDomain) {
+      return false;
+    }
+
+    return host === normalizedDomain || host.endsWith(`.${normalizedDomain}`);
   }
 
   function isBilibiliHost(hostname) {
-    const host = String(hostname || "").toLowerCase();
-    return host.includes("bilibili.com");
+    return isHostOrSubdomain(hostname, "bilibili.com");
   }
 
   function isYouTubeHost(hostname) {
     const host = String(hostname || "").toLowerCase();
     return host === "youtube.com" || host.endsWith(".youtube.com");
+  }
+
+  function isTencentHost(hostname) {
+    return isHostOrSubdomain(hostname, "v.qq.com");
+  }
+
+  function isIqiyiHost(hostname) {
+    return isHostOrSubdomain(hostname, "iqiyi.com");
+  }
+
+  function isNetflixHost(hostname) {
+    return isHostOrSubdomain(hostname, "netflix.com");
+  }
+
+  function isYoukuHost(hostname) {
+    return isHostOrSubdomain(hostname, "youku.com");
   }
 
   function isElementVisible(element) {
@@ -311,6 +420,77 @@
     return true;
   }
 
+  function isPlainTextCandidate(element) {
+    if (!(element instanceof HTMLElement)) {
+      return false;
+    }
+
+    if (isInjectedSubtitleElement(element)) {
+      return false;
+    }
+
+    if (!isElementVisible(element) || isInExcludedContext(element)) {
+      return false;
+    }
+
+    const tagName = String(element.tagName || "").toUpperCase();
+    if (!["P", "LI", "BLOCKQUOTE", "H1", "H2", "H3"].includes(tagName)) {
+      return false;
+    }
+
+    const text = normalizeText(element.textContent || "");
+    if (!text || text.length < 12 || text.length > 280) {
+      return false;
+    }
+
+    if (/^[\d\s\p{P}]+$/u.test(text)) {
+      return false;
+    }
+
+    if (/https?:\/\//i.test(text) || /[@#]/.test(text)) {
+      return false;
+    }
+
+    if (element.childElementCount > 12) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function detectGenericTextElements() {
+    const seen = new Set();
+    const elements = [];
+
+    GENERIC_TEXT_SELECTORS.forEach((selector) => {
+      document.querySelectorAll(selector).forEach((element) => {
+        if (!(element instanceof HTMLElement)) {
+          return;
+        }
+        if (seen.has(element)) {
+          return;
+        }
+        if (!isPlainTextCandidate(element)) {
+          return;
+        }
+
+        seen.add(element);
+        addElementByContainment(element, elements);
+      });
+    });
+
+    return elements;
+  }
+
+  function isVideoPage() {
+    const hostname = globalScope.location && globalScope.location.hostname;
+    if (isBilibiliHost(hostname) || isYouTubeHost(hostname)) {
+      return true;
+    }
+
+    return Boolean(document.querySelector("video"));
+  }
+
   function collectWithHeuristic(seen, playerRect) {
     const found = [];
 
@@ -518,7 +698,14 @@
 
       return subtitleTimeline;
     })()
-      .catch(() => [])
+      .catch((error) => {
+        if (globalThis.Utils && globalThis.Utils.logError) {
+          globalThis.Utils.logError("Subtitle timeline load failed", error);
+        } else {
+          console.error("[BiliVocab] Subtitle timeline load failed:", error);
+        }
+        return [];
+      })
       .finally(() => {
         subtitleTimelinePromise = null;
       });
@@ -538,14 +725,24 @@
   }
 
   function getCurrentSubtitleItems() {
-    return detectSubtitleElements().map((element) => ({
+    if (isVideoPage()) {
+      return detectSubtitleElements().map((element) => ({
+        element,
+        text: extractSubtitleText(element),
+        mode: "subtitle"
+      }));
+    }
+
+    return detectGenericTextElements().map((element) => ({
       element,
-      text: extractSubtitleText(element)
+      text: extractSubtitleText(element),
+      mode: "page"
     }));
   }
 
   const api = {
     SUBTITLE_SELECTORS,
+    GENERIC_TEXT_SELECTORS,
     detectSubtitleElements,
     addElementByContainment,
     isInjectedSubtitleElement,
