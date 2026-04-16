@@ -298,17 +298,36 @@ async function clearVocabularyBook() {
     }
 
     const payload = await new Promise((resolve) => chrome.storage.local.get([VOCABULARY_BOOK_STORAGE_KEY], resolve));
-    const wordStats = payload[VOCABULARY_BOOK_STORAGE_KEY] || {};
+    const sourceWordStats = payload[VOCABULARY_BOOK_STORAGE_KEY] && typeof payload[VOCABULARY_BOOK_STORAGE_KEY] === "object"
+      ? payload[VOCABULARY_BOOK_STORAGE_KEY]
+      : {};
+    const wordStats = { ...sourceWordStats };
 
-    // 将所有已收藏单词状态改为已遇见
-    getWordStatRecords(wordStats).forEach((word) => {
-      if (word.status === "saved") {
-        word.status = "seen";
-        delete word.savedAt;
+    // Build next payload on cloned records to avoid mutating runtime cache on failed writes.
+    Object.keys(wordStats).forEach((wordKey) => {
+      const record = wordStats[wordKey];
+      if (!record || typeof record !== "object" || record.status !== "saved") {
+        return;
       }
+
+      const nextRecord = {
+        ...record,
+        status: "seen"
+      };
+      delete nextRecord.savedAt;
+      wordStats[wordKey] = nextRecord;
     });
 
-    await new Promise((resolve) => chrome.storage.local.set({ [VOCABULARY_BOOK_STORAGE_KEY]: wordStats }, resolve));
+    await new Promise((resolve, reject) => {
+      chrome.storage.local.set({ [VOCABULARY_BOOK_STORAGE_KEY]: wordStats }, () => {
+        const runtimeError = chrome.runtime && chrome.runtime.lastError;
+        if (runtimeError) {
+          reject(runtimeError);
+          return;
+        }
+        resolve();
+      });
+    });
     await loadLearningStats();
     showToast('生词本已清空');
   } catch (e) {
@@ -1154,6 +1173,7 @@ if (typeof module !== "undefined" && module.exports) {
     getRecommendationColor,
     renderRecommendationList,
     buildVocabularyExportPayload,
+    clearVocabularyBook,
     importSettings,
     resetSettings
   };
