@@ -1,54 +1,237 @@
-﻿const test = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
-const LEVELS = ["cet4", "cet6", "kaoyan", "ielts", "toefl"];
+const { buildVocabularyDataset } = require('../scripts/build-vocab-dataset.js');
+
+const DATA_DIR = path.join(__dirname, '..', 'data');
+const LEVELS = ['cet4', 'cet6', 'kaoyan', 'ielts', 'toefl'];
+const SNAPSHOT_FILES = [...LEVELS.map((level) => `${level}.json`), 'sources.json'];
 const MIN_ENTRIES_BY_LEVEL = {
   cet4: 500,
   cet6: 500,
   kaoyan: 500,
   ielts: 1000,
-  toefl: 1000
+  toefl: 1000,
 };
-const UTF8_BOM = "\uFEFF";
+const EXAM_LEVELS = new Set(['cet4', 'cet6', 'kaoyan']);
+const CEFR_LABELS = {
+  1: 'A1',
+  2: 'A2',
+  3: 'B1',
+  4: 'B2',
+  5: 'C1',
+  6: 'C2',
+};
+const PART_OF_SPEECH_PATTERN =
+  /^(?:abbr|adj|adv|art|aux|conj|int|n|num|pl|prep|pron|v|vi|vt)(?: \/ (?:abbr|adj|adv|art|aux|conj|int|n|num|pl|prep|pron|v|vi|vt))*$/;
+const UTF8_BOM = '\uFEFF';
 
-function readRawLevel(level) {
-  const filePath = path.join(__dirname, "..", "data", `${level}.json`);
-  return fs.readFileSync(filePath, "utf8");
+function createTempDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'vocab-dataset-'));
 }
 
-function readLevel(level) {
-  const raw = readRawLevel(level);
+function readRawDataFile(fileName) {
+  return fs.readFileSync(path.join(DATA_DIR, fileName), 'utf8');
+}
+
+function readRawLevel(level) {
+  return readRawDataFile(`${level}.json`);
+}
+
+function readJsonFile(fileName) {
+  const raw = readRawDataFile(fileName);
   const cleaned = raw.startsWith(UTF8_BOM) ? raw.slice(1) : raw;
   return JSON.parse(cleaned);
 }
 
-test("开源词库导入后，各等级数据量应达到可用规模", () => {
+function readLevel(level) {
+  return readJsonFile(`${level}.json`);
+}
+
+function readSourceManifest() {
+  return readJsonFile('sources.json');
+}
+
+function hasCuratedExamSignal(entry) {
+  return entry.sourceFlags.includes('kylebing') || entry.sourceFlags.includes('netem');
+}
+
+function expectedCoverageTier(level, entry) {
+  if (!EXAM_LEVELS.has(level)) {
+    return 'full';
+  }
+
+  return hasCuratedExamSignal(entry) ? 'core' : 'full';
+}
+
+function expectedExamPriorityScore(entry) {
+  return (
+    (entry.sourceFlags.includes('ecdict') ? 10 : 0) +
+    (entry.sourceFlags.includes('kylebing') ? 35 : 0) +
+    (entry.sourceFlags.includes('netem') ? 25 : 0) +
+    Math.min(20, Math.max(0, Number(entry.phraseCount) || 0) * 2)
+  );
+}
+
+function expectedCefrLevel(rank) {
+  const numericRank = Number(rank);
+  if (!Number.isFinite(numericRank) || numericRank < 1 || numericRank > 6) {
+    return '';
+  }
+
+  return CEFR_LABELS[Math.max(1, Math.min(6, Math.round(numericRank)))] || '';
+}
+
+test('开源词库导入后，各等级数据量应达到可用规模', () => {
   LEVELS.forEach((level) => {
     const entries = readLevel(level);
-    assert.ok(entries.length >= MIN_ENTRIES_BY_LEVEL[level], `${level} 词条数量过少: ${entries.length}`);
+    assert.ok(
+      entries.length >= MIN_ENTRIES_BY_LEVEL[level],
+      `${level} 词条数量过少: ${entries.length}`
+    );
   });
 });
 
-test("开源词库词条字段完整性", () => {
+test('开源词库词条字段完整性', () => {
   LEVELS.forEach((level) => {
     const entries = readLevel(level);
-    const sample = entries[0];
-    assert.ok(sample.word && typeof sample.word === "string");
-    assert.ok(sample.meaning && typeof sample.meaning === "string");
-    assert.equal(sample.word, sample.word.toLowerCase());
-    assert.equal(sample.level.toUpperCase(), level.toUpperCase());
-    assert.ok(typeof sample.cefrLevel === "string");
-    assert.ok(Number.isInteger(sample.cefrRank));
-    assert.ok(typeof sample.frequency === "number");
-    assert.ok(Array.isArray(sample.aliases));
+    entries.forEach((entry, index) => {
+      assert.ok(entry.word && typeof entry.word === 'string', `${level}[${index}] 缺少 word`);
+      assert.ok(
+        entry.meaning && typeof entry.meaning === 'string',
+        `${level}[${index}] 缺少 meaning`
+      );
+      assert.equal(entry.word, entry.word.toLowerCase(), `${level}[${index}] word 未归一化`);
+      assert.equal(entry.level.toUpperCase(), level.toUpperCase(), `${level}[${index}] level 错误`);
+      assert.ok(typeof entry.cefrLevel === 'string', `${level}[${index}] cefrLevel 类型错误`);
+      assert.ok(Number.isFinite(entry.cefrRank), `${level}[${index}] cefrRank 类型错误`);
+      assert.ok(entry.cefrRank >= 0 && entry.cefrRank <= 6, `${level}[${index}] cefrRank 超出范围`);
+      assert.equal(
+        entry.cefrLevel,
+        expectedCefrLevel(entry.cefrRank),
+        `${level}[${index}] cefrLevel 与 cefrRank 不一致`
+      );
+      assert.ok(typeof entry.frequency === 'number', `${level}[${index}] frequency 类型错误`);
+      assert.ok(Array.isArray(entry.aliases), `${level}[${index}] aliases 类型错误`);
+      assert.ok(
+        ['core', 'full'].includes(entry.coverageTier),
+        `${level}[${index}] coverageTier 非法`
+      );
+      assert.ok(Array.isArray(entry.sourceFlags), `${level}[${index}] sourceFlags 类型错误`);
+      assert.ok(
+        typeof entry.examPriorityScore === 'number',
+        `${level}[${index}] examPriorityScore 类型错误`
+      );
+      assert.ok(
+        typeof entry.examFrequencyScore === 'number',
+        `${level}[${index}] examFrequencyScore 类型错误`
+      );
+      assert.ok(Array.isArray(entry.altMeanings), `${level}[${index}] altMeanings 类型错误`);
+    });
   });
 });
 
-test("词库数据文件应使用 UTF-8 无 BOM 编码，避免 JSON 解析兼容性问题", () => {
+test('考试词库的 coverageTier 应只由等级和 curated source 决定', () => {
   LEVELS.forEach((level) => {
-    const raw = readRawLevel(level);
-    assert.equal(raw.startsWith(UTF8_BOM), false, `${level}.json 包含 BOM`);
+    const entries = readLevel(level);
+    entries.forEach((entry, index) => {
+      assert.equal(
+        entry.coverageTier,
+        expectedCoverageTier(level, entry),
+        `${level}[${index}] coverageTier 与 sourceFlags/level 不一致`
+      );
+    });
+  });
+});
+
+test('考试词条优先级分数应与 sourceFlags 和 phraseCount 契约一致', () => {
+  LEVELS.forEach((level) => {
+    const entries = readLevel(level);
+    entries.forEach((entry, index) => {
+      assert.equal(
+        entry.examPriorityScore,
+        expectedExamPriorityScore(entry),
+        `${level}[${index}] examPriorityScore 计算错误`
+      );
+    });
+  });
+});
+
+test('考试词库应包含可用规模的核心高频层', () => {
+  ['cet4', 'cet6', 'kaoyan'].forEach((level) => {
+    const entries = readLevel(level);
+    const coreCount = entries.filter((entry) => entry.coverageTier === 'core').length;
+    assert.ok(coreCount >= 1000, `${level} core 词条数量过少: ${coreCount}`);
+  });
+});
+
+test('partOfSpeech 应保持高覆盖率且只输出受支持的规范标签', () => {
+  LEVELS.forEach((level) => {
+    const entries = readLevel(level);
+    const filledEntries = entries.filter(
+      (entry) => typeof entry.partOfSpeech === 'string' && entry.partOfSpeech
+    );
+
+    assert.ok(
+      filledEntries.length >= Math.floor(entries.length * 0.95),
+      `${level} partOfSpeech 覆盖率过低: ${filledEntries.length}/${entries.length}`
+    );
+
+    filledEntries.forEach((entry, index) => {
+      assert.match(
+        entry.partOfSpeech,
+        PART_OF_SPEECH_PATTERN,
+        `${level}[${index}] partOfSpeech 包含非规范标签: ${entry.partOfSpeech}`
+      );
+    });
+  });
+});
+
+test('sources.json 应列出真实输入文件并保持可追溯', () => {
+  const manifest = readSourceManifest();
+
+  assert.equal(manifest.generatedAt, '2026-04-16');
+  assert.equal(Array.isArray(manifest.sources), true);
+  assert.ok(manifest.sources.length >= 5);
+
+  manifest.sources.forEach((source, index) => {
+    assert.equal(typeof source.name, 'string', `sources[${index}] name 类型错误`);
+    assert.equal(Array.isArray(source.files), true, `sources[${index}] files 类型错误`);
+    assert.ok(source.files.length > 0, `sources[${index}] files 为空`);
+    source.files.forEach((file) => {
+      assert.equal(typeof file, 'string');
+      assert.equal(file.startsWith('sources/'), true);
+      const sourcePath = path.join(__dirname, '..', file);
+      assert.equal(fs.existsSync(sourcePath), true, `${file} 不存在`);
+    });
+  });
+});
+
+test('词库生成器输出应与仓库快照一致', async () => {
+  const workspace = createTempDir();
+
+  try {
+    await buildVocabularyDataset({
+      dataDir: workspace,
+      ensureSources: false,
+    });
+
+    SNAPSHOT_FILES.forEach((fileName) => {
+      const generated = fs.readFileSync(path.join(workspace, fileName), 'utf8');
+      const snapshot = readRawDataFile(fileName);
+      assert.equal(generated, snapshot, `${fileName} 与生成器输出不一致`);
+    });
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('词库数据文件应使用 UTF-8 无 BOM 编码，避免 JSON 解析兼容性问题', () => {
+  SNAPSHOT_FILES.forEach((fileName) => {
+    const raw = readRawDataFile(fileName);
+    assert.equal(raw.startsWith(UTF8_BOM), false, `${fileName} 包含 BOM`);
   });
 });

@@ -1,25 +1,52 @@
 {
-  "generatedAt": "2026-03-05",
+  "generatedAt": "2026-04-16",
   "sources": [
     {
       "name": "ECDICT",
       "url": "https://github.com/skywind3000/ECDICT",
       "license": "MIT",
-      "file": "sources/ecdict.csv",
+      "files": [
+        "sources/ecdict.csv"
+      ],
       "notes": "英汉词典，含 cet4/cet6/ielts/toefl/ky 标签。"
     },
     {
       "name": "Words-CEFR-Dataset",
       "url": "https://github.com/Maximax67/Words-CEFR-Dataset",
       "license": "MIT",
-      "file": "sources/words_cefr",
+      "files": [
+        "sources/words.csv",
+        "sources/word_pos.csv"
+      ],
       "notes": "按词与词性提供 CEFR 数值等级 (1-6)。"
+    },
+    {
+      "name": "KyleBing/english-vocabulary",
+      "url": "https://github.com/KyleBing/english-vocabulary",
+      "license": "No explicit GitHub license metadata detected",
+      "files": [
+        "sources/kylebing-cet4.json",
+        "sources/kylebing-cet6.json",
+        "sources/kylebing-kaoyan.json"
+      ],
+      "notes": "提供 CET4 / CET6 / 考研词表、中文释义与短语，用于构建 core 高频层。"
+    },
+    {
+      "name": "exam-data/NETEMVocabulary",
+      "url": "https://github.com/exam-data/NETEMVocabulary",
+      "license": "NOASSERTION (GitHub API)",
+      "files": [
+        "sources/netem_full_list.json"
+      ],
+      "notes": "提供考研词频排序，用于构建 KAOYAN 的 examFrequencyScore 与 examPriorityScore。"
     },
     {
       "name": "CC-CEDICT",
       "url": "https://www.mdbg.net/chinese/dictionary?page=cc-cedict",
       "license": "CC BY-SA 3.0 (MDBG 发布版本)",
-      "file": "sources/cedict_ts.u8.gz",
+      "files": [
+        "sources/cedict_ts.u8.gz"
+      ],
       "notes": "用于中文释义补充，需保留署名与同协议要求。"
     }
   ]
