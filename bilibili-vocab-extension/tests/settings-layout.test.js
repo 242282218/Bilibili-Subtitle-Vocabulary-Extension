@@ -12,19 +12,20 @@ function readManifest() {
   return JSON.parse(raw);
 }
 
-test("options layout: should provide dashboard style single-column shell", () => {
-  const html = readProjectFile("options.html");
+test("options layout: should assert the shipped react options entry instead of legacy options shell", () => {
+  const manifest = readManifest();
+  const optionsHtml = readProjectFile("react-ui/options.html");
+  const optionsSource = readProjectFile("react-ui/src/options-main.tsx");
 
-  assert.match(html, /class="options-body hub-page hub-page--options"/);
-  assert.match(html, /hub-app-shell--single-column/);
-  assert.doesNotMatch(html, /class="hub-sidebar"/);
-  assert.match(html, /id="section-basics"/);
-  assert.match(html, /id="section-review"/);
-  assert.match(html, /id="settingsPreview"/);
-  assert.match(html, /id="recommendationBadge"/);
-  assert.match(html, /id="vocabularyMode"/);
-  assert.match(html, /id="examPreference"/);
-  assert.match(html, /id="exportAnkiButton"/);
+  assert.equal(manifest.options_page, "dist/options.html");
+  assert.match(optionsHtml, /id="root"/);
+  assert.match(optionsHtml, /src="\/src\/options-main\.tsx"/);
+  assert.match(optionsSource, /字幕学习配置中心/);
+  assert.match(optionsSource, /学习配置档/);
+  assert.match(optionsSource, /学习参数/);
+  assert.match(optionsSource, /站点规则/);
+  assert.match(optionsSource, /启用自动调优/);
+  assert.match(optionsSource, /近 7 天验收指标/);
 });
 
 test("popup layout: should assert the shipped react popup entry instead of legacy popup shell", () => {
