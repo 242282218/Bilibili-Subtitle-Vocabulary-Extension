@@ -1106,6 +1106,8 @@ if (typeof module !== "undefined" && module.exports) {
     getLearningProfile: sharedSettings ? sharedSettings.getLearningProfile : getLearningProfile,
     getRecommendationColor,
     renderRecommendationList,
-    buildVocabularyExportPayload
+    buildVocabularyExportPayload,
+    importSettings,
+    resetSettings
   };
 }
