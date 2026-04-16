@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const learningState = require("../learningState.js");
 
+const WORD_STATS_STORAGE_KEY = "bili_vocab_word_stats_v1";
 const LEARNING_WORD_STATS_STORAGE_KEY = learningState.STORAGE_KEYS.WORD_STATS_V2;
 const REVIEW_QUEUE_STORAGE_KEY = learningState.STORAGE_KEYS.REVIEW_QUEUE;
 const LEARNING_SUMMARY_STORAGE_KEY = learningState.STORAGE_KEYS.LEARNING_SUMMARY;
@@ -92,7 +93,7 @@ function createDocumentStub() {
   };
 }
 
-function createChromeStub(storageState, shouldFailSet) {
+function createChromeStub(storageState, shouldFailSet, shouldFailGet) {
   const runtime = {
     lastError: null
   };
@@ -111,6 +112,7 @@ function createChromeStub(storageState, shouldFailSet) {
       },
       local: {
         get(keysOrDefaults, callback) {
+          const failed = typeof shouldFailGet === "function" ? shouldFailGet(keysOrDefaults) : false;
           if (Array.isArray(keysOrDefaults)) {
             const result = {};
             keysOrDefaults.forEach((key) => {
@@ -118,19 +120,25 @@ function createChromeStub(storageState, shouldFailSet) {
                 result[key] = storageState[key];
               }
             });
+            runtime.lastError = failed ? { message: "mock read failed" } : null;
             callback(result);
+            runtime.lastError = null;
             return;
           }
 
           if (keysOrDefaults && typeof keysOrDefaults === "object") {
+            runtime.lastError = failed ? { message: "mock read failed" } : null;
             callback({
               ...keysOrDefaults,
               ...storageState
             });
+            runtime.lastError = null;
             return;
           }
 
+          runtime.lastError = failed ? { message: "mock read failed" } : null;
           callback({ ...storageState });
+          runtime.lastError = null;
         },
         set(payload, callback) {
           const failed = typeof shouldFailSet === "function" ? shouldFailSet(payload) : false;
@@ -148,7 +156,7 @@ function createChromeStub(storageState, shouldFailSet) {
   };
 }
 
-function withPopupRuntime({ storageState, shouldFailSet }, run) {
+function withPopupRuntime({ storageState, shouldFailSet, shouldFailGet }, run) {
   const previousDocument = global.document;
   const previousChrome = global.chrome;
   const previousSetTimeout = global.setTimeout;
@@ -157,7 +165,7 @@ function withPopupRuntime({ storageState, shouldFailSet }, run) {
 
   try {
     global.document = createDocumentStub();
-    global.chrome = createChromeStub(storageState, shouldFailSet);
+    global.chrome = createChromeStub(storageState, shouldFailSet, shouldFailGet);
     global.setTimeout = () => 1;
     global.clearTimeout = () => {};
 
@@ -226,6 +234,87 @@ function createQuickReviewStorageState() {
     [LEARNING_SUMMARY_STORAGE_KEY]: learningState.buildLearningSummary(stats, queue)
   };
 }
+
+test("popup settings load: should fall back to defaults when storage read fails", () => {
+  const storageState = {
+    enabled: false,
+    reviewDanmakuEnabled: true,
+    replaceRatio: 0.3
+  };
+
+  withPopupRuntime(
+    {
+      storageState,
+      shouldFailGet(keysOrDefaults) {
+        return !Array.isArray(keysOrDefaults) && Boolean(keysOrDefaults) && typeof keysOrDefaults === "object";
+      }
+    },
+    (documentStub) => {
+      const enabledInput = documentStub.__getNode("enabled");
+      const reviewButton = documentStub.__getNode("reviewDanmakuButton");
+      const replaceRatioInput = documentStub.__getNode("replaceRatio");
+      const statusNode = documentStub.__getNode("status");
+
+      assert.equal(enabledInput.checked, true);
+      assert.equal(reviewButton.textContent, "启动复习弹幕");
+      assert.equal(replaceRatioInput.value, "0.20");
+      assert.equal(statusNode.textContent, "配置读取失败，已回退默认值。");
+    }
+  );
+});
+
+test("popup learning dashboard: should show failure instead of fake empty state when storage read fails", () => {
+  const storageState = createQuickReviewStorageState();
+
+  withPopupRuntime(
+    {
+      storageState,
+      shouldFailGet(keysOrDefaults) {
+        return Array.isArray(keysOrDefaults) && keysOrDefaults.includes(LEARNING_WORD_STATS_STORAGE_KEY);
+      }
+    },
+    (documentStub) => {
+      const quickReviewWord = documentStub.__getNode("quickReviewWord");
+      const quickReviewButton = documentStub.__getNode("quickReviewButton");
+      const reviewCountToday = documentStub.__getNode("reviewCountToday");
+      const statusNode = documentStub.__getNode("status");
+
+      assert.equal(quickReviewWord.textContent, "当前没有待复习词");
+      assert.equal(quickReviewButton.disabled, true);
+      assert.equal(reviewCountToday.textContent, "今日待复习 0");
+      assert.equal(statusNode.textContent, "学习数据读取失败，请重试");
+    }
+  );
+});
+
+test("popup ranking: should show failure instead of fake empty ranking when storage read fails", () => {
+  const storageState = {
+    [WORD_STATS_STORAGE_KEY]: {
+      system: {
+        word: "system",
+        meaning: "系统",
+        hitCount: 3,
+        lastSeen: 1700000000000
+      }
+    }
+  };
+
+  withPopupRuntime(
+    {
+      storageState,
+      shouldFailGet(keysOrDefaults) {
+        return Array.isArray(keysOrDefaults) && keysOrDefaults.length === 1 && keysOrDefaults[0] === WORD_STATS_STORAGE_KEY;
+      }
+    },
+    (documentStub) => {
+      const rankingEmpty = documentStub.__getNode("rankingEmpty");
+      const statusNode = documentStub.__getNode("status");
+
+      assert.equal(rankingEmpty.style.display, "block");
+      assert.equal(statusNode.textContent, "生词排行读取失败，请重试");
+    }
+  );
+});
 
 test("popup review danmaku toggle: should keep previous state when storage write fails", () => {
   const storageState = {

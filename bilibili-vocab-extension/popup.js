@@ -82,12 +82,7 @@ let currentSiteState = {
 let quickReviewState = {
   stats: {},
   queue: {},
-  summary: {
-    todayCount: 0,
-    newCount: 0,
-    masteredCount: 0,
-    recentWords: []
-  }
+  summary: getEmptyLearningSummary()
 };
 const uiStateController = uiStateMachine && typeof uiStateMachine.createStateController === "function"
   ? uiStateMachine.createStateController("idle")
@@ -219,6 +214,22 @@ function getChromeRuntimeError() {
   }
 
   return chrome.runtime.lastError || null;
+}
+
+function readChromeLocalStorage(keysOrDefaults, onSuccess, onError) {
+  chrome.storage.local.get(keysOrDefaults, (payload) => {
+    const runtimeError = getChromeRuntimeError();
+    if (runtimeError) {
+      if (typeof onError === "function") {
+        onError(runtimeError);
+      }
+      return;
+    }
+
+    if (typeof onSuccess === "function") {
+      onSuccess(payload);
+    }
+  });
 }
 
 function markSettingsDirty(renderStatus = true) {
@@ -886,6 +897,24 @@ function getQuickReviewItems(limit = 5) {
   return sortQuickReviewItems(items).slice(0, limit);
 }
 
+function getEmptyLearningSummary() {
+  return learningState ? learningState.buildLearningSummary({}, {}) : {
+    todayCount: 0,
+    newCount: 0,
+    masteredCount: 0,
+    recentWords: []
+  };
+}
+
+function resetLearningDashboardState() {
+  quickReviewState = {
+    stats: {},
+    queue: {},
+    summary: getEmptyLearningSummary()
+  };
+  return quickReviewState;
+}
+
 function renderLearningSummary() {
   const summary = quickReviewState.summary || {};
   if (reviewCountTodayNode) {
@@ -947,21 +976,12 @@ function renderQuickReviewCard() {
 
 function readLearningDashboard(callback) {
   if (!learningState || typeof chrome === "undefined" || !chrome.storage || !chrome.storage.local) {
-    quickReviewState = {
-      stats: {},
-      queue: {},
-      summary: learningState ? learningState.buildLearningSummary({}, {}) : {
-        todayCount: 0,
-        newCount: 0,
-        masteredCount: 0,
-        recentWords: []
-      }
-    };
+    quickReviewState = resetLearningDashboardState();
     callback(quickReviewState);
     return;
   }
 
-  chrome.storage.local.get([
+  readChromeLocalStorage([
     WORD_STATS_STORAGE_KEY,
     LEARNING_WORD_STATS_STORAGE_KEY,
     REVIEW_QUEUE_STORAGE_KEY,
@@ -988,6 +1008,10 @@ function readLearningDashboard(callback) {
       queue,
       summary
     };
+    callback(quickReviewState);
+  }, () => {
+    quickReviewState = resetLearningDashboardState();
+    setStatus("学习数据读取失败，请重试");
     callback(quickReviewState);
   });
 }
@@ -1193,11 +1217,16 @@ function loadSettings() {
     return;
   }
 
-  chrome.storage.local.get(DEFAULT_SETTINGS, (settings) => {
+  readChromeLocalStorage(DEFAULT_SETTINGS, (settings) => {
     applySettingsToUI(settings);
     updateSettingsState("SAVE_SUCCESS", {
       statusMessage: "配置已同步，可编辑后手动保存。",
       timeoutMs: 1400
+    });
+  }, () => {
+    applySettingsToUI(getInitialPopupSettings());
+    updateSettingsState("SAVE_FAILURE", {
+      statusMessage: "配置读取失败，已回退默认值。"
     });
   });
 }
@@ -1312,7 +1341,7 @@ function readEncounteredWords(callback) {
     return;
   }
 
-  chrome.storage.local.get([WORD_STATS_STORAGE_KEY], (stored) => {
+  readChromeLocalStorage([WORD_STATS_STORAGE_KEY], (stored) => {
     const rawMap = stored && stored[WORD_STATS_STORAGE_KEY] && typeof stored[WORD_STATS_STORAGE_KEY] === "object"
       ? stored[WORD_STATS_STORAGE_KEY]
       : {};
@@ -1322,6 +1351,9 @@ function readEncounteredWords(callback) {
       .filter((item) => Boolean(item) && item.hitCount > 0);
 
     callback(words);
+  }, () => {
+    setStatus("生词排行读取失败，请重试");
+    callback([]);
   });
 }
 
