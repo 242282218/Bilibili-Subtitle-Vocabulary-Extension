@@ -9,7 +9,7 @@
 
 ## 本地开发
 
-1. 安装依赖：`cd bilibili-vocab-extension && pnpm install`
+1. 安装依赖：`cd bilibili-vocab-extension && pnpm install --frozen-lockfile`
 2. 本地 UI 开发：`pnpm run dev`
 3. 质量门禁：
    - `pnpm run lint -- --fix`
