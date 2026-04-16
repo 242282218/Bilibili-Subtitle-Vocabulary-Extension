@@ -306,6 +306,26 @@ test("shouldRetargetSubtitleObserver: should keep current observer target when c
   );
 });
 
+test("shouldRefreshSubtitleObserver: should refresh only when target actually changes", () => {
+  const bodyTarget = global.document.body;
+  const subtitleContainer = {};
+
+  assert.equal(
+    contentScript.shouldRefreshSubtitleObserver(bodyTarget, subtitleContainer),
+    true
+  );
+
+  assert.equal(
+    contentScript.shouldRefreshSubtitleObserver(subtitleContainer, subtitleContainer),
+    false
+  );
+
+  assert.equal(
+    contentScript.shouldRefreshSubtitleObserver(subtitleContainer, null),
+    true
+  );
+});
+
 test("runInAnimationFrame: should execute frame task", async () => {
   global.requestAnimationFrame = (callback) => {
     callback();

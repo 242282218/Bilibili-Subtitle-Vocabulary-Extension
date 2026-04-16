@@ -39,6 +39,7 @@
     : "bili_vocab_settings_v3";
 
   let observer = null;
+  let observerTarget = null;
   let processTimer = null;
   let timelinePollTimer = null;
   let processing = false;
@@ -113,6 +114,18 @@
       return false;
     }
     return Boolean(subtitleContainer && subtitleContainer !== doc.body);
+  }
+
+  function resolveSubtitleObserverTarget(runtimeSettings) {
+    const subtitleContainer = document.querySelector(".bpx-player-subtitle-wrap");
+    if (subtitleContainer) {
+      return subtitleContainer;
+    }
+    return shouldObserveDomMutations(runtimeSettings) ? document.body : null;
+  }
+
+  function shouldRefreshSubtitleObserver(currentTarget, nextTarget) {
+    return currentTarget !== nextTarget;
   }
 
   function runInAnimationFrame(task) {
@@ -714,20 +727,20 @@
       observer.disconnect();
       observer = null;
     }
+    observerTarget = null;
 
-    const subtitleContainer = document.querySelector(".bpx-player-subtitle-wrap");
-    const shouldObserveBody = shouldObserveDomMutations(settings);
-    const observeTarget = subtitleContainer || (shouldObserveBody ? document.body : null);
+    const observeTarget = resolveSubtitleObserverTarget(settings);
     if (!observeTarget) {
       return;
     }
+    observerTarget = observeTarget;
 
     observer = new MutationObserver(() => {
       ensureRuntimeBindings();
       startTimelinePolling();
-      const latestSubtitleContainer = document.querySelector(".bpx-player-subtitle-wrap");
-      if (shouldRetargetSubtitleObserver(observeTarget, latestSubtitleContainer)) {
-        // Why: once subtitle root appears, stop observing whole document to reduce mutation volume.
+      const latestTarget = resolveSubtitleObserverTarget(settings);
+      if (shouldRefreshSubtitleObserver(observerTarget, latestTarget)) {
+        // Why: keep observer target aligned with SPA DOM changes (body <-> subtitle container).
         observeSubtitleChanges();
       }
       scheduleProcess();
@@ -756,6 +769,11 @@
     }
 
     timelinePollTimer = setInterval(() => {
+      startTimelinePolling();
+      const latestTarget = resolveSubtitleObserverTarget(settings);
+      if (shouldRefreshSubtitleObserver(observerTarget, latestTarget)) {
+        observeSubtitleChanges();
+      }
       ensureRuntimeBindings();
       scheduleProcess();
     }, TIMELINE_POLL_MS);
@@ -957,6 +975,7 @@
       shouldEnableTimelinePolling,
       shouldObserveDomMutations,
       shouldRetargetSubtitleObserver,
+      shouldRefreshSubtitleObserver,
       shouldRestoreWebItems,
       shouldRunLegacyWebTextPipeline,
       __resetOverlayModuleStateForTest() {
