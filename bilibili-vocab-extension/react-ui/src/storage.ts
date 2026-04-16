@@ -42,6 +42,39 @@ export interface VocabularyWord {
   };
 }
 
+function normalizeVocabularyWord(input: unknown): VocabularyWord | null {
+  if (!input || typeof input !== 'object') {
+    return null;
+  }
+
+  const source = input as Record<string, unknown>;
+  const word = String(source.word || '').trim();
+  const status = String(source.status || '')
+    .trim()
+    .toLowerCase();
+  if (!word || !status) {
+    return null;
+  }
+
+  const detailsSource =
+    source.details && typeof source.details === 'object'
+      ? (source.details as Record<string, unknown>)
+      : {};
+  const exposures = Number(source.exposures);
+
+  return {
+    word,
+    status,
+    savedAt: normalizeTimestamp(source.savedAt) ?? undefined,
+    exposures: Number.isFinite(exposures) && exposures > 0 ? Math.floor(exposures) : 0,
+    details: {
+      meaning: String(detailsSource.meaning || '').trim(),
+      level: String(detailsSource.level || '').trim(),
+      phonetic: String(detailsSource.phonetic || '').trim(),
+    },
+  };
+}
+
 export interface LearningStreak {
   currentStreak: number;
   maxStreak: number;
@@ -453,9 +486,9 @@ export async function exportVocabularyBook(format: 'json' | 'csv' = 'json'): Pro
   const payload = await readStorage<Record<string, unknown>>([VOCABULARY_BOOK_STORAGE_KEY]);
   const wordStats = (payload[VOCABULARY_BOOK_STORAGE_KEY] as Record<string, VocabularyWord>) || {};
 
-  // 只导出生词本中的单词
   const savedWords = Object.values(wordStats)
-    .filter((word) => word.status === 'saved')
+    .map((entry) => normalizeVocabularyWord(entry))
+    .filter((word): word is VocabularyWord => Boolean(word && word.status === 'saved'))
     .sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
 
   if (format === 'csv') {
