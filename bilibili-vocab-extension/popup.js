@@ -213,6 +213,14 @@ function updateSettingsState(event, options = {}) {
   return nextState;
 }
 
+function getChromeRuntimeError() {
+  if (typeof chrome === "undefined" || !chrome.runtime) {
+    return null;
+  }
+
+  return chrome.runtime.lastError || null;
+}
+
 function markSettingsDirty(renderStatus = true) {
   updateSettingsState("USER_EDIT", { renderStatus: false });
   updateSettingsState("MARK_DIRTY", { renderStatus });
@@ -338,7 +346,15 @@ function toggleCurrentSiteScope() {
     domainRules: nextSettings.domainRules,
     schemaVersion: nextSettings.schemaVersion || DEFAULT_SETTINGS.schemaVersion
   }, () => {
+    const runtimeError = getChromeRuntimeError();
     currentSiteState.loading = false;
+    if (runtimeError) {
+      updateSiteControls(runtimeSettings);
+      setStatus("当前站点切换失败，请重试");
+      showToast("站点设置保存失败");
+      return;
+    }
+
     runtimeSettings = nextSettings;
     currentSiteState.enabled = nextEnabled;
     updateSiteControls(runtimeSettings);
@@ -650,6 +666,11 @@ function updateEnabledBadge(enabled) {
   enabledStateBadge.classList.toggle("state-badge--on", active);
   enabledStateBadge.classList.toggle("state-badge--off", !active);
   refreshHeroState();
+}
+
+function getReplaceRatioPercentText(value) {
+  const ratio = Math.min(0.3, Math.max(0.1, Number(value) || DEFAULT_SETTINGS.replaceRatio));
+  return `${Math.round(ratio * 100)}%`;
 }
 
 function updateRatioLabel(value) {
@@ -1188,6 +1209,14 @@ function toggleReviewDanmaku() {
       reviewDanmakuEnabled: nextValue
     },
     () => {
+      const runtimeError = getChromeRuntimeError();
+      if (runtimeError) {
+        setStatus("复习弹幕切换失败，请重试");
+        showToast("复习弹幕切换失败");
+        setButtonBusy(reviewDanmakuButton, "", getReviewDanmakuButtonLabel(reviewDanmakuEnabled));
+        return;
+      }
+
       renderReviewDanmakuState(nextValue);
       setStatus(nextValue ? "复习弹幕已启动" : "复习弹幕已停止");
       showToast(nextValue ? "复习弹幕已切换为运行中" : "复习弹幕已停止");
