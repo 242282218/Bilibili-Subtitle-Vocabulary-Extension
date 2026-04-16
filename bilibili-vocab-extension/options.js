@@ -126,6 +126,52 @@ function showToast(message) {
   }, 2200);
 }
 
+function getWordStatRecords(wordStats) {
+  if (!wordStats || typeof wordStats !== "object") {
+    return [];
+  }
+
+  return Object.values(wordStats).filter((item) => item && typeof item === "object");
+}
+
+function normalizeExportWordRecord(word) {
+  if (!word || typeof word !== "object") {
+    return null;
+  }
+
+  const normalizedWord = String(word.word || "").trim();
+  if (!normalizedWord) {
+    return null;
+  }
+
+  const details = word.details && typeof word.details === "object" ? word.details : {};
+  const savedAt = Number(word.savedAt);
+  const exposures = Number(word.exposures);
+
+  return {
+    word: normalizedWord,
+    translation: String(word.translation || "").trim(),
+    level: String(word.level || "").trim(),
+    savedAt: Number.isFinite(savedAt) && savedAt > 0 ? Math.floor(savedAt) : null,
+    exposures: Number.isFinite(exposures) && exposures > 0 ? Math.floor(exposures) : 0,
+    details: {
+      meaning: String(details.meaning || "").trim(),
+      level: String(details.level || "").trim(),
+      phonetic: String(details.phonetic || "").trim()
+    }
+  };
+}
+
+function normalizeExportWordRecords(words) {
+  if (!Array.isArray(words)) {
+    return [];
+  }
+
+  return words
+    .map((word) => normalizeExportWordRecord(word))
+    .filter(Boolean);
+}
+
 // 加载学习统计数据
 async function loadLearningStats() {
   try {
@@ -138,7 +184,7 @@ async function loadLearningStats() {
 
     // 计算收藏单词数量
     const wordStats = vocabData[VOCABULARY_BOOK_STORAGE_KEY] || {};
-    const savedCount = Object.values(wordStats).filter(w => w.status === 'saved').length;
+    const savedCount = getWordStatRecords(wordStats).filter((word) => word.status === "saved").length;
     if (savedWordsCountEl) savedWordsCountEl.textContent = savedCount;
 
     // 学习打卡数据
@@ -160,9 +206,10 @@ function normalizeTsvCell(value) {
 }
 
 function buildVocabularyExportPayload(savedWords, format = "json") {
+  const safeWords = normalizeExportWordRecords(savedWords);
   if (format === "csv") {
     const headers = ["单词", "释义", "难度等级", "音标", "收藏时间", "遇见次数"];
-    const rows = savedWords.map((word) => [
+    const rows = safeWords.map((word) => [
       word.word,
       word.details?.meaning || "",
       word.details?.level || "",
@@ -181,7 +228,7 @@ function buildVocabularyExportPayload(savedWords, format = "json") {
 
   if (format === "anki") {
     const headers = ["Front", "Back", "Level", "Phonetic", "SavedAt"];
-    const rows = savedWords.map((word) => [
+    const rows = safeWords.map((word) => [
       normalizeTsvCell(word.word),
       normalizeTsvCell(word.details?.meaning || word.translation || ""),
       normalizeTsvCell(word.details?.level || word.level || ""),
@@ -198,7 +245,7 @@ function buildVocabularyExportPayload(savedWords, format = "json") {
   }
 
   return {
-    content: JSON.stringify(savedWords, null, 2),
+    content: JSON.stringify(safeWords, null, 2),
     mimeType: "application/json",
     extension: "json",
     label: "JSON"
@@ -216,8 +263,8 @@ async function exportVocabularyBook(format = "json") {
     const wordStats = payload[VOCABULARY_BOOK_STORAGE_KEY] || {};
 
     // 只导出生词本中的单词
-    const savedWords = Object.values(wordStats)
-      .filter(word => word.status === 'saved')
+    const savedWords = getWordStatRecords(wordStats)
+      .filter((word) => word.status === "saved")
       .sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
 
     const exportPayload = buildVocabularyExportPayload(savedWords, format);
@@ -254,9 +301,9 @@ async function clearVocabularyBook() {
     const wordStats = payload[VOCABULARY_BOOK_STORAGE_KEY] || {};
 
     // 将所有已收藏单词状态改为已遇见
-    Object.values(wordStats).forEach(word => {
-      if (word.status === 'saved') {
-        word.status = 'seen';
+    getWordStatRecords(wordStats).forEach((word) => {
+      if (word.status === "saved") {
+        word.status = "seen";
         delete word.savedAt;
       }
     });
