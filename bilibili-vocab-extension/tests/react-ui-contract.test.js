@@ -50,6 +50,16 @@ test("react ui contract: react-ui html entries should exist for options and popu
   assert.match(popupHtml, /src="\/src\/popup-main\.tsx"/);
 });
 
+test("react ui contract: content stylesheet should stay self-contained", () => {
+  const stylesheet = readProjectFile("styles.css");
+
+  assert.doesNotMatch(stylesheet, /@import\s+url\(["']https?:\/\//i);
+  assert.match(stylesheet, /--font-sans:\s*"Avenir Next"/);
+  assert.match(stylesheet, /--font-display:\s*"Iowan Old Style"/);
+  assert.match(stylesheet, /\.options-body\s*\{[\s\S]*font-family:\s*var\(--font-sans\)/);
+  assert.match(stylesheet, /\.hub-title\s*\{[\s\S]*font-family:\s*var\(--font-display\)/);
+});
+
 test("react ui contract: content script should lazy-load dist overlay bundle", () => {
   const contentScript = readProjectFile("contentScript.js");
 
