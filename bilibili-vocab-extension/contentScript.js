@@ -503,9 +503,20 @@
     syncEngineWithPlayback();
   }
 
+  function unbindVideoPlaybackEvents(video) {
+    if (!(video instanceof HTMLVideoElement)) {
+      return;
+    }
+    video.removeEventListener("play", onVideoPlay);
+    video.removeEventListener("pause", onVideoPauseOrEnd);
+    video.removeEventListener("ended", onVideoPauseOrEnd);
+  }
+
   function bindVideoPlaybackEvents() {
     const video = document.querySelector("video");
     if (!(video instanceof HTMLVideoElement)) {
+      unbindVideoPlaybackEvents(boundVideo);
+      boundVideo = null;
       return;
     }
 
@@ -513,11 +524,7 @@
       return;
     }
 
-    if (boundVideo instanceof HTMLVideoElement) {
-      boundVideo.removeEventListener("play", onVideoPlay);
-      boundVideo.removeEventListener("pause", onVideoPauseOrEnd);
-      boundVideo.removeEventListener("ended", onVideoPauseOrEnd);
-    }
+    unbindVideoPlaybackEvents(boundVideo);
 
     boundVideo = video;
     boundVideo.addEventListener("play", onVideoPlay);
@@ -967,6 +974,8 @@
       hasTranslationSettingChange,
       isRenderUpToDate,
       shouldRunReviewDanmaku,
+      getPlaybackState,
+      bindVideoPlaybackEvents,
       resetHitTrackingIfSourceChanged,
       recordRenderedHits,
       loadOverlayModule,

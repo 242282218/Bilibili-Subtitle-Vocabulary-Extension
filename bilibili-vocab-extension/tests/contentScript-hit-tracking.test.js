@@ -6,6 +6,23 @@ const previousChrome = global.chrome;
 const previousVocabularyModule = global.VocabularyModule;
 const previousRequestAnimationFrame = global.requestAnimationFrame;
 const previousLocation = global.location;
+const previousHTMLVideoElement = global.HTMLVideoElement;
+
+class FakeVideoElement {
+  constructor({ paused = false, ended = false } = {}) {
+    this.paused = paused;
+    this.ended = ended;
+    this.removedListeners = [];
+  }
+
+  addEventListener() {}
+
+  removeEventListener(type) {
+    this.removedListeners.push(type);
+  }
+}
+
+global.HTMLVideoElement = FakeVideoElement;
 
 global.document = {
   readyState: "loading",
@@ -109,6 +126,32 @@ test("shouldRunReviewDanmaku: should only run when trigger is enabled and video 
     ),
     true
   );
+});
+
+test("bindVideoPlaybackEvents: should unbind stale video when current page has no video element", () => {
+  const previousQuerySelector = global.document.querySelector;
+  const video = new FakeVideoElement({ paused: false, ended: false });
+
+  try {
+    global.document.querySelector = (selector) => (selector === "video" ? video : null);
+    contentScript.bindVideoPlaybackEvents();
+    assert.deepEqual(contentScript.getPlaybackState(), {
+      hasVideo: true,
+      paused: false,
+      ended: false
+    });
+
+    global.document.querySelector = () => null;
+    contentScript.bindVideoPlaybackEvents();
+    assert.deepEqual(contentScript.getPlaybackState(), {
+      hasVideo: false,
+      paused: true,
+      ended: true
+    });
+    assert.deepEqual(video.removedListeners.sort(), ["ended", "pause", "play"]);
+  } finally {
+    global.document.querySelector = previousQuerySelector;
+  }
 });
 
 test("isRenderUpToDate: should skip rerender when source text and settings fingerprint are unchanged", () => {
@@ -369,4 +412,5 @@ test.after(() => {
   global.VocabularyModule = previousVocabularyModule;
   global.requestAnimationFrame = previousRequestAnimationFrame;
   global.location = previousLocation;
+  global.HTMLVideoElement = previousHTMLVideoElement;
 });
