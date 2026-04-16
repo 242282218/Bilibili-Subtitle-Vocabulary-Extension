@@ -67,3 +67,53 @@ test("getEncounteredWords: should return only words with hitCount > 0", () => {
   const encountered = vocabulary.getEncounteredWords();
   assert.deepEqual(encountered.map((item) => item.word), ["beta"]);
 });
+
+test("getReviewQueue: should prioritize earlier nextReviewAt within same bucket", () => {
+  vocabulary.__setEntriesForTest([
+    { word: "alpha", meaning: "\u963f\u5c14\u6cd5", level: "CET4" },
+    { word: "beta", meaning: "\u8d1d\u5854", level: "CET6" }
+  ]);
+
+  const originalNow = Date.now;
+  let now = 1700000000000;
+  Date.now = () => now;
+  try {
+    vocabulary.recordHit("alpha");
+    now += 1000;
+    vocabulary.recordHit("beta");
+  } finally {
+    Date.now = originalNow;
+  }
+
+  const queue = vocabulary.getReviewQueue(2);
+  assert.deepEqual(queue.map((item) => item.word), ["alpha", "beta"]);
+  assert.equal(typeof queue[0].nextReviewAt, "number");
+  assert.equal(typeof queue[0].intervalDays, "number");
+  assert.equal(typeof queue[0].easeFactor, "number");
+});
+
+test("getReviewQueue: should prioritize today bucket before soon bucket", async () => {
+  vocabulary.__setEntriesForTest([
+    { word: "alpha", meaning: "\u963f\u5c14\u6cd5", level: "CET4" },
+    { word: "beta", meaning: "\u8d1d\u5854", level: "CET6" }
+  ]);
+
+  const originalNow = Date.now;
+  const now = 1700000000000;
+  Date.now = () => now;
+  try {
+    vocabulary.recordHit("alpha");
+    await vocabulary.applyLearningAction("alpha", "dontKnow");
+
+    vocabulary.recordHit("beta");
+    await vocabulary.applyLearningAction("beta", "know");
+  } finally {
+    Date.now = originalNow;
+  }
+
+  const queue = vocabulary.getReviewQueue(2);
+  assert.equal(queue[0].word, "alpha");
+  assert.equal(queue[0].dueBucket, "today");
+  assert.equal(queue[1].word, "beta");
+  assert.equal(queue[1].dueBucket, "soon");
+});

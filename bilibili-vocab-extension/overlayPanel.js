@@ -743,7 +743,7 @@
       renderLearningSnapshot(buildLearningSnapshot(getLearningSummaryData(), queue, reviewCursor));
     }
 
-    function handleReviewFeedback(feedback) {
+    async function handleReviewFeedback(feedback) {
       if (learningSnapshot.empty || !learningSnapshot.currentWordKey) {
         return;
       }
@@ -756,9 +756,10 @@
       const hasApplyLearningAction = typeof globalScope.VocabularyModule.applyLearningAction === "function";
       const hasReviewWord = typeof globalScope.VocabularyModule.reviewWord === "function";
       const nextRecord = hasApplyLearningAction
-        ? globalScope.VocabularyModule.applyLearningAction(currentWordKey, feedback)
-        : (hasReviewWord ? globalScope.VocabularyModule.reviewWord(currentWordKey, feedback) : null);
+        ? await globalScope.VocabularyModule.applyLearningAction(currentWordKey, feedback)
+        : (hasReviewWord ? await globalScope.VocabularyModule.reviewWord(currentWordKey, feedback) : null);
       if (!nextRecord) {
+        setStatus("复习结果保存失败，请重试");
         return;
       }
 
@@ -1125,15 +1126,21 @@
     }
 
     if (reviewKnowButton) {
-      reviewKnowButton.addEventListener("click", () => handleReviewFeedback("know"));
+      reviewKnowButton.addEventListener("click", () => {
+        void handleReviewFeedback("know");
+      });
     }
 
     if (reviewFuzzyButton) {
-      reviewFuzzyButton.addEventListener("click", () => handleReviewFeedback("fuzzy"));
+      reviewFuzzyButton.addEventListener("click", () => {
+        void handleReviewFeedback("fuzzy");
+      });
     }
 
     if (reviewDontKnowButton) {
-      reviewDontKnowButton.addEventListener("click", () => handleReviewFeedback("dontKnow"));
+      reviewDontKnowButton.addEventListener("click", () => {
+        void handleReviewFeedback("dontKnow");
+      });
     }
 
     if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged) {
