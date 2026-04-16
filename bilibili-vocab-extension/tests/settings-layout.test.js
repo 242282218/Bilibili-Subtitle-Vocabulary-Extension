@@ -7,6 +7,11 @@ function readProjectFile(fileName) {
   return fs.readFileSync(path.join(__dirname, "..", fileName), "utf8");
 }
 
+function readManifest() {
+  const raw = readProjectFile("manifest.json").replace(/^\uFEFF/, "");
+  return JSON.parse(raw);
+}
+
 test("options layout: should provide dashboard style single-column shell", () => {
   const html = readProjectFile("options.html");
 
@@ -22,21 +27,19 @@ test("options layout: should provide dashboard style single-column shell", () =>
   assert.match(html, /id="exportAnkiButton"/);
 });
 
-test("popup layout: should provide compact dashboard style sections", () => {
-  const html = readProjectFile("popup.html");
+test("popup layout: should assert the shipped react popup entry instead of legacy popup shell", () => {
+  const manifest = readManifest();
+  const popupHtml = readProjectFile("react-ui/popup.html");
+  const popupSource = readProjectFile("react-ui/src/popup-main.tsx");
 
-  assert.match(html, /class="hub-page hub-page--popup"/);
-  assert.match(html, /class="hub-popup-topbar"/);
-  assert.match(html, /class="hub-quick-grid"/);
-  assert.match(html, /id="reviewCountToday"/);
-  assert.match(html, /id="quickReviewButton"/);
-  assert.match(html, /id="quickReviewWord"/);
-  assert.match(html, /id="reviewActionKnow"/);
-  assert.match(html, /id="reviewDanmakuButton"/);
-  assert.match(html, /id="rankingList"/);
-  assert.match(html, /id="openOptionsButton"/);
-  assert.match(html, /id="vocabularyMode"/);
-  assert.match(html, /id="examPreference"/);
+  assert.equal(manifest.action && manifest.action.default_popup, "dist/popup.html");
+  assert.match(popupHtml, /id="root"/);
+  assert.match(popupHtml, /src="\/src\/popup-main\.tsx"/);
+  assert.match(popupSource, /学习策略快控台/);
+  assert.match(popupSource, /当前配置档/);
+  assert.match(popupSource, /启用自动调优/);
+  assert.match(popupSource, /打开完整配置页/);
+  assert.match(popupSource, /导出JSON/);
 });
 
 test("shared styles: should define dashboard shell and single-column options layout", () => {
