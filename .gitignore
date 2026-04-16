@@ -1,0 +1,10 @@
+# Local tooling workspaces
+.codexpotter/
+.codexloop/
+.zread/
+.claude/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
