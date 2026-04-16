@@ -60,6 +60,7 @@ const totalActiveDaysEl = doc ? doc.getElementById("totalActiveDays") : null;
 const maxStreakEl = doc ? doc.getElementById("maxStreak") : null;
 const exportJsonButton = doc ? doc.getElementById("exportJsonButton") : null;
 const exportCsvButton = doc ? doc.getElementById("exportCsvButton") : null;
+const exportAnkiButton = doc ? doc.getElementById("exportAnkiButton") : null;
 const clearVocabButton = doc ? doc.getElementById("clearVocabButton") : null;
 const exportSettingsButton = doc ? doc.getElementById("exportSettingsButton") : null;
 const importSettingsButton = doc ? doc.getElementById("importSettingsButton") : null;
@@ -150,8 +151,61 @@ async function loadLearningStats() {
   }
 }
 
-// 导出生词本
-async function exportVocabularyBook(format = 'json') {
+function escapeCsvCell(value) {
+  return `"${String(value == null ? "" : value).replace(/"/g, '""')}"`;
+}
+
+function normalizeTsvCell(value) {
+  return String(value == null ? "" : value).replace(/[\t\r\n]+/g, " ").trim();
+}
+
+function buildVocabularyExportPayload(savedWords, format = "json") {
+  if (format === "csv") {
+    const headers = ["单词", "释义", "难度等级", "音标", "收藏时间", "遇见次数"];
+    const rows = savedWords.map((word) => [
+      word.word,
+      word.details?.meaning || "",
+      word.details?.level || "",
+      word.details?.phonetic || "",
+      word.savedAt ? new Date(word.savedAt).toLocaleString() : "",
+      word.exposures || 0
+    ]);
+
+    return {
+      content: [headers.join(","), ...rows.map((row) => row.map(escapeCsvCell).join(","))].join("\n"),
+      mimeType: "text/csv;charset=utf-8;",
+      extension: "csv",
+      label: "CSV"
+    };
+  }
+
+  if (format === "anki") {
+    const headers = ["Front", "Back", "Level", "Phonetic", "SavedAt"];
+    const rows = savedWords.map((word) => [
+      normalizeTsvCell(word.word),
+      normalizeTsvCell(word.details?.meaning || word.translation || ""),
+      normalizeTsvCell(word.details?.level || word.level || ""),
+      normalizeTsvCell(word.details?.phonetic || ""),
+      normalizeTsvCell(word.savedAt ? new Date(word.savedAt).toISOString() : "")
+    ]);
+
+    return {
+      content: [headers.join("\t"), ...rows.map((row) => row.join("\t"))].join("\n"),
+      mimeType: "text/tab-separated-values;charset=utf-8;",
+      extension: "tsv",
+      label: "ANKI-TSV"
+    };
+  }
+
+  return {
+    content: JSON.stringify(savedWords, null, 2),
+    mimeType: "application/json",
+    extension: "json",
+    label: "JSON"
+  };
+}
+
+async function exportVocabularyBook(format = "json") {
   try {
     if (!chrome || !chrome.storage || !chrome.storage.local) {
       showToast('存储不可用，导出失败');
@@ -166,39 +220,18 @@ async function exportVocabularyBook(format = 'json') {
       .filter(word => word.status === 'saved')
       .sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
 
-    let content, mimeType, extension;
-    if (format === 'csv') {
-      const headers = ["单词", "释义", "难度等级", "音标", "收藏时间", "遇见次数"];
-      const rows = savedWords.map(word => [
-        word.word,
-        word.details?.meaning || "",
-        word.details?.level || "",
-        word.details?.phonetic || "",
-        word.savedAt ? new Date(word.savedAt).toLocaleString() : "",
-        word.exposures || 0
-      ]);
-      content = [
-        headers.join(","),
-        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-      ].join("\n");
-      mimeType = 'text/csv;charset=utf-8;';
-      extension = 'csv';
-    } else {
-      content = JSON.stringify(savedWords, null, 2);
-      mimeType = 'application/json';
-      extension = 'json';
-    }
+    const exportPayload = buildVocabularyExportPayload(savedWords, format);
 
-    const blob = new Blob([content], { type: mimeType });
+    const blob = new Blob([exportPayload.content], { type: exportPayload.mimeType });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `bilibili-vocab-book-${new Date().toISOString().slice(0, 10)}.${extension}`);
+    link.setAttribute('download', `bilibili-vocab-book-${new Date().toISOString().slice(0, 10)}.${exportPayload.extension}`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    showToast(`生词本已导出为${format.toUpperCase()}格式`);
+    showToast(`生词本已导出为${exportPayload.label}格式`);
   } catch (e) {
     console.error('Export failed:', e);
     showToast('导出失败，请重试');
@@ -1031,6 +1064,9 @@ function bindEvents() {
   if (exportCsvButton) {
     exportCsvButton.addEventListener("click", () => exportVocabularyBook('csv'));
   }
+  if (exportAnkiButton) {
+    exportAnkiButton.addEventListener("click", () => exportVocabularyBook("anki"));
+  }
   if (clearVocabButton) {
     clearVocabButton.addEventListener("click", clearVocabularyBook);
   }
@@ -1069,6 +1105,7 @@ if (typeof module !== "undefined" && module.exports) {
     getHeroMetricMeta: sharedSettings ? sharedSettings.getHeroMetricMeta : getHeroMetricMeta,
     getLearningProfile: sharedSettings ? sharedSettings.getLearningProfile : getLearningProfile,
     getRecommendationColor,
-    renderRecommendationList
+    renderRecommendationList,
+    buildVocabularyExportPayload
   };
 }
