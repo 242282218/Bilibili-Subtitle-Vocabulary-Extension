@@ -243,14 +243,14 @@ test("isVideoSiteHost: should recognize supported video hosts", () => {
   assert.equal(contentScript.isVideoSiteHost("youtube.com.evil.org"), false);
 });
 
-test("shouldEnableTimelinePolling: should only enable polling for video hosts or pages with video element", () => {
+test("shouldEnableTimelinePolling: should only enable polling when a video element exists", () => {
   const previousQuerySelector = global.document.querySelector;
   try {
     global.location = { hostname: "www.youtube.com" };
-    assert.equal(contentScript.shouldEnableTimelinePolling(), true);
+    global.document.querySelector = () => null;
+    assert.equal(contentScript.shouldEnableTimelinePolling(), false);
 
     global.location = { hostname: "docs.example.com" };
-    global.document.querySelector = () => null;
     assert.equal(contentScript.shouldEnableTimelinePolling(), false);
 
     global.document.querySelector = (selector) => (selector === "video" ? {} : null);

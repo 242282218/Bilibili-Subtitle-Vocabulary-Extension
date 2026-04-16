@@ -90,14 +90,7 @@
     return VIDEO_SITE_HOSTS.some((site) => normalized === site || normalized.endsWith(`.${site}`));
   }
 
-  function shouldEnableTimelinePolling(hostname) {
-    const currentHost = typeof hostname === "string"
-      ? hostname
-      : (globalThis.location && globalThis.location.hostname);
-    if (isVideoSiteHost(currentHost)) {
-      return true;
-    }
-
+  function shouldEnableTimelinePolling() {
     const doc = globalThis.document;
     return Boolean(doc && typeof doc.querySelector === "function" && doc.querySelector("video"));
   }
@@ -107,7 +100,7 @@
       ? hostname
       : (globalThis.location && globalThis.location.hostname);
 
-    if (shouldEnableTimelinePolling(currentHost)) {
+    if (isVideoSiteHost(currentHost) || shouldEnableTimelinePolling()) {
       return true;
     }
 
