@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const previousDocument = global.document;
 const previousChrome = global.chrome;
 const previousVocabularyModule = global.VocabularyModule;
+const previousRequestAnimationFrame = global.requestAnimationFrame;
 
 global.document = {
   readyState: "loading",
@@ -233,9 +234,46 @@ test("shouldRunLegacyWebTextPipeline: should stay off by default and allow expli
   delete global.__BILI_VOCAB_ENABLE_LEGACY_WEB_TEXT_PIPELINE__;
 });
 
+test("runInAnimationFrame: should execute frame task", async () => {
+  global.requestAnimationFrame = (callback) => {
+    callback();
+    return 1;
+  };
+
+  let called = false;
+  await contentScript.runInAnimationFrame(async () => {
+    called = true;
+  });
+
+  assert.equal(called, true);
+});
+
+test("runInAnimationFrame: should resolve even when task throws", async () => {
+  global.requestAnimationFrame = (callback) => {
+    callback();
+    return 1;
+  };
+
+  const previousConsoleError = console.error;
+  console.error = () => {};
+
+  let completed = false;
+  try {
+    await contentScript.runInAnimationFrame(async () => {
+      throw new Error("frame failure");
+    });
+  } finally {
+    console.error = previousConsoleError;
+  }
+
+  completed = true;
+  assert.equal(completed, true);
+});
+
 
 test.after(() => {
   global.document = previousDocument;
   global.chrome = previousChrome;
   global.VocabularyModule = previousVocabularyModule;
+  global.requestAnimationFrame = previousRequestAnimationFrame;
 });

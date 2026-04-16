@@ -84,6 +84,25 @@
     return obj && typeof obj[method] === "function";
   }
 
+  function runInAnimationFrame(task) {
+    const scheduleFrame = typeof globalThis.requestAnimationFrame === "function"
+      ? globalThis.requestAnimationFrame.bind(globalThis)
+      : (callback) => setTimeout(callback, 0);
+
+    return new Promise((resolve) => {
+      scheduleFrame(() => {
+        Promise.resolve()
+          .then(() => task())
+          .catch((error) => {
+            logError("Animation frame batch failed", error);
+          })
+          .finally(() => {
+            resolve();
+          });
+      });
+    });
+  }
+
   function shouldRestoreWebItems(runtimeSettings) {
     const normalized = normalizeSettings(runtimeSettings);
     return normalized.webPageEnabled === false;
@@ -508,24 +527,19 @@
     const subtitleModeItems = subtitleItems.filter((item) => !item || item.mode !== "page");
 
     // 批量更新DOM，减少重排重绘
-    await new Promise((resolve) => {
-      requestAnimationFrame(async () => {
+    await runInAnimationFrame(async () => {
         for (let i = 0; i < subtitleModeItems.length; i += 1) {
           await applyTranslation(subtitleModeItems[i].element);
         }
 
         if (shouldRestoreWebItems(settings)) {
           restoreItemsToSourceText(webItems);
-          resolve();
           return;
         }
 
         for (let i = 0; i < webItems.length; i += 1) {
           await applyTranslation(webItems[i].element, webItems[i].text);
         }
-
-        resolve();
-      });
     });
   }
 
@@ -884,6 +898,7 @@
       resetHitTrackingIfSourceChanged,
       recordRenderedHits,
       loadOverlayModule,
+      runInAnimationFrame,
       shouldRestoreWebItems,
       shouldRunLegacyWebTextPipeline,
       __resetOverlayModuleStateForTest() {
