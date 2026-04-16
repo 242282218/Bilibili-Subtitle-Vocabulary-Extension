@@ -115,7 +115,9 @@ test("isRenderUpToDate: should skip rerender when source text and settings finge
     activeLevels: ["CET4", "IELTS"],
     replaceRatio: 0.2,
     maxReplaceCount: 2,
-    targetCefr: "B2"
+    targetCefr: "B2",
+    vocabularyMode: "core",
+    examPreference: "balanced"
   };
 
   const signature = contentScript.createRenderSignature("source subtitle", settings);
@@ -143,6 +145,94 @@ test("isRenderUpToDate: should skip rerender when source text and settings finge
     false
   );
 });
+
+test("createRenderSignature: should include web page mode so page toggle triggers rerender", () => {
+  const enabledSignature = contentScript.createRenderSignature("source subtitle", {
+    enabled: true,
+    webPageEnabled: true,
+    activeLevels: ["CET4", "IELTS"],
+    replaceRatio: 0.2,
+    maxReplaceCount: 2,
+    targetCefr: "B2",
+    vocabularyMode: "core",
+    examPreference: "balanced"
+  });
+
+  const disabledSignature = contentScript.createRenderSignature("source subtitle", {
+    enabled: true,
+    webPageEnabled: false,
+    activeLevels: ["CET4", "IELTS"],
+    replaceRatio: 0.2,
+    maxReplaceCount: 2,
+    targetCefr: "B2",
+    vocabularyMode: "core",
+    examPreference: "balanced"
+  });
+
+  assert.notEqual(enabledSignature, disabledSignature);
+});
+
+test("buildRuntimeSettings: should merge updates on top of runtime baseline", () => {
+  const next = contentScript.buildRuntimeSettings(
+    {
+      enabled: true,
+      webPageEnabled: true,
+      reviewDanmakuEnabled: false,
+      reviewDanmakuSpeed: "normal",
+      activeLevels: ["CET4"],
+      replaceRatio: 0.2,
+      maxReplaceCount: 2,
+      targetCefr: "B2",
+      vocabularyMode: "core",
+      examPreference: "balanced",
+      domainRules: {
+        "example.com": { enabled: false }
+      },
+      schemaVersion: 999
+    },
+    {
+      replaceRatio: 0.3,
+      activeLevels: ["ielts", "IELTS"],
+      schemaVersion: 1234
+    }
+  );
+
+  assert.equal(next.replaceRatio, 0.3);
+  assert.deepEqual(next.activeLevels, ["IELTS"]);
+  assert.deepEqual(next.domainRules, {
+    "example.com": { enabled: false }
+  });
+  assert.equal(next.schemaVersion, 2);
+});
+
+test("shouldRestoreWebItems: should return true when web page mode is disabled", () => {
+  assert.equal(
+    contentScript.shouldRestoreWebItems({
+      enabled: true,
+      webPageEnabled: false
+    }),
+    true
+  );
+
+  assert.equal(
+    contentScript.shouldRestoreWebItems({
+      enabled: true,
+      webPageEnabled: true
+    }),
+    false
+  );
+});
+
+test("shouldRunLegacyWebTextPipeline: should stay off by default and allow explicit debug override", () => {
+  delete global.__BILI_VOCAB_ENABLE_LEGACY_WEB_TEXT_PIPELINE__;
+  assert.equal(contentScript.shouldRunLegacyWebTextPipeline(), false);
+
+  global.__BILI_VOCAB_ENABLE_LEGACY_WEB_TEXT_PIPELINE__ = true;
+  assert.equal(contentScript.shouldRunLegacyWebTextPipeline(), true);
+
+  delete global.__BILI_VOCAB_ENABLE_LEGACY_WEB_TEXT_PIPELINE__;
+});
+
 
 test.after(() => {
   global.document = previousDocument;

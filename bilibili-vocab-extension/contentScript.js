@@ -17,6 +17,7 @@
   const TIMELINE_POLL_MS = 300;
   const TRANSLATION_CACHE_LIMIT = 200;
   const WEB_TEXT_PROCESS_INTERVAL = 1000; // 网页文本处理间隔
+  const LEGACY_WEB_TEXT_PIPELINE_FLAG = "__BILI_VOCAB_ENABLE_LEGACY_WEB_TEXT_PIPELINE__";
   const TRANSLATION_SETTINGS_KEYS = sharedSettings && Array.isArray(sharedSettings.SETTINGS_STORAGE_KEYS)
     ? sharedSettings.SETTINGS_STORAGE_KEYS.filter((key) => key !== "reviewDanmakuEnabled" && key !== "reviewDanmakuSpeed")
     : [
@@ -81,6 +82,16 @@
 
   function hasMethod(obj, method) {
     return obj && typeof obj[method] === "function";
+  }
+
+  function shouldRestoreWebItems(runtimeSettings) {
+    const normalized = normalizeSettings(runtimeSettings);
+    return normalized.webPageEnabled === false;
+  }
+
+  function shouldRunLegacyWebTextPipeline() {
+    // Why: keep the legacy walker only as an explicit debug fallback.
+    return globalThis[LEGACY_WEB_TEXT_PIPELINE_FLAG] === true;
   }
 
   function normalizeSettings(rawSettings) {
@@ -503,7 +514,8 @@
           await applyTranslation(subtitleModeItems[i].element);
         }
 
-        if (!settings.webPageEnabled) {
+        if (shouldRestoreWebItems(settings)) {
+          restoreItemsToSourceText(webItems);
           resolve();
           return;
         }
@@ -537,10 +549,10 @@
     processing = true;
     pendingProcess = false;
     try {
-      await Promise.all([
-        processSubtitles(),
-        processWebPageText()
-      ]);
+      await processSubtitles();
+      if (shouldRunLegacyWebTextPipeline()) {
+        await processWebPageText();
+      }
     } finally {
       processing = false;
       if (pendingProcess) {
@@ -872,6 +884,8 @@
       resetHitTrackingIfSourceChanged,
       recordRenderedHits,
       loadOverlayModule,
+      shouldRestoreWebItems,
+      shouldRunLegacyWebTextPipeline,
       __resetOverlayModuleStateForTest() {
         overlayModuleCache = null;
         overlayModulePromise = null;

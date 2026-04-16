@@ -39,6 +39,12 @@
 4. 播放视频，字幕中会自动插入英文词汇
 5. 播放器顶部会出现复习弹幕
 
+## 网页模式行为
+
+- 非视频网页默认使用 `SubtitleParser.getCurrentSubtitleItems()` 的段落级单链路替换，避免重复扫描与重复改写 DOM。
+- 当关闭「网页文本模式」后，已替换段落会按 `data-bili-vocab-original-text` 恢复为原文。
+- 旧版文本节点扫描链路默认关闭，仅用于调试回退：在页面控制台设置 `window.__BILI_VOCAB_ENABLE_LEGACY_WEB_TEXT_PIPELINE__ = true`。
+
 ## 配置项
 
 | 选项 | 说明 |
