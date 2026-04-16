@@ -336,7 +336,27 @@
 
   function buildLearningSnapshot(summary, queue, index = 0, now = Date.now()) {
     const normalizedSummary = summary && typeof summary === "object" ? summary : {};
-    const items = Array.isArray(queue) ? queue.filter(Boolean) : [];
+    const items = Array.isArray(queue)
+      ? queue.map((item) => {
+        if (!item || typeof item !== "object") {
+          return null;
+        }
+
+        const word = String(item.word || "").trim();
+        if (!word) {
+          return null;
+        }
+
+        return {
+          word,
+          translation: String(item.translation || "").trim(),
+          level: String(item.level || "").trim().toUpperCase(),
+          dueBucket: String(item.dueBucket || "").trim().toLowerCase(),
+          nextReviewAt: normalizeReviewTimestamp(item.nextReviewAt),
+          status: String(item.status || "").trim().toLowerCase()
+        };
+      }).filter(Boolean)
+      : [];
     const safeIndex = items.length ? Math.max(0, index % items.length) : 0;
     const currentItem = items[safeIndex] || null;
 
