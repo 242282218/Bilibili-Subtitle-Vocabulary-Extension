@@ -61,6 +61,11 @@
 - `Anki TSV` 默认字段为 `Front / Back / Level / Phonetic / SavedAt`
 - 完整配置、站点规则和悬浮面板参数可在选项页统一管理
 
+## 策略预设与实时预览
+
+- `Options` 页提供 `轻量输入 / 均衡输入 / 强化曝光` 三档策略预设，点击后会直接填充当前配置档，保存后生效
+- `Options` 与 `Popup` 都会基于当前参数生成实时学习预览，方便在保存前判断替换密度、复习节奏和目标难度
+
 ## 网页模式行为
 
 - 非视频网页默认使用 `SubtitleParser.getCurrentSubtitleItems()` 的段落级单链路替换，避免重复扫描与重复改写 DOM。

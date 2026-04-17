@@ -15,6 +15,7 @@ import {
 } from './settings-bridge';
 import { getSiteToggleUiState } from './site-toggle-state';
 import { ShortcutGuide } from './shortcut-guide';
+import { StudyPreview } from './study-preview';
 import {
   AdaptiveTuningState,
   ExperienceMetricsSnapshot,
@@ -423,6 +424,13 @@ function PopupApp() {
             <strong>{summary.masteredCount}</strong>
           </div>
         </div>
+        <StudyPreview
+          profile={activeProfile}
+          title="实时学习预览"
+          subtitle="保存前先看当前策略的替换密度和学习节奏。"
+          sentenceVariant="popup"
+          compact
+        />
       </section>
 
       {conflict && (

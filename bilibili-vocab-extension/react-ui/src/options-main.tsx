@@ -13,7 +13,11 @@ import {
 import {
   BUILTIN_PROFILE_IDS,
   CEFR_LEVELS,
+  SCENE_PRESETS,
+  ScenePresetKey,
   cloneSettingsV3,
+  getPresetKeyFromSettings,
+  getReviewDanmakuSpeedLabel,
   LEVELS,
   MAX_CUSTOM_PROFILES,
   PROFILE_META,
@@ -30,6 +34,7 @@ import {
   removeCustomProfile,
 } from './settings-bridge';
 import { ShortcutGuide } from './shortcut-guide';
+import { StudyPreview } from './study-preview';
 import { useV3Settings } from './use-v3-settings';
 
 type SectionKey = 'profiles' | 'learning' | 'siteRules' | 'overlay';
@@ -41,6 +46,20 @@ const SECTION_META: Array<{ id: SectionKey; name: string }> = [
   { id: 'overlay', name: '悬浮面板' },
 ];
 const HIGH_RISK_UNDO_WINDOW_MS = 6 * 1000;
+const SCENE_PRESET_META: Record<ScenePresetKey, { title: string; summary: string }> = {
+  light: {
+    title: '轻量输入',
+    summary: '适合首次接触内容，尽量降低理解干扰。',
+  },
+  balanced: {
+    title: '均衡输入',
+    summary: '适合日常稳定学习，在理解与曝光之间取平衡。',
+  },
+  intensive: {
+    title: '强化曝光',
+    summary: '适合复看或冲刺阶段，提高命中密度与复习节奏。',
+  },
+};
 
 interface PendingUndoAction {
   label: string;
@@ -174,6 +193,13 @@ function OptionsApp() {
     return resolveEffectiveRuntime(working, 'www.bilibili.com');
   }, [working]);
 
+  const activePresetKey = useMemo<ScenePresetKey>(() => {
+    if (!activeProfile) {
+      return 'balanced';
+    }
+    return getPresetKeyFromSettings(activeProfile);
+  }, [activeProfile]);
+
   useEffect(() => {
     let cancelled = false;
     void Promise.all([readAdaptiveTuningState(), readExperienceMetricsSnapshot(7)])
@@ -271,6 +297,11 @@ function OptionsApp() {
       selected.delete(level);
     }
     patchActiveProfile({ activeLevels: Array.from(selected) });
+  }
+
+  function applyScenePreset(presetKey: ScenePresetKey) {
+    patchActiveProfile(SCENE_PRESETS[presetKey]);
+    setStatus(`已应用${SCENE_PRESET_META[presetKey].title}预设，记得保存配置。`);
   }
 
   function onAddCustomProfile() {
@@ -650,6 +681,31 @@ function OptionsApp() {
                 当前编辑目标：
                 {profileOptions.find((item) => item.id === working.activeProfileId)?.name}
               </p>
+              <div className="field">
+                <label>策略预设</label>
+                <div className="scene-preset-grid">
+                  {(Object.keys(SCENE_PRESET_META) as ScenePresetKey[]).map((presetKey) => {
+                    const preset = SCENE_PRESETS[presetKey];
+                    const meta = SCENE_PRESET_META[presetKey];
+                    return (
+                      <button
+                        key={presetKey}
+                        type="button"
+                        className="scene-preset-card"
+                        data-active={activePresetKey === presetKey}
+                        onClick={() => applyScenePreset(presetKey)}
+                      >
+                        <span className="scene-preset-card__kicker">
+                          {Math.round(preset.replaceRatio * 100)}% · {preset.maxReplaceCount} 词 ·{' '}
+                          {getReviewDanmakuSpeedLabel(preset.reviewDanmakuSpeed)}
+                        </span>
+                        <strong>{meta.title}</strong>
+                        <span>{meta.summary}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="grid-two">
                 <div className="field">
                   <label htmlFor="replaceRatio">
@@ -765,7 +821,12 @@ function OptionsApp() {
               </div>
             </article>
             <aside className="panel stack stagger-enter" data-index="3">
-              <h3>策略提示</h3>
+              <StudyPreview
+                profile={activeProfile}
+                title="实时策略预览"
+                subtitle="根据当前参数即时生成学习示意，方便在保存前判断节奏。"
+                sentenceVariant="options"
+              />
               <ToggleRow
                 title="启用自动调优"
                 description="根据最近反馈自动微调替换比例、单句上限与复习节奏。"

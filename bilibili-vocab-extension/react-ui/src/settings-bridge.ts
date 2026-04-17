@@ -3,6 +3,7 @@ type VocabularyMode = 'core' | 'full';
 type ExamPreference = 'balanced' | 'exam-first';
 export type BuiltinProfileId = 'gentle' | 'balanced' | 'intensive';
 export type ProfileId = BuiltinProfileId | string;
+export type ScenePresetKey = 'light' | 'balanced' | 'intensive';
 
 export interface ProfileConfig {
   enabled: boolean;
@@ -52,6 +53,18 @@ export interface SettingsV3 {
   globalControls: GlobalControls;
 }
 
+export interface ScenePreset {
+  replaceRatio: number;
+  maxReplaceCount: number;
+  reviewDanmakuSpeed: ReviewDanmakuSpeed;
+}
+
+export interface LearningProfileMeta {
+  tone: 'gentle' | 'balanced' | 'intensive';
+  label: string;
+  summary: string;
+}
+
 interface SharedSettingsApi {
   SETTINGS_STORAGE_KEY_V3?: string;
   BUILTIN_PROFILE_IDS?: BuiltinProfileId[];
@@ -60,6 +73,7 @@ interface SharedSettingsApi {
   CEFR_LEVELS?: string[];
   REVIEW_SPEEDS?: string[];
   OVERLAY_DEFAULTS?: OverlayState;
+  SCENE_PRESETS?: Partial<Record<ScenePresetKey, Partial<ScenePreset>>>;
   DEFAULT_SETTINGS?: Partial<ProfileConfig>;
   normalizeProfileConfig?: (value: unknown) => ProfileConfig;
   normalizeDomainRules?: (value: unknown) => Record<string, DomainRule>;
@@ -88,6 +102,11 @@ interface SharedSettingsApi {
   ) => SettingsV3;
   removeCustomProfile?: (settings: SettingsV3, profileId: string) => SettingsV3;
   isDomainEnabled?: (hostname: string, runtime: unknown) => boolean;
+  getReviewDanmakuSpeedLabel?: (speed: unknown) => string;
+  getMockPreviewData?: (targetCefr: unknown, ratio: unknown, maxReplaceCount: unknown) => string[];
+  getLearningProfile?: (settings: unknown) => LearningProfileMeta;
+  buildSettingsPreview?: (settings: unknown) => string;
+  getPresetKeyFromSettings?: (settings: unknown) => ScenePresetKey;
 }
 
 declare global {
@@ -118,6 +137,24 @@ const FALLBACK_PROFILE: ProfileConfig = {
   reviewDanmakuSpeed: 'normal',
   vocabularyMode: 'core',
   examPreference: 'balanced',
+};
+
+const FALLBACK_SCENE_PRESETS: Record<ScenePresetKey, ScenePreset> = {
+  light: {
+    replaceRatio: 0.15,
+    maxReplaceCount: 1,
+    reviewDanmakuSpeed: 'slow',
+  },
+  balanced: {
+    replaceRatio: 0.2,
+    maxReplaceCount: 2,
+    reviewDanmakuSpeed: 'normal',
+  },
+  intensive: {
+    replaceRatio: 0.3,
+    maxReplaceCount: 4,
+    reviewDanmakuSpeed: 'fast',
+  },
 };
 
 const FALLBACK_DEFAULTS: SettingsV3 = {
@@ -397,6 +434,20 @@ export const REVIEW_SPEEDS = Array.isArray(shared.REVIEW_SPEEDS)
 export const OVERLAY_DEFAULTS = shared.OVERLAY_DEFAULTS
   ? { ...shared.OVERLAY_DEFAULTS }
   : { ...FALLBACK_OVERLAY };
+export const SCENE_PRESETS: Record<ScenePresetKey, ScenePreset> = {
+  light: {
+    ...FALLBACK_SCENE_PRESETS.light,
+    ...(shared.SCENE_PRESETS?.light || {}),
+  },
+  balanced: {
+    ...FALLBACK_SCENE_PRESETS.balanced,
+    ...(shared.SCENE_PRESETS?.balanced || {}),
+  },
+  intensive: {
+    ...FALLBACK_SCENE_PRESETS.intensive,
+    ...(shared.SCENE_PRESETS?.intensive || {}),
+  },
+};
 
 export const PROFILE_META: Record<BuiltinProfileId, { label: string; summary: string }> = {
   gentle: {
@@ -412,6 +463,114 @@ export const PROFILE_META: Record<BuiltinProfileId, { label: string; summary: st
     summary: '提高替换密度与复习频率，适合冲刺期或复看阶段。',
   },
 };
+
+function getReviewDanmakuSpeedLabelFallback(speed: unknown): string {
+  const preset = normalizeSpeed(speed);
+  if (preset === 'slow') {
+    return '慢';
+  }
+  if (preset === 'fast') {
+    return '快';
+  }
+  return '标准';
+}
+
+function getMockPreviewDataFallback(
+  targetCefr: unknown,
+  ratio: unknown,
+  maxReplaceCount: unknown
+): string[] {
+  const presetMap: Record<string, string[]> = {
+    A1: ['learn', 'watch', 'word'],
+    A2: ['improve', 'listen', 'memory'],
+    B1: ['build', 'focus', 'exposure'],
+    B2: ['establish', 'vocabulary', 'context'],
+    C1: ['internalize', 'retention', 'comprehension'],
+    C2: ['synthesize', 'lexicon', 'fluency'],
+  };
+  const words = presetMap[normalizeCefr(targetCefr)] || presetMap.B2;
+  const normalizedRatio = Math.max(
+    0.1,
+    Math.min(0.3, parseFiniteNumber(ratio, FALLBACK_PROFILE.replaceRatio))
+  );
+  const density = normalizedRatio >= 0.25 ? 3 : normalizedRatio <= 0.15 ? 1 : 2;
+  const count = Math.min(
+    words.length,
+    Math.max(
+      1,
+      Math.min(
+        Math.floor(parseFiniteNumber(maxReplaceCount, FALLBACK_PROFILE.maxReplaceCount)),
+        density
+      )
+    )
+  );
+  return words.slice(0, count);
+}
+
+function getLearningProfileFallback(settings: unknown): LearningProfileMeta {
+  const normalized = normalizeProfileConfigFallback(settings);
+  if (!normalized.enabled) {
+    return {
+      tone: 'gentle',
+      label: '轻量待机',
+      summary: '当前未启用，可随时恢复温和输入',
+    };
+  }
+
+  if (normalized.replaceRatio >= 0.25 || normalized.maxReplaceCount >= 4) {
+    return {
+      tone: 'intensive',
+      label: '强化曝光',
+      summary: '适合熟悉内容后集中强化词汇刺激',
+    };
+  }
+
+  if (normalized.replaceRatio <= 0.15 && normalized.maxReplaceCount <= 2) {
+    return {
+      tone: 'gentle',
+      label: '轻量输入',
+      summary: '尽量保留字幕流畅性，降低理解压力',
+    };
+  }
+
+  return {
+    tone: 'balanced',
+    label: '均衡输入',
+    summary: '理解优先，保持稳定词汇曝光',
+  };
+}
+
+function buildSettingsPreviewFallback(settings: unknown): string {
+  const normalized = normalizeProfileConfigFallback(settings);
+  if (!normalized.enabled) {
+    return '当前字幕替换处于关闭状态。保存并启用后，扩展会按照你的学习目标自动调整词汇曝光。';
+  }
+
+  const modeLabel = normalized.vocabularyMode === 'core' ? '核心高频' : '全量扩展';
+  const preferenceLabel = normalized.examPreference === 'exam-first' ? '考试优先' : '均衡筛选';
+  return `当前会在每句字幕中替换约 ${Math.round(normalized.replaceRatio * 100)}% 的词汇，单句最多 ${normalized.maxReplaceCount} 个词，帮助你以 ${normalized.targetCefr} 难度并结合 ${normalized.activeLevels.length} 个词库持续曝光；词库模式为${modeLabel}，筛选策略为${preferenceLabel}，复习节奏为${getReviewDanmakuSpeedLabelFallback(normalized.reviewDanmakuSpeed)}。`;
+}
+
+function getPresetKeyFromSettingsFallback(settings: unknown): ScenePresetKey {
+  const normalized = normalizeProfileConfigFallback(settings);
+  if (
+    normalized.replaceRatio <= SCENE_PRESETS.light.replaceRatio &&
+    normalized.maxReplaceCount <= SCENE_PRESETS.light.maxReplaceCount &&
+    normalized.reviewDanmakuSpeed === SCENE_PRESETS.light.reviewDanmakuSpeed
+  ) {
+    return 'light';
+  }
+
+  if (
+    normalized.replaceRatio >= SCENE_PRESETS.intensive.replaceRatio &&
+    normalized.maxReplaceCount >= SCENE_PRESETS.intensive.maxReplaceCount &&
+    normalized.reviewDanmakuSpeed === SCENE_PRESETS.intensive.reviewDanmakuSpeed
+  ) {
+    return 'intensive';
+  }
+
+  return 'balanced';
+}
 
 export function normalizeProfileConfig(input: unknown): ProfileConfig {
   if (typeof shared.normalizeProfileConfig === 'function') {
@@ -627,6 +786,45 @@ export function isDomainEnabled(hostname: string, runtime: unknown): boolean {
 
 export function cloneSettingsV3(settings: SettingsV3): SettingsV3 {
   return cloneSettings(settings);
+}
+
+export function getReviewDanmakuSpeedLabel(speed: unknown): string {
+  if (typeof shared.getReviewDanmakuSpeedLabel === 'function') {
+    return shared.getReviewDanmakuSpeedLabel(speed);
+  }
+  return getReviewDanmakuSpeedLabelFallback(speed);
+}
+
+export function getMockPreviewData(
+  targetCefr: unknown,
+  ratio: unknown,
+  maxReplaceCount: unknown
+): string[] {
+  if (typeof shared.getMockPreviewData === 'function') {
+    return shared.getMockPreviewData(targetCefr, ratio, maxReplaceCount);
+  }
+  return getMockPreviewDataFallback(targetCefr, ratio, maxReplaceCount);
+}
+
+export function getLearningProfile(settings: unknown): LearningProfileMeta {
+  if (typeof shared.getLearningProfile === 'function') {
+    return shared.getLearningProfile(settings);
+  }
+  return getLearningProfileFallback(settings);
+}
+
+export function buildSettingsPreview(settings: unknown): string {
+  if (typeof shared.buildSettingsPreview === 'function') {
+    return shared.buildSettingsPreview(settings);
+  }
+  return buildSettingsPreviewFallback(settings);
+}
+
+export function getPresetKeyFromSettings(settings: unknown): ScenePresetKey {
+  if (typeof shared.getPresetKeyFromSettings === 'function') {
+    return shared.getPresetKeyFromSettings(settings);
+  }
+  return getPresetKeyFromSettingsFallback(settings);
 }
 
 export function setActiveProfileConfig(
