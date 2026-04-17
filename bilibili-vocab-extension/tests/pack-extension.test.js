@@ -21,32 +21,56 @@ function createWorkspace() {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'pack-extension-'));
   fs.mkdirSync(path.join(workspace, 'dist'), { recursive: true });
   fs.mkdirSync(path.join(workspace, 'data'), { recursive: true });
-  fs.writeFileSync(path.join(workspace, 'manifest.json'), '{}', 'utf8');
+  fs.mkdirSync(path.join(workspace, 'scripts'), { recursive: true });
+  fs.writeFileSync(
+    path.join(workspace, 'manifest.json'),
+    JSON.stringify(
+      {
+        background: { service_worker: 'background.js' },
+        content_scripts: [
+          {
+            js: ['contentScript.js', 'scripts/danmaku.js'],
+            css: ['styles.css'],
+          },
+        ],
+        options_page: 'dist/options.html',
+        action: { default_popup: 'dist/popup.html' },
+        web_accessible_resources: [
+          {
+            resources: ['data/*.json'],
+            matches: ['https://*/*'],
+          },
+        ],
+      },
+      null,
+      2
+    ),
+    'utf8'
+  );
   fs.writeFileSync(path.join(workspace, 'styles.css'), 'body{}', 'utf8');
   fs.writeFileSync(path.join(workspace, 'background.js'), '', 'utf8');
   fs.writeFileSync(path.join(workspace, 'contentScript.js'), '', 'utf8');
-  fs.writeFileSync(path.join(workspace, 'options.html'), '<html></html>', 'utf8');
-  fs.writeFileSync(path.join(workspace, 'popup.html'), '<html></html>', 'utf8');
-  fs.writeFileSync(path.join(workspace, 'helper.js'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'scripts', 'danmaku.js'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'dist', 'options.html'), '<html></html>', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'dist', 'popup.html'), '<html></html>', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'data', 'cet4.json'), '{}', 'utf8');
   fs.writeFileSync(path.join(workspace, 'README.md'), 'ignore', 'utf8');
   return workspace;
 }
 
-test('pack extension: collectPackEntries should include fixed and glob matches without duplicates', () => {
+test('pack extension: collectPackEntries should follow manifest runtime assets without legacy html drift', () => {
   const workspace = createWorkspace();
   try {
     const entries = collectPackEntries(workspace);
 
     assert.deepEqual(entries, [
-      'dist',
       'manifest.json',
-      'data',
-      'styles.css',
       'background.js',
       'contentScript.js',
-      'helper.js',
-      'options.html',
-      'popup.html',
+      'scripts',
+      'styles.css',
+      'dist',
+      'data',
     ]);
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
@@ -132,12 +156,13 @@ test('pack extension: runPack should execute command and require archive output'
 Archive:  ${outputZip}
   Length      Date    Time    Name
 ---------  ---------- -----   ----
-        0  2026-04-16 00:00   dist/
-       34  2026-04-16 00:00   manifest.json
-        0  2026-04-16 00:00   data/
-        7  2026-04-16 00:00   styles.css
+        34  2026-04-16 00:00   manifest.json
         0  2026-04-16 00:00   background.js
         0  2026-04-16 00:00   contentScript.js
+        0  2026-04-16 00:00   scripts/
+        7  2026-04-16 00:00   styles.css
+        0  2026-04-16 00:00   dist/
+        0  2026-04-16 00:00   data/
 ---------                     -------
 `,
         };
@@ -157,6 +182,7 @@ Archive:  ${outputZip}
     assert.match(result.outputZipPath, /extension\.zip$/);
     assert.equal(fs.existsSync(result.outputZipPath), true);
     assert.ok(result.entries.includes('manifest.json'));
+    assert.equal(result.entries.includes('popup.html'), false);
     assert.ok(result.archiveEntries.includes('manifest.json'));
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
@@ -245,6 +271,7 @@ Archive:  /tmp/extension.zip
 });
 
 test('pack extension: validateArchiveEntries should require manifest-critical files by default', () => {
+  assert.ok(REQUIRED_ARCHIVE_ENTRIES.includes('scripts'));
   assert.throws(
     () =>
       validateArchiveEntries('C:/tmp/extension.zip', {
@@ -255,14 +282,17 @@ test('pack extension: validateArchiveEntries should require manifest-critical fi
 Archive:  /tmp/extension.zip
   Length      Date    Time    Name
 ---------  ---------- -----   ----
-        0  2026-04-16 00:00   dist/
       123  2026-04-16 00:00   manifest.json
+       32  2026-04-16 00:00   background.js
+       64  2026-04-16 00:00   contentScript.js
+       17  2026-04-16 00:00   styles.css
+        0  2026-04-16 00:00   dist/
         0  2026-04-16 00:00   data/
 ---------                     -------
 `,
         }),
       }),
-    new RegExp(`Archive missing required entry: ${REQUIRED_ARCHIVE_ENTRIES[3].replace('.', '\\.')}`)
+    /Archive missing required entry: scripts/
   );
 });
 
@@ -276,18 +306,20 @@ test('pack extension: validateArchiveEntries should accept nested required paths
 Archive:  /tmp/extension.zip
   Length      Date    Time    Name
 ---------  ---------- -----   ----
-      123  2026-04-16 00:00   dist/options.html
       123  2026-04-16 00:00   manifest.json
-      456  2026-04-16 00:00   data/cet4.json
-       17  2026-04-16 00:00   styles.css
        32  2026-04-16 00:00   background.js
        64  2026-04-16 00:00   contentScript.js
+      456  2026-04-16 00:00   scripts/danmaku.js
+       17  2026-04-16 00:00   styles.css
+      123  2026-04-16 00:00   dist/options.html
+      456  2026-04-16 00:00   data/cet4.json
 ---------                     -------
 `,
     }),
   });
 
   assert.ok(entries.includes('data/cet4.json'));
+  assert.ok(entries.includes('scripts/danmaku.js'));
 });
 
 test('pack extension: shouldRetryWindowsPack should match lock-related errors', () => {

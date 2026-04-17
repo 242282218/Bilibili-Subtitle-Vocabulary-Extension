@@ -8,14 +8,13 @@ const projectRoot = path.resolve(__dirname, '..');
 const testsDir = path.join(projectRoot, 'tests');
 
 const uiTestPatterns = [
-  /^react-ui-.*\.test\.js$/,
-  /^react-overlay-.*\.test\.js$/,
-  /^popup(?:-.*)?\.test\.js$/,
-  /^settings(?:-.*)?\.test\.js$/,
-  /^overlay-panel(?:-.*)?\.test\.js$/,
   /^background-overlay(?:-.*)?\.test\.js$/,
   /^contentScript-overlay-loader\.test\.js$/,
-  /^shared-settings(?:-integration)?\.test\.js$/,
+  /^overlay-panel(?:-.*)?\.test\.js$/,
+  /^react-overlay-.*\.test\.js$/,
+  /^react-ui-.*\.test\.js$/,
+  /^settings-layout\.test\.js$/,
+  /^test-ui-entry-contract\.test\.js$/,
 ];
 
 function collectUiTestFiles(targetTestsDir = testsDir) {

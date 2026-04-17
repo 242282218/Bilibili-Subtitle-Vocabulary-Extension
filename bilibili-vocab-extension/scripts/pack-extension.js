@@ -4,14 +4,15 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
 const DEFAULT_OUTPUT_NAME = 'extension.zip';
-const DEFAULT_INCLUDE_GLOBS = ['*.js', '*.html'];
+const DEFAULT_INCLUDE_GLOBS = [];
 const FIXED_INCLUDE_PATHS = [
-  'dist',
   'manifest.json',
-  'data',
-  'styles.css',
   'background.js',
   'contentScript.js',
+  'styles.css',
+  'scripts',
+  'dist',
+  'data',
 ];
 const WIN_ARCHIVE_SCRIPT_FILE = 'pack-extension.ps1';
 const REQUIRED_ARCHIVE_ENTRIES = FIXED_INCLUDE_PATHS.slice();
@@ -45,7 +46,8 @@ function resolveGlobMatches(rootDir, patterns = DEFAULT_INCLUDE_GLOBS) {
 }
 
 function collectPackEntries(rootDir, options = {}) {
-  const fixedPaths = options.fixedPaths || FIXED_INCLUDE_PATHS;
+  const fixedPaths =
+    options.fixedPaths || collectManifestPackEntries(rootDir, options.manifestFile);
   const requiredFixedPaths = options.requiredFixedPaths || fixedPaths;
   const globPatterns = options.globPatterns || DEFAULT_INCLUDE_GLOBS;
   const entries = [];
@@ -80,6 +82,74 @@ function normalizeOutputZipPath(rootDir, outputZip) {
 
 function normalizeArchivePathForCheck(entryPath) {
   return entryPath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, '');
+}
+
+function readManifest(rootDir, manifestFile = 'manifest.json') {
+  const manifestPath = path.resolve(rootDir, manifestFile);
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(`Pack entry missing required path: ${manifestFile}`);
+  }
+
+  const raw = fs.readFileSync(manifestPath, 'utf8').replace(/^\uFEFF/, '');
+  return JSON.parse(raw);
+}
+
+function collectManifestEntry(entries, rawPath) {
+  const normalizedPath = normalizeArchivePathForCheck(String(rawPath || '').trim());
+  if (!normalizedPath) {
+    return;
+  }
+
+  const normalizedEntry =
+    normalizedPath.includes('*') || normalizedPath.includes('/')
+      ? normalizedPath.split('/')[0]
+      : normalizedPath;
+  if (normalizedEntry && !entries.includes(normalizedEntry)) {
+    entries.push(normalizedEntry);
+  }
+}
+
+function collectManifestPathValues(entries, value) {
+  if (typeof value === 'string') {
+    collectManifestEntry(entries, value);
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectManifestPathValues(entries, item));
+    return;
+  }
+
+  if (value && typeof value === 'object') {
+    Object.values(value).forEach((item) => collectManifestPathValues(entries, item));
+  }
+}
+
+function collectManifestPackEntries(rootDir, manifestFile = 'manifest.json') {
+  const manifest = readManifest(rootDir, manifestFile);
+  const entries = ['manifest.json'];
+
+  collectManifestPathValues(entries, manifest.background && manifest.background.service_worker);
+
+  const contentScripts = Array.isArray(manifest.content_scripts) ? manifest.content_scripts : [];
+  contentScripts.forEach((script) => {
+    collectManifestPathValues(entries, script && script.js);
+    collectManifestPathValues(entries, script && script.css);
+  });
+
+  collectManifestPathValues(entries, manifest.options_page);
+  collectManifestPathValues(entries, manifest.action && manifest.action.default_popup);
+  collectManifestPathValues(entries, manifest.action && manifest.action.default_icon);
+  collectManifestPathValues(entries, manifest.icons);
+
+  const webAccessibleResources = Array.isArray(manifest.web_accessible_resources)
+    ? manifest.web_accessible_resources
+    : [];
+  webAccessibleResources.forEach((item) => {
+    collectManifestPathValues(entries, item && item.resources);
+  });
+
+  return entries;
 }
 
 function parseZipEntryList(stdoutText) {
@@ -304,7 +374,7 @@ function runPack(options = {}) {
     const archiveEntries = validateArchiveEntries(outputZipPath, {
       platform: options.platform,
       runner: inspectorRunner,
-      requiredEntries: options.requiredEntries,
+      requiredEntries: options.requiredEntries || entries,
     });
 
     return {
