@@ -110,11 +110,18 @@ export async function writeStorage(payload: Record<string, unknown>): Promise<vo
 export async function loadOverlaySettingsV3(): Promise<SettingsV3> {
   return enqueueStorageMutation(async () => {
     const allPayload = await readStorage<Record<string, unknown>>(null);
-    const settingsV3 = normalizeSettingsV3(migrateToV3(allPayload));
+    const migratedSettings = normalizeSettingsV3(migrateToV3(allPayload));
+    const currentPayload = await readStorage<Record<string, unknown>>([SETTINGS_STORAGE_KEY_V3]);
+    const currentStoredSettings = currentPayload[SETTINGS_STORAGE_KEY_V3];
+
+    if (currentStoredSettings != null) {
+      return normalizeSettingsV3(currentStoredSettings);
+    }
+
     await writeStorage({
-      [SETTINGS_STORAGE_KEY_V3]: settingsV3,
+      [SETTINGS_STORAGE_KEY_V3]: migratedSettings,
     });
-    return settingsV3;
+    return migratedSettings;
   });
 }
 

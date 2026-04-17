@@ -1,16 +1,16 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test = require('node:test');
+const assert = require('node:assert/strict');
 
 class MockElement {
-  constructor(tagName = "div") {
-    this.tagName = String(tagName || "div").toUpperCase();
+  constructor(tagName = 'div') {
+    this.tagName = String(tagName || 'div').toUpperCase();
     this.children = [];
     this.style = {};
     this.parentElement = null;
-    this.className = "";
-    this.id = "";
-    this.textContent = "";
-    this._innerHTML = "";
+    this.className = '';
+    this.id = '';
+    this.textContent = '';
+    this._innerHTML = '';
     this.listeners = new Map();
   }
 
@@ -30,7 +30,7 @@ class MockElement {
   }
 
   querySelector(selector) {
-    if (!selector || selector[0] !== "#") {
+    if (!selector || selector[0] !== '#') {
       return null;
     }
 
@@ -44,7 +44,7 @@ class MockElement {
     }
 
     for (const child of this.children) {
-      if (typeof child.findById === "function") {
+      if (typeof child.findById === 'function') {
         const match = child.findById(id);
         if (match) {
           return match;
@@ -78,8 +78,8 @@ class MockElement {
   }
 
   set innerHTML(value) {
-    this._innerHTML = String(value || "");
-    if (this._innerHTML === "") {
+    this._innerHTML = String(value || '');
+    if (this._innerHTML === '') {
       this.children.forEach((child) => {
         child.parentElement = null;
       });
@@ -95,20 +95,20 @@ class MockElement {
 global.HTMLElement = MockElement;
 global.HTMLVideoElement = class MockVideoElement extends MockElement {};
 
-const host = new MockElement("div");
+const host = new MockElement('div');
 
 global.document = {
-  documentElement: new MockElement("html"),
+  documentElement: new MockElement('html'),
   createElement(tagName) {
     return new MockElement(tagName);
   },
   querySelector(selector) {
-    if (selector === ".bpx-player-video-wrap") {
+    if (selector === '.bpx-player-video-wrap') {
       return host;
     }
 
     return null;
-  }
+  },
 };
 
 global.MutationObserver = class MockMutationObserver {
@@ -122,11 +122,11 @@ global.requestAnimationFrame = (callback) => {
   return 1;
 };
 
-global.getComputedStyle = () => ({ position: "relative" });
+global.getComputedStyle = () => ({ position: 'relative' });
 
-const danmaku = require("../scripts/danmaku.js");
+const danmaku = require('../scripts/danmaku.js');
 
-test("shootWordDanmaku: should drop the frame when all tracks are cooling down", () => {
+test('shootWordDanmaku: should drop the frame when all tracks are cooling down', () => {
   const originalNow = Date.now;
   Date.now = () => 1000;
   danmaku.clearDanmaku();
@@ -135,15 +135,15 @@ test("shootWordDanmaku: should drop the frame when all tracks are cooling down",
     for (let index = 0; index < 10; index += 1) {
       const result = danmaku.shootWordDanmaku({
         word: `word-${index}`,
-        translation: "测试"
+        translation: '测试',
       });
 
       assert.equal(result, true);
     }
 
     const overflow = danmaku.shootWordDanmaku({
-      word: "overflow",
-      translation: "测试"
+      word: 'overflow',
+      translation: '测试',
     });
 
     assert.equal(overflow, false);
@@ -153,7 +153,7 @@ test("shootWordDanmaku: should drop the frame when all tracks are cooling down",
   }
 });
 
-test("shootWordDanmaku: should reuse a track only after the previous danmaku leaves the screen", () => {
+test('shootWordDanmaku: should reuse a track only after the previous danmaku leaves the screen', () => {
   const originalNow = Date.now;
   Date.now = () => 1000;
   danmaku.clearDanmaku();
@@ -163,7 +163,7 @@ test("shootWordDanmaku: should reuse a track only after the previous danmaku lea
       assert.equal(
         danmaku.shootWordDanmaku({
           word: `word-${index}`,
-          translation: "test"
+          translation: 'test',
         }),
         true
       );
@@ -176,18 +176,18 @@ test("shootWordDanmaku: should reuse a track only after the previous danmaku lea
 
     assert.equal(
       danmaku.shootWordDanmaku({
-        word: "blocked",
-        translation: "test"
+        word: 'blocked',
+        translation: 'test',
       }),
       false
     );
 
-    firstNode.dispatchEvent("transitionend");
+    firstNode.dispatchEvent('transitionend');
 
     assert.equal(
       danmaku.shootWordDanmaku({
-        word: "reused",
-        translation: "test"
+        word: 'reused',
+        translation: 'test',
       }),
       true
     );
@@ -197,15 +197,15 @@ test("shootWordDanmaku: should reuse a track only after the previous danmaku lea
   }
 });
 
-test("setSpeedPreset: should apply preset duration to newly fired danmaku", () => {
+test('setSpeedPreset: should apply preset duration to newly fired danmaku', () => {
   danmaku.clearDanmaku();
 
   try {
-    danmaku.setSpeedPreset("fast");
+    danmaku.setSpeedPreset('fast');
     assert.equal(
       danmaku.shootWordDanmaku({
-        word: "fast-word",
-        translation: "test"
+        word: 'fast-word',
+        translation: 'test',
       }),
       true
     );
@@ -216,11 +216,11 @@ test("setSpeedPreset: should apply preset duration to newly fired danmaku", () =
     assert.equal(node.style.transition, `transform ${danmaku.getFlyDurationMs()}ms linear`);
 
     danmaku.clearDanmaku();
-    danmaku.setSpeedPreset("slow");
+    danmaku.setSpeedPreset('slow');
     assert.equal(
       danmaku.shootWordDanmaku({
-        word: "slow-word",
-        translation: "test"
+        word: 'slow-word',
+        translation: 'test',
       }),
       true
     );
@@ -229,7 +229,7 @@ test("setSpeedPreset: should apply preset duration to newly fired danmaku", () =
     node = container.children[container.children.length - 1];
     assert.equal(node.style.transition, `transform ${danmaku.getFlyDurationMs()}ms linear`);
   } finally {
-    danmaku.setSpeedPreset("normal");
+    danmaku.setSpeedPreset('normal');
     danmaku.clearDanmaku();
   }
 });

@@ -12,7 +12,7 @@
     "refresh:overlay-baseline": "node scripts/refresh-overlay-size-baseline.js",
     "lint": "eslint . --ext js,cjs,mjs,ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "node --test tests/*.test.js",
-    "test:ui": "vitest run --root .",
+    "test:ui": "node scripts/run-ui-tests.js",
     "test:coverage": "node --test --experimental-test-coverage tests/*.test.js",
     "pack": "node scripts/pack-extension.js"
   },

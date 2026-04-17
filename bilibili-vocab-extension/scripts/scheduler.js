@@ -4,7 +4,9 @@
   const MAX_COOLDOWN_QUEUE_LENGTH = 60;
 
   function normalizeWordKey(word) {
-    return String(word || "").trim().toLowerCase();
+    return String(word || '')
+      .trim()
+      .toLowerCase();
   }
 
   function computeWordWeight(wordObj) {
@@ -13,14 +15,14 @@
   }
 
   function sanitizeChineseText(text) {
-    return String(text || "")
-      .replace(/[\p{P}\p{S}\s]+/gu, "")
-      .replace(/[a-zA-Z0-9]+/g, "")
+    return String(text || '')
+      .replace(/[\p{P}\p{S}\s]+/gu, '')
+      .replace(/[a-zA-Z0-9]+/g, '')
       .trim();
   }
 
   function getChineseCharSet(text) {
-    return new Set(sanitizeChineseText(text).split("").filter(Boolean));
+    return new Set(sanitizeChineseText(text).split('').filter(Boolean));
   }
 
   function computeChineseJaccard(a, b) {
@@ -47,8 +49,8 @@
   }
 
   function levenshteinDistance(left, right) {
-    const a = String(left || "");
-    const b = String(right || "");
+    const a = String(left || '');
+    const b = String(right || '');
 
     if (!a) {
       return b.length;
@@ -84,8 +86,12 @@
   }
 
   function isNearSpelling(seedWord, candidateWord) {
-    const seed = String(seedWord || "").trim().toLowerCase();
-    const candidate = String(candidateWord || "").trim().toLowerCase();
+    const seed = String(seedWord || '')
+      .trim()
+      .toLowerCase();
+    const candidate = String(candidateWord || '')
+      .trim()
+      .toLowerCase();
 
     if (!seed || !candidate || seed === candidate) {
       return false;
@@ -143,7 +149,7 @@
     const weighted = candidates.map((item) => {
       return {
         item,
-        weight: computeWordWeight(item)
+        weight: computeWordWeight(item),
       };
     });
 
@@ -152,7 +158,7 @@
       return weighted[0].item;
     }
 
-    const random = typeof randomFn === "function" ? randomFn : Math.random;
+    const random = typeof randomFn === 'function' ? randomFn : Math.random;
     let cursor = random() * totalWeight;
 
     for (let i = 0; i < weighted.length; i += 1) {
@@ -170,8 +176,8 @@
       return [];
     }
 
-    const seedWord = String(seedWordObj.word || "").trim();
-    const seedTranslation = seedWordObj.translation || seedWordObj.meaning || "";
+    const seedWord = String(seedWordObj.word || '').trim();
+    const seedTranslation = seedWordObj.translation || seedWordObj.meaning || '';
     const cooldown = cooldownSet instanceof Set ? cooldownSet : new Set();
     const candidates = Array.isArray(pool) ? pool : [];
 
@@ -193,7 +199,7 @@
       }
 
       const nearSpelling = isNearSpelling(seedWord, candidate.word);
-      const translation = candidate.translation || candidate.meaning || "";
+      const translation = candidate.translation || candidate.meaning || '';
       const nearTranslation = isTranslationSimilar(seedTranslation, translation);
 
       if (nearSpelling) {
@@ -226,12 +232,12 @@
     const config = options || {};
 
     const getVocabularyWords =
-      typeof config.getVocabularyWords === "function"
+      typeof config.getVocabularyWords === 'function'
         ? config.getVocabularyWords
         : () => {
             if (
               globalScope.VocabularyModule &&
-              typeof globalScope.VocabularyModule.getEncounteredWords === "function"
+              typeof globalScope.VocabularyModule.getEncounteredWords === 'function'
             ) {
               return globalScope.VocabularyModule.getEncounteredWords();
             }
@@ -239,12 +245,12 @@
           };
 
     const shootDanmaku =
-      typeof config.shootDanmaku === "function"
+      typeof config.shootDanmaku === 'function'
         ? config.shootDanmaku
         : (wordObj, isAssociated) => {
             if (
               globalScope.DanmakuModule &&
-              typeof globalScope.DanmakuModule.shootWordDanmaku === "function"
+              typeof globalScope.DanmakuModule.shootWordDanmaku === 'function'
             ) {
               return globalScope.DanmakuModule.shootWordDanmaku(wordObj, isAssociated);
             }
@@ -257,7 +263,10 @@
     const associatedQueue = [];
 
     function enqueueAssociatedCluster(seedWordObj, pool, cooldownSet) {
-      const cluster = buildAssociationCluster(seedWordObj, pool, cooldownSet).slice(0, MAX_ASSOCIATED_PER_CLUSTER);
+      const cluster = buildAssociationCluster(seedWordObj, pool, cooldownSet).slice(
+        0,
+        MAX_ASSOCIATED_PER_CLUSTER
+      );
       cluster.forEach((item) => associatedQueue.push(item));
     }
 
@@ -343,7 +352,7 @@
       tick,
       isRunning() {
         return Boolean(timer);
-      }
+      },
     };
   }
 
@@ -365,12 +374,12 @@
     resumeEngine: () => defaultEngine.resume(),
     stopEngine: () => defaultEngine.stop(),
     isRunning: () => defaultEngine.isRunning(),
-    __tick: () => defaultEngine.tick()
+    __tick: () => defaultEngine.tick(),
   };
 
   globalScope.SchedulerModule = api;
 
-  if (typeof module !== "undefined" && module.exports) {
+  if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
   }
-})(typeof globalThis !== "undefined" ? globalThis : window);
+})(typeof globalThis !== 'undefined' ? globalThis : window);

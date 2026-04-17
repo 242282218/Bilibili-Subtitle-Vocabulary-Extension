@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
@@ -6,82 +6,235 @@
     <title>Bilibili Vocabulary</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body class="popup-body">
-    <div class="popup-wrap">
-      <h1>Bilibili Vocabulary</h1>
+  <body class="popup-body hub-page hub-page--popup">
+    <div class="hub-page hub-page--popup">
+    <main class="hub-popup-shell">
+      <header class="hub-popup-topbar">
+        <div>
+          <div class="hub-kicker">Quick Settings</div>
+          <h1 class="hub-title hub-title--popup">Bilibili Vocabulary</h1>
+          <p class="hub-subtitle hub-subtitle--popup">参考 all-api-hub 的小型控制台布局，把常用开关集中在一个紧凑面板里。</p>
+        </div>
+        <span id="enabledStateBadge" class="state-badge state-badge--off">未启用</span>
+      </header>
 
-      <div class="popup-field">
-        <label class="popup-inline">
-          <input id="enabled" type="checkbox" />
-          启用字幕词汇替换
+      <section class="hub-panel hub-panel--highlight">
+        <div class="hub-metric-strip">
+          <div class="hub-mini-stat">
+            <span class="hub-mini-stat__label">替换强度</span>
+            <strong id="replaceRatioHeroValue">20%</strong>
+            <span class="hero-metric__meta">均衡曝光</span>
+          </div>
+          <div class="hub-mini-stat">
+            <span class="hub-mini-stat__label">目标难度</span>
+            <strong id="targetCefrHeroValue">B2</strong>
+            <span class="hero-metric__meta">渐进提升</span>
+          </div>
+          <div class="hub-mini-stat">
+            <span class="hub-mini-stat__label">单句上限</span>
+            <strong id="maxReplaceHeroValue">2 词</strong>
+            <span class="hero-metric__meta">低干扰节奏</span>
+          </div>
+        </div>
+
+        <div id="settingsPreview" class="hub-callout hub-callout--compact">当前会在每句字幕中替换约 20% 的词汇，单句最多 2 个词，聚焦 B2 难度。</div>
+
+        <div class="hub-preview-card hub-preview-card--compact">
+          <div class="hub-preview-card__head">
+            <span class="hub-preview-card__label">学习预览</span>
+            <span id="previewModeTag" class="learning-preview-card__tag">均衡模式</span>
+          </div>
+          <div class="hub-preview-card__line hub-preview-card__line--source">原句：我今天想系统提升英语听力和词汇反应速度。</div>
+          <div id="mockSubtitlePreview" class="hub-preview-card__line hub-preview-card__line--result">预览：我今天想 system 提升英语 listening 和词汇反应速度。</div>
+          <div id="previewCaption" class="hub-preview-card__caption">当前配置会保持理解优先，同时提供稳定的词汇曝光。</div>
+        </div>
+      </section>
+
+      <section class="hub-panel hub-panel--highlight">
+        <div class="hub-panel__header">
+          <div>
+            <div class="hub-panel__title">今日回顾</div>
+            <div class="hub-panel__desc">把今天命中的词汇快速过一遍，形成最小复习闭环。</div>
+          </div>
+          <span id="reviewCountToday" class="hub-pill">今日待复习 0</span>
+        </div>
+        <div class="hub-quick-grid">
+          <div class="hub-inline-note">
+            <div class="hub-inline-note__title">新词</div>
+            <div id="reviewNewWords" class="hub-inline-note__text">0</div>
+          </div>
+          <div class="hub-inline-note">
+            <div class="hub-inline-note__title">已掌握</div>
+            <div id="reviewMasteredWords" class="hub-inline-note__text">0</div>
+          </div>
+        </div>
+        <div class="hub-preview-card hub-preview-card--compact">
+          <div class="hub-preview-card__head">
+            <span class="hub-preview-card__label">快速回顾</span>
+            <button id="quickReviewButton" class="secondary-button" type="button">开始回顾</button>
+          </div>
+          <div id="quickReviewWord" class="hub-preview-card__line hub-preview-card__line--result">当前没有待复习词</div>
+          <div id="quickReviewMeta" class="hub-preview-card__line hub-preview-card__line--source">继续观看带字幕的视频后，这里会出现本轮优先回顾词。</div>
+          <div id="quickReviewDescription" class="hub-preview-card__caption">点击“开始回顾”后，可以快速标记认识、模糊或不认识。</div>
+          <div class="action-row">
+            <button id="reviewActionKnow" class="primary-button" type="button">认识</button>
+            <button id="reviewActionFuzzy" class="secondary-button" type="button">模糊</button>
+            <button id="reviewActionForgot" class="secondary-button" type="button">不认识</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="hub-panel">
+        <div class="hub-panel__header">
+          <div>
+            <div class="hub-panel__title">快捷控制</div>
+            <div class="hub-panel__desc">播放前快速微调最常用的几个参数。</div>
+          </div>
+        </div>
+
+        <label class="hub-switch-card" for="enabled">
+          <div>
+            <div class="hub-field__title">启用字幕词汇替换</div>
+            <div class="hub-field__hint">在原字幕里插入英文词，增加记忆曝光但尽量不打断观看。</div>
+          </div>
+          <div class="switch control-switch">
+            <input id="enabled" type="checkbox" />
+            <span class="switch-slider"></span>
+          </div>
         </label>
-      </div>
 
-      <div class="popup-field">
-        <label class="popup-field-title" for="replaceRatio">替换比例 (0.1 - 0.3)</label>
-        <div class="popup-inline">
+        <label class="hub-switch-card" for="webPageEnabled">
+          <div>
+            <div class="hub-field__title">启用网页正文模式</div>
+            <div class="hub-field__hint">在普通网页正文里做低干扰词汇替换，更接近 Toucan 的阅读学习体验。</div>
+          </div>
+          <div class="switch control-switch">
+            <input id="webPageEnabled" type="checkbox" />
+            <span class="switch-slider"></span>
+          </div>
+        </label>
+
+        <div class="hub-inline-note">
+          <div class="hub-inline-note__title">站点范围</div>
+          <div id="siteScopeHint" class="hub-inline-note__text">当前站点：识别中...</div>
+          <button id="siteToggleButton" class="secondary-button" type="button">暂停当前站点</button>
+        </div>
+
+        <div class="hub-field">
+          <div class="hub-field__head">
+            <label class="hub-field__title" for="replaceRatio">替换比例</label>
+            <span id="replaceRatioValue" class="field-value-pill">0.20</span>
+          </div>
           <input id="replaceRatio" type="range" min="0.1" max="0.3" step="0.05" />
-          <span id="replaceRatioValue">0.20</span>
         </div>
-      </div>
 
-      <div class="popup-field">
-        <label class="popup-field-title" for="maxReplaceCount">单句替换上限 (1 - 5)</label>
-        <input id="maxReplaceCount" type="number" min="1" max="5" step="1" />
-      </div>
-
-      <div class="popup-field">
-        <label class="popup-field-title" for="targetCefr">目标 CEFR 难度</label>
-        <select id="targetCefr">
-          <option value="A1">A1</option>
-          <option value="A2">A2</option>
-          <option value="B1">B1</option>
-          <option value="B2" selected>B2</option>
-          <option value="C1">C1</option>
-          <option value="C2">C2</option>
-        </select>
-      </div>
-
-      <div class="popup-field">
-        <span class="popup-field-title">激活等级</span>
-        <div class="popup-levels">
-          <label><input type="checkbox" name="activeLevels" value="CET4" /> CET4</label>
-          <label><input type="checkbox" name="activeLevels" value="CET6" /> CET6</label>
-          <label><input type="checkbox" name="activeLevels" value="KAOYAN" /> 考研</label>
-          <label><input type="checkbox" name="activeLevels" value="IELTS" /> IELTS</label>
-          <label><input type="checkbox" name="activeLevels" value="TOEFL" /> TOEFL</label>
+        <div class="hub-quick-grid">
+          <div class="hub-field">
+            <label class="hub-field__title" for="maxReplaceCount">单句上限</label>
+            <input id="maxReplaceCount" type="number" min="1" max="5" step="1" />
+          </div>
+          <div class="hub-field">
+            <label class="hub-field__title" for="targetCefr">目标 CEFR</label>
+            <select id="targetCefr">
+              <option value="A1">A1</option>
+              <option value="A2">A2</option>
+              <option value="B1">B1</option>
+              <option value="B2" selected>B2</option>
+              <option value="C1">C1</option>
+              <option value="C2">C2</option>
+            </select>
+          </div>
         </div>
-      </div>
 
-      <button id="saveButton" type="button">保存字幕设置</button>
-      <div id="status"></div>
-
-      <div class="popup-review">
-        <div class="popup-review-meta">
-          <span class="popup-field-title">复习弹幕</span>
-          <span id="reviewDanmakuState" class="popup-review-state">未启动</span>
+        <div class="hub-field">
+          <div class="hub-field__head">
+            <span class="hub-field__title">激活词库</span>
+            <span id="levelsSummary" class="hub-pill hub-pill--ghost">已选择 5 个词库</span>
+          </div>
+          <div class="popup-levels popup-levels--chips hub-chip-grid">
+            <label class="choice-chip"><input type="checkbox" name="activeLevels" value="CET4" /> <span>CET4</span></label>
+            <label class="choice-chip"><input type="checkbox" name="activeLevels" value="CET6" /> <span>CET6</span></label>
+            <label class="choice-chip"><input type="checkbox" name="activeLevels" value="KAOYAN" /> <span>考研</span></label>
+            <label class="choice-chip"><input type="checkbox" name="activeLevels" value="IELTS" /> <span>IELTS</span></label>
+            <label class="choice-chip"><input type="checkbox" name="activeLevels" value="TOEFL" /> <span>TOEFL</span></label>
+          </div>
         </div>
-        <div class="popup-field">
-          <label class="popup-field-title" for="reviewDanmakuSpeed">弹幕速度</label>
-          <select id="reviewDanmakuSpeed">
-            <option value="slow">慢</option>
-            <option value="normal" selected>标准</option>
-            <option value="fast">快</option>
-          </select>
-        </div>
-        <button id="reviewDanmakuButton" class="popup-review-button" type="button">启动复习弹幕</button>
-      </div>
 
-      <div class="popup-ranking">
+        <div class="hub-quick-grid">
+          <div class="hub-field">
+            <label class="hub-field__title" for="vocabularyMode">词库模式</label>
+            <select id="vocabularyMode">
+              <option value="core" selected>核心高频</option>
+              <option value="full">全量扩展</option>
+            </select>
+          </div>
+          <div class="hub-field">
+            <label class="hub-field__title" for="examPreference">筛选策略</label>
+            <select id="examPreference">
+              <option value="balanced" selected>均衡筛选</option>
+              <option value="exam-first">考试优先</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button id="saveButton" class="primary-button" type="button">保存字幕设置</button>
+          <button id="openOptionsButton" class="secondary-button" type="button">完整设置</button>
+        </div>
+        <div id="status" class="status-line"></div>
+        <div id="toast" class="toast-message" aria-live="polite"></div>
+      </section>
+
+      <section class="hub-panel">
+        <div class="hub-panel__header">
+          <div>
+            <div class="hub-panel__title">复习弹幕</div>
+            <div class="hub-panel__desc">把最近命中的词循环强化，形成轻量复习闭环。</div>
+          </div>
+          <span id="reviewDanmakuState" class="hub-pill hub-pill--ghost">未启动</span>
+        </div>
+
+        <div class="hub-quick-grid">
+          <div class="hub-field">
+            <label class="hub-field__title" for="reviewDanmakuSpeed">弹幕速度</label>
+            <select id="reviewDanmakuSpeed">
+              <option value="slow">慢</option>
+              <option value="normal" selected>标准</option>
+              <option value="fast">快</option>
+            </select>
+          </div>
+          <div class="hub-inline-note">
+            <div class="hub-inline-note__title">推荐场景</div>
+            <div id="reviewModeHint" class="hub-inline-note__text">当前适合标准节奏复习，兼顾理解和曝光频率。</div>
+          </div>
+        </div>
+
+        <button id="reviewDanmakuButton" class="primary-button primary-button--wide" type="button">启动复习弹幕</button>
+      </section>
+
+      <section class="hub-panel">
+        <div class="hub-panel__header">
+          <div>
+            <div class="hub-panel__title">本轮词汇排行</div>
+            <div class="hub-panel__desc">查看近期高频命中或急需巩固的词。</div>
+          </div>
+          <span id="rankingSummary" class="hub-pill hub-pill--ghost">等待数据</span>
+        </div>
+
         <div class="popup-ranking-tabs">
-          <button class="popup-ranking-tab is-active" type="button" data-sort="asc">急需巩固 ↑</button>
-          <button class="popup-ranking-tab" type="button" data-sort="desc">高频生词 ↓</button>
+          <button class="popup-ranking-tab is-active" type="button" data-sort="asc">急需巩固</button>
+          <button class="popup-ranking-tab" type="button" data-sort="desc">高频生词</button>
         </div>
         <ul id="rankingList" class="popup-ranking-list"></ul>
-        <div id="rankingEmpty" class="popup-ranking-empty">暂无命中词汇</div>
-      </div>
+        <div id="rankingEmpty" class="popup-ranking-empty">还没有收集到命中词汇，先去看一段带字幕的视频吧。</div>
+      </section>
+    </main>
     </div>
 
+    <script src="settingsUiStateMachine.js"></script>
+    <script src="sharedSettings.js"></script>
+    <script src="adaptiveTuning.js"></script>
+    <script src="learningState.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

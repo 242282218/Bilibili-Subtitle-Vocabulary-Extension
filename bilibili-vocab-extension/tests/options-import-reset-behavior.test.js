@@ -1,21 +1,21 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const path = require("node:path");
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
 
 function createClassList() {
   return {
     add() {},
     remove() {},
-    toggle() {}
+    toggle() {},
   };
 }
 
 function createElementStub() {
   return {
     checked: false,
-    value: "",
-    textContent: "",
-    innerHTML: "",
+    value: '',
+    textContent: '',
+    innerHTML: '',
     dataset: {},
     classList: createClassList(),
     style: {},
@@ -26,16 +26,16 @@ function createElementStub() {
     removeChild() {},
     querySelector() {
       return null;
-    }
+    },
   };
 }
 
 function createDocumentStub() {
   const nodes = new Map();
-  const activeLevelNodes = ["CET4", "CET6", "KAOYAN", "IELTS", "TOEFL"].map((value) => ({
+  const activeLevelNodes = ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL'].map((value) => ({
     value,
-    checked: value === "CET4" || value === "CET6",
-    addEventListener() {}
+    checked: value === 'CET4' || value === 'CET6',
+    addEventListener() {},
   }));
   let lastFileInput = null;
 
@@ -47,39 +47,39 @@ function createDocumentStub() {
   };
 
   const documentStub = {
-    readyState: "loading",
+    readyState: 'loading',
     body: {
       classList: createClassList(),
       dataset: {},
       appendChild() {},
-      removeChild() {}
+      removeChild() {},
     },
     addEventListener() {},
     getElementById(id) {
       return getNode(id);
     },
     querySelectorAll(selector) {
-      if (selector === ".hero-metric__meta") {
+      if (selector === '.hero-metric__meta') {
         return [createElementStub(), createElementStub(), createElementStub()];
       }
-      if (selector === ".hub-scenario-card") {
+      if (selector === '.hub-scenario-card') {
         return [];
       }
       if (selector === 'input[name="activeLevels"]') {
         return activeLevelNodes;
       }
-      if (selector === ".hub-reveal-target") {
+      if (selector === '.hub-reveal-target') {
         return [];
       }
       return [];
     },
     createElement(tagName) {
-      if (tagName === "input") {
+      if (tagName === 'input') {
         lastFileInput = {
-          type: "",
-          accept: "",
+          type: '',
+          accept: '',
           onchange: null,
-          click() {}
+          click() {},
         };
         return lastFileInput;
       }
@@ -91,7 +91,7 @@ function createDocumentStub() {
     },
     __getNode(id) {
       return getNode(id);
-    }
+    },
   };
 
   return documentStub;
@@ -113,10 +113,10 @@ function createChromeStorageStub(storageState) {
             return;
           }
 
-          if (keysOrDefaults && typeof keysOrDefaults === "object") {
+          if (keysOrDefaults && typeof keysOrDefaults === 'object') {
             callback({
               ...keysOrDefaults,
-              ...storageState
+              ...storageState,
             });
             return;
           }
@@ -125,19 +125,19 @@ function createChromeStorageStub(storageState) {
         },
         set(payload, callback) {
           Object.assign(storageState, payload);
-          if (typeof callback === "function") {
+          if (typeof callback === 'function') {
             callback();
           }
-        }
-      }
+        },
+      },
     },
     runtime: {
-      lastError: null
-    }
+      lastError: null,
+    },
   };
 }
 
-test("options import/reset behavior: should persist imported settings and restore defaults", async () => {
+test('options import/reset behavior: should persist imported settings and restore defaults', async () => {
   const previousDocument = global.document;
   const previousChrome = global.chrome;
   const previousConfirm = global.confirm;
@@ -146,14 +146,14 @@ test("options import/reset behavior: should persist imported settings and restor
 
   const documentStub = createDocumentStub();
   const storageState = {};
-  const optionsPath = path.join(__dirname, "..", "options.js");
+  const optionsPath = path.join(__dirname, '..', 'options.js');
 
   try {
     global.document = documentStub;
     global.chrome = createChromeStorageStub(storageState);
     global.confirm = () => true;
     global.setTimeout = (fn) => {
-      if (typeof fn === "function") {
+      if (typeof fn === 'function') {
         fn();
       }
       return 1;
@@ -165,43 +165,46 @@ test("options import/reset behavior: should persist imported settings and restor
 
     options.importSettings();
     const fileInput = documentStub.__getLastFileInput();
-    assert.ok(fileInput, "import should create file input");
-    assert.equal(typeof fileInput.onchange, "function");
+    assert.ok(fileInput, 'import should create file input');
+    assert.equal(typeof fileInput.onchange, 'function');
 
     await fileInput.onchange({
       target: {
-        files: [{
-          text: async () => JSON.stringify({
-            enabled: true,
-            replaceRatio: 0.3,
-            maxReplaceCount: 4,
-            targetCefr: "C1",
-            reviewDanmakuSpeed: "fast",
-            activeLevels: ["IELTS"]
-          })
-        }]
-      }
+        files: [
+          {
+            text: async () =>
+              JSON.stringify({
+                enabled: true,
+                replaceRatio: 0.3,
+                maxReplaceCount: 4,
+                targetCefr: 'C1',
+                reviewDanmakuSpeed: 'fast',
+                activeLevels: ['IELTS'],
+              }),
+          },
+        ],
+      },
     });
 
     assert.equal(storageState.replaceRatio, 0.3);
     assert.equal(storageState.maxReplaceCount, 4);
-    assert.equal(storageState.targetCefr, "C1");
-    assert.equal(storageState.reviewDanmakuSpeed, "fast");
-    assert.deepEqual(storageState.activeLevels, ["IELTS"]);
-    assert.equal(documentStub.__getNode("replaceRatio").value, "0.30");
-    assert.equal(documentStub.__getNode("targetCefr").value, "C1");
-    assert.equal(documentStub.__getNode("reviewDanmakuSpeed").value, "fast");
+    assert.equal(storageState.targetCefr, 'C1');
+    assert.equal(storageState.reviewDanmakuSpeed, 'fast');
+    assert.deepEqual(storageState.activeLevels, ['IELTS']);
+    assert.equal(documentStub.__getNode('replaceRatio').value, '0.30');
+    assert.equal(documentStub.__getNode('targetCefr').value, 'C1');
+    assert.equal(documentStub.__getNode('reviewDanmakuSpeed').value, 'fast');
 
     await options.resetSettings();
 
     assert.equal(storageState.replaceRatio, 0.2);
     assert.equal(storageState.maxReplaceCount, 2);
-    assert.equal(storageState.targetCefr, "B2");
-    assert.equal(storageState.reviewDanmakuSpeed, "normal");
-    assert.deepEqual(storageState.activeLevels, ["CET4", "CET6", "KAOYAN", "IELTS", "TOEFL"]);
-    assert.equal(documentStub.__getNode("replaceRatio").value, "0.20");
-    assert.equal(documentStub.__getNode("targetCefr").value, "B2");
-    assert.equal(documentStub.__getNode("reviewDanmakuSpeed").value, "normal");
+    assert.equal(storageState.targetCefr, 'B2');
+    assert.equal(storageState.reviewDanmakuSpeed, 'normal');
+    assert.deepEqual(storageState.activeLevels, ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL']);
+    assert.equal(documentStub.__getNode('replaceRatio').value, '0.20');
+    assert.equal(documentStub.__getNode('targetCefr').value, 'B2');
+    assert.equal(documentStub.__getNode('reviewDanmakuSpeed').value, 'normal');
   } finally {
     delete require.cache[require.resolve(optionsPath)];
     global.document = previousDocument;

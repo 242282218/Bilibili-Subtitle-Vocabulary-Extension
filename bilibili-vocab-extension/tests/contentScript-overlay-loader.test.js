@@ -1,5 +1,5 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
+const test = require('node:test');
+const assert = require('node:assert/strict');
 
 const previousDocument = global.document;
 const previousChrome = global.chrome;
@@ -7,35 +7,35 @@ const previousReactOverlayModule = global.ReactOverlayModule;
 const previousOverlayPanelModule = global.OverlayPanelModule;
 
 global.document = {
-  readyState: "loading",
+  readyState: 'loading',
   addEventListener() {},
   querySelector() {
     return null;
   },
-  body: {}
+  body: {},
 };
 
 global.chrome = {
   runtime: {
     getURL() {
-      return "data:text/javascript,export%20function%20mountOverlayPanel(){}";
-    }
+      return 'data:text/javascript,export%20function%20mountOverlayPanel(){}';
+    },
   },
   storage: {
     local: {
       get(_defaults, callback) {
         callback({});
-      }
+      },
     },
     onChanged: {
-      addListener() {}
-    }
-  }
+      addListener() {},
+    },
+  },
 };
 
-const contentScriptPath = require.resolve("../contentScript.js");
+const contentScriptPath = require.resolve('../contentScript.js');
 delete require.cache[contentScriptPath];
-const contentScript = require("../contentScript.js");
+const contentScript = require('../contentScript.js');
 
 test.beforeEach(() => {
   contentScript.__resetOverlayModuleStateForTest();
@@ -43,14 +43,14 @@ test.beforeEach(() => {
   delete global.OverlayPanelModule;
 });
 
-test("loadOverlayModule: should reuse global overlay module without runtime import", async () => {
+test('loadOverlayModule: should reuse global overlay module without runtime import', async () => {
   let getUrlCalls = 0;
   global.chrome.runtime.getURL = () => {
     getUrlCalls += 1;
-    return "data:text/javascript,export%20function%20mountOverlayPanel(){}";
+    return 'data:text/javascript,export%20function%20mountOverlayPanel(){}';
   };
   const sharedModule = {
-    mountOverlayPanel() {}
+    mountOverlayPanel() {},
   };
   global.ReactOverlayModule = sharedModule;
 
@@ -60,7 +60,7 @@ test("loadOverlayModule: should reuse global overlay module without runtime impo
   assert.equal(getUrlCalls, 0);
 });
 
-test("loadOverlayModule: should return null when runtime API is unavailable", async () => {
+test('loadOverlayModule: should return null when runtime API is unavailable', async () => {
   const currentChrome = global.chrome;
   delete global.chrome;
 
@@ -70,26 +70,26 @@ test("loadOverlayModule: should return null when runtime API is unavailable", as
   global.chrome = currentChrome;
 });
 
-test("loadOverlayModule: should cache imported module after first load", async () => {
+test('loadOverlayModule: should cache imported module after first load', async () => {
   let getUrlCalls = 0;
   global.chrome.runtime.getURL = () => {
     getUrlCalls += 1;
-    return "data:text/javascript,export%20function%20mountOverlayPanel(){}";
+    return 'data:text/javascript,export%20function%20mountOverlayPanel(){}';
   };
 
   const firstLoaded = await contentScript.loadOverlayModule();
   const secondLoaded = await contentScript.loadOverlayModule();
 
-  assert.equal(typeof firstLoaded.mountOverlayPanel, "function");
+  assert.equal(typeof firstLoaded.mountOverlayPanel, 'function');
   assert.equal(secondLoaded, firstLoaded);
   assert.equal(getUrlCalls, 1);
 });
 
-test("loadOverlayModule: should retry import when loaded module is invalid", async () => {
+test('loadOverlayModule: should retry import when loaded module is invalid', async () => {
   let getUrlCalls = 0;
   global.chrome.runtime.getURL = () => {
     getUrlCalls += 1;
-    return "data:text/javascript,export%20const%20value=1;";
+    return 'data:text/javascript,export%20const%20value=1;';
   };
 
   const firstLoaded = await contentScript.loadOverlayModule();

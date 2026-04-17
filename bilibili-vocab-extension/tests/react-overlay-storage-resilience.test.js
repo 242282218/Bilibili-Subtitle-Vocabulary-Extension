@@ -178,6 +178,45 @@ test('react overlay storage resilience: readStorage should reject on chrome runt
   await assert.rejects(overlayStorage.readStorage(null), /overlay storage unavailable/);
 });
 
+test('react overlay storage resilience: loadOverlaySettingsV3 should not overwrite newer v3 settings discovered after migration read', async () => {
+  let getCalls = 0;
+  let setCalls = 0;
+  const newerSettings = {
+    schemaVersion: 3,
+    activeProfileId: 'intensive',
+  };
+  const { module: overlayStorage } = createOverlayStorageModule({
+    getImpl({ keys, callback }) {
+      getCalls += 1;
+      if (getCalls === 1) {
+        callback({
+          enabled: true,
+          replaceRatio: 0.2,
+        });
+        return;
+      }
+
+      assert.equal(Array.isArray(keys), true);
+      assert.equal(keys.length, 1);
+      assert.equal(keys[0], SETTINGS_STORAGE_KEY_V3);
+      callback({
+        [SETTINGS_STORAGE_KEY_V3]: newerSettings,
+      });
+    },
+    setImpl({ callback }) {
+      setCalls += 1;
+      if (typeof callback === 'function') {
+        callback();
+      }
+    },
+  });
+
+  const loaded = await overlayStorage.loadOverlaySettingsV3();
+  assert.equal(getCalls, 2);
+  assert.equal(setCalls, 0);
+  assert.deepEqual(loaded, newerSettings);
+});
+
 test('react overlay storage resilience: saveOverlaySettingsV3 should reject on chrome runtime write error', async () => {
   const { module: overlayStorage } = createOverlayStorageModule({
     sendMessageImpl({ callback, runtime }) {

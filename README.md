@@ -15,6 +15,7 @@
    - `pnpm run lint -- --fix`
    - `pnpm run typecheck`
    - `pnpm run test`
+   - `pnpm run test:ui`
 4. 构建扩展产物：`pnpm run build:extension`
 5. 打包发布产物：`pnpm run pack`（输出 `bilibili-vocab-extension/extension.zip`）
 
@@ -35,6 +36,8 @@
 ## 构建后加载说明
 
 - `manifest.json` 已配置 `dist/options.html` 与 `dist/popup.html`。
+- React 源码入口位于 `bilibili-vocab-extension/react-ui/options.html` 与 `bilibili-vocab-extension/react-ui/popup.html`，构建后产物才会落到 `dist/`。
+- 仓库根目录的 `bilibili-vocab-extension/options.html` / `popup.html` 是 legacy 页面，不是当前打包入口。
 - 本地调试前建议先执行一次 `pnpm run build:extension`，确保 `dist/` 下页面与 overlay 产物为最新。
 - 若仅修改内容脚本逻辑（非 React UI），可直接刷新扩展重载验证。
 
@@ -65,6 +68,18 @@
 
 - `Options` 页提供 `轻量输入 / 均衡输入 / 强化曝光` 三档策略预设，点击后会直接填充当前配置档，保存后生效
 - `Options` 与 `Popup` 都会基于当前参数生成实时学习预览，方便在保存前判断替换密度、复习节奏和目标难度
+
+## 自动调优与验收指标
+
+- `Options` 与 `Popup` 都支持开关自动调优；开启后会结合最近反馈自动微调替换比例、单句上限与复习节奏
+- UI 会展示近 7 天的关键指标，包括误替换反馈、自动调优执行次数、手动覆盖次数与开关禁用率
+- 保存后会立即刷新自动调优状态；若状态刷新失败，会保留保存结果并提示重试
+
+## 冲突提示与高风险撤销
+
+- 如果其他页面先改了配置，`Options` / `Popup` 会提示并发冲突，并允许“应用远端版本”或“应用本地版本”
+- 站点级启停等高风险操作会生成 6 秒撤销窗口，避免误关当前站点后只能手动找回
+- 保存状态栏会同时显示状态码与建议文案，方便快速定位是保存成功、保留本地编辑，还是外部冲突
 
 ## 网页模式行为
 

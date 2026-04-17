@@ -2,59 +2,59 @@
   const SCHEMA_VERSION = 2;
   const LEVELS = Array.isArray(globalScope.Config && globalScope.Config.LEVELS)
     ? globalScope.Config.LEVELS.slice()
-    : ["CET4", "CET6", "KAOYAN", "IELTS", "TOEFL"];
+    : ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL'];
   const CEFR_LEVELS = Array.isArray(globalScope.Config && globalScope.Config.CEFR_LEVELS)
     ? globalScope.Config.CEFR_LEVELS.slice()
-    : ["A1", "A2", "B1", "B2", "C1", "C2"];
+    : ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
   const REVIEW_SPEEDS = Array.isArray(globalScope.Config && globalScope.Config.REVIEW_SPEEDS)
     ? globalScope.Config.REVIEW_SPEEDS.slice()
-    : ["slow", "normal", "fast"];
+    : ['slow', 'normal', 'fast'];
   const VOCABULARY_MODES = Array.isArray(globalScope.Config && globalScope.Config.VOCABULARY_MODES)
     ? globalScope.Config.VOCABULARY_MODES.slice()
-    : ["core", "full"];
+    : ['core', 'full'];
   const EXAM_PREFERENCES = Array.isArray(globalScope.Config && globalScope.Config.EXAM_PREFERENCES)
     ? globalScope.Config.EXAM_PREFERENCES.slice()
-    : ["balanced", "exam-first"];
-  const BILINGUAL_MODES = ["default", "bilingual", "english-only"];
-  const THEME_MODES = ["auto", "light", "dark"];
+    : ['balanced', 'exam-first'];
+  const BILINGUAL_MODES = ['default', 'bilingual', 'english-only'];
+  const THEME_MODES = ['auto', 'light', 'dark'];
 
   const DEFAULT_SETTINGS = {
     enabled: true,
     schemaVersion: SCHEMA_VERSION,
     reviewDanmakuEnabled: false,
-    reviewDanmakuSpeed: "normal",
-    vocabularyMode: "core",
-    examPreference: "balanced",
+    reviewDanmakuSpeed: 'normal',
+    vocabularyMode: 'core',
+    examPreference: 'balanced',
     webPageEnabled: true,
     domainRules: {},
     activeLevels: LEVELS.slice(),
     replaceRatio: 0.2,
     maxReplaceCount: 2,
-    targetCefr: "B2",
-    bilingualMode: "default",
-    themeMode: "auto"
+    targetCefr: 'B2',
+    bilingualMode: 'default',
+    themeMode: 'auto',
   };
 
   const SETTINGS_STORAGE_KEYS = Object.freeze([
-    "enabled",
-    "webPageEnabled",
-    "reviewDanmakuEnabled",
-    "reviewDanmakuSpeed",
-    "vocabularyMode",
-    "examPreference",
-    "activeLevels",
-    "replaceRatio",
-    "maxReplaceCount",
-    "targetCefr",
-    "bilingualMode",
-    "themeMode",
-    "domainRules",
-    "schemaVersion"
+    'enabled',
+    'webPageEnabled',
+    'reviewDanmakuEnabled',
+    'reviewDanmakuSpeed',
+    'vocabularyMode',
+    'examPreference',
+    'activeLevels',
+    'replaceRatio',
+    'maxReplaceCount',
+    'targetCefr',
+    'bilingualMode',
+    'themeMode',
+    'domainRules',
+    'schemaVersion',
   ]);
 
   const SCHEMA_VERSION_V3 = 3;
-  const SETTINGS_STORAGE_KEY_V3 = "bili_vocab_settings_v3";
-  const BUILTIN_PROFILE_IDS = Object.freeze(["gentle", "balanced", "intensive"]);
+  const SETTINGS_STORAGE_KEY_V3 = 'bili_vocab_settings_v3';
+  const BUILTIN_PROFILE_IDS = Object.freeze(['gentle', 'balanced', 'intensive']);
   const MAX_CUSTOM_PROFILES = 5;
   const OVERLAY_BOUNDS = Object.freeze({
     minWidth: 320,
@@ -64,7 +64,7 @@
     minOffsetRight: 12,
     maxOffsetRight: 360,
     minOffsetBottom: 24,
-    maxOffsetBottom: 240
+    maxOffsetBottom: 240,
   });
   const OVERLAY_DEFAULTS = Object.freeze({
     hidden: false,
@@ -72,13 +72,13 @@
     width: 420,
     height: 640,
     offsetRight: 24,
-    offsetBottom: 96
+    offsetBottom: 96,
   });
 
   const SCENE_PRESETS = {
-    light: { replaceRatio: 0.15, maxReplaceCount: 1, reviewDanmakuSpeed: "slow" },
-    balanced: { replaceRatio: 0.2, maxReplaceCount: 2, reviewDanmakuSpeed: "normal" },
-    intensive: { replaceRatio: 0.3, maxReplaceCount: 4, reviewDanmakuSpeed: "fast" }
+    light: { replaceRatio: 0.15, maxReplaceCount: 1, reviewDanmakuSpeed: 'slow' },
+    balanced: { replaceRatio: 0.2, maxReplaceCount: 2, reviewDanmakuSpeed: 'normal' },
+    intensive: { replaceRatio: 0.3, maxReplaceCount: 4, reviewDanmakuSpeed: 'fast' },
   };
 
   function clampNumber(value, min, max, fallback) {
@@ -95,22 +95,26 @@
   }
 
   function makeProfileId(input) {
-    const raw = String(input || "")
+    const raw = String(input || '')
       .trim()
       .toLowerCase()
-      .replace(/\s+/g, "-")
-      .replace(/[^a-z0-9-_]/g, "")
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-_]/g, '')
       .slice(0, 32);
     return raw || `profile-${Date.now()}`;
   }
 
   function normalizeTargetCefr(value) {
-    const targetCefr = String(value || DEFAULT_SETTINGS.targetCefr).trim().toUpperCase();
+    const targetCefr = String(value || DEFAULT_SETTINGS.targetCefr)
+      .trim()
+      .toUpperCase();
     return CEFR_LEVELS.includes(targetCefr) ? targetCefr : DEFAULT_SETTINGS.targetCefr;
   }
 
   function normalizeReviewDanmakuSpeed(value) {
-    const reviewDanmakuSpeed = String(value || DEFAULT_SETTINGS.reviewDanmakuSpeed).trim().toLowerCase();
+    const reviewDanmakuSpeed = String(value || DEFAULT_SETTINGS.reviewDanmakuSpeed)
+      .trim()
+      .toLowerCase();
     return REVIEW_SPEEDS.includes(reviewDanmakuSpeed)
       ? reviewDanmakuSpeed
       : DEFAULT_SETTINGS.reviewDanmakuSpeed;
@@ -122,57 +126,71 @@
     }
 
     const normalized = levels
-      .map((level) => String(level || "").trim().toUpperCase())
+      .map((level) =>
+        String(level || '')
+          .trim()
+          .toUpperCase()
+      )
       .filter((level) => LEVELS.includes(level));
 
-    return normalized.length ? Array.from(new Set(normalized)) : DEFAULT_SETTINGS.activeLevels.slice();
+    return normalized.length
+      ? Array.from(new Set(normalized))
+      : DEFAULT_SETTINGS.activeLevels.slice();
   }
 
   function normalizeVocabularyMode(value) {
-    const normalized = String(value || DEFAULT_SETTINGS.vocabularyMode).trim().toLowerCase();
+    const normalized = String(value || DEFAULT_SETTINGS.vocabularyMode)
+      .trim()
+      .toLowerCase();
     return VOCABULARY_MODES.includes(normalized) ? normalized : DEFAULT_SETTINGS.vocabularyMode;
   }
 
   function normalizeExamPreference(value) {
-    const normalized = String(value || DEFAULT_SETTINGS.examPreference).trim().toLowerCase();
+    const normalized = String(value || DEFAULT_SETTINGS.examPreference)
+      .trim()
+      .toLowerCase();
     return EXAM_PREFERENCES.includes(normalized) ? normalized : DEFAULT_SETTINGS.examPreference;
   }
 
   function normalizeBilingualMode(value) {
-    const normalized = String(value || DEFAULT_SETTINGS.bilingualMode).trim().toLowerCase();
+    const normalized = String(value || DEFAULT_SETTINGS.bilingualMode)
+      .trim()
+      .toLowerCase();
     return BILINGUAL_MODES.includes(normalized) ? normalized : DEFAULT_SETTINGS.bilingualMode;
   }
 
   function normalizeThemeMode(value) {
-    const normalized = String(value || DEFAULT_SETTINGS.themeMode).trim().toLowerCase();
+    const normalized = String(value || DEFAULT_SETTINGS.themeMode)
+      .trim()
+      .toLowerCase();
     return THEME_MODES.includes(normalized) ? normalized : DEFAULT_SETTINGS.themeMode;
   }
 
   function normalizeHostname(hostname) {
-    const normalized = String(hostname || "")
+    const normalized = String(hostname || '')
       .trim()
       .toLowerCase()
-      .replace(/\.+$/, "");
+      .replace(/\.+$/, '');
 
     if (!normalized) {
-      return "";
+      return '';
     }
 
-    if (normalized === "localhost") {
+    if (normalized === 'localhost') {
       return normalized;
     }
 
-    const segments = normalized.split(".");
+    const segments = normalized.split('.');
     if (segments.length < 2) {
-      return "";
+      return '';
     }
 
     const isValid = segments.every((segment) => /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(segment));
-    return isValid ? normalized : "";
+    return isValid ? normalized : '';
   }
 
   function normalizeDomainRules(domainRules) {
-    if (!domainRules || typeof domainRules !== "object") {
+    if (!domainRules || typeof domainRules !== 'object') {
       return {};
     }
 
@@ -184,12 +202,12 @@
       }
 
       const rawRule = domainRules[rawHostname];
-      if (!rawRule || typeof rawRule !== "object") {
+      if (!rawRule || typeof rawRule !== 'object') {
         return;
       }
 
       const nextRule = {
-        enabled: rawRule.enabled !== false
+        enabled: rawRule.enabled !== false,
       };
 
       const pausedUntil = Number(rawRule.pausedUntil);
@@ -203,9 +221,22 @@
     return normalized;
   }
 
+  function setExactDomainRuleEnabled(domainRules, hostname, enabled) {
+    const normalizedHostname = normalizeHostname(hostname);
+    const normalizedRules = normalizeDomainRules(domainRules);
+    if (!normalizedHostname) {
+      return normalizedRules;
+    }
+
+    normalizedRules[normalizedHostname] = {
+      enabled: enabled !== false,
+    };
+    return normalizedRules;
+  }
+
   function pickMatchedDomainRule(hostname, domainRules) {
     const normalizedHostname = normalizeHostname(hostname);
-    if (!normalizedHostname || !domainRules || typeof domainRules !== "object") {
+    if (!normalizedHostname || !domainRules || typeof domainRules !== 'object') {
       return null;
     }
 
@@ -214,9 +245,9 @@
       return exactRule;
     }
 
-    const segments = normalizedHostname.split(".");
+    const segments = normalizedHostname.split('.');
     for (let index = 1; index < segments.length - 1; index += 1) {
-      const candidate = segments.slice(index).join(".");
+      const candidate = segments.slice(index).join('.');
       if (domainRules[candidate]) {
         return domainRules[candidate];
       }
@@ -260,14 +291,20 @@
       webPageEnabled: source.webPageEnabled !== false,
       domainRules: normalizeDomainRules(source.domainRules),
       activeLevels: normalizeActiveLevels(source.activeLevels),
-      replaceRatio: Math.min(0.3, Math.max(0.1, parseFiniteNumber(source.replaceRatio, DEFAULT_SETTINGS.replaceRatio))),
+      replaceRatio: Math.min(
+        0.3,
+        Math.max(0.1, parseFiniteNumber(source.replaceRatio, DEFAULT_SETTINGS.replaceRatio))
+      ),
       maxReplaceCount: Math.min(
         5,
-        Math.max(1, Math.floor(parseFiniteNumber(source.maxReplaceCount, DEFAULT_SETTINGS.maxReplaceCount)))
+        Math.max(
+          1,
+          Math.floor(parseFiniteNumber(source.maxReplaceCount, DEFAULT_SETTINGS.maxReplaceCount))
+        )
       ),
       targetCefr: normalizeTargetCefr(source.targetCefr),
       bilingualMode: normalizeBilingualMode(source.bilingualMode),
-      themeMode: normalizeThemeMode(source.themeMode)
+      themeMode: normalizeThemeMode(source.themeMode),
     };
   }
 
@@ -281,7 +318,7 @@
       activeLevels: normalized.activeLevels.slice(),
       reviewDanmakuSpeed: normalized.reviewDanmakuSpeed,
       vocabularyMode: normalized.vocabularyMode,
-      examPreference: normalized.examPreference
+      examPreference: normalized.examPreference,
     };
   }
 
@@ -291,28 +328,38 @@
       gentle: normalizeProfileConfig({
         ...base,
         ...SCENE_PRESETS.light,
-        enabled: true
+        enabled: true,
       }),
       balanced: normalizeProfileConfig({
         ...base,
         ...SCENE_PRESETS.balanced,
-        enabled: true
+        enabled: true,
       }),
       intensive: normalizeProfileConfig({
         ...base,
         ...SCENE_PRESETS.intensive,
-        enabled: true
-      })
+        enabled: true,
+      }),
     };
   }
 
   function normalizeOverlayState(state) {
-    const source = state && typeof state === "object" ? state : {};
+    const source = state && typeof state === 'object' ? state : {};
     return {
       hidden: source.hidden === true,
       collapsed: source.collapsed === true,
-      width: clampNumber(source.width, OVERLAY_BOUNDS.minWidth, OVERLAY_BOUNDS.maxWidth, OVERLAY_DEFAULTS.width),
-      height: clampNumber(source.height, OVERLAY_BOUNDS.minHeight, OVERLAY_BOUNDS.maxHeight, OVERLAY_DEFAULTS.height),
+      width: clampNumber(
+        source.width,
+        OVERLAY_BOUNDS.minWidth,
+        OVERLAY_BOUNDS.maxWidth,
+        OVERLAY_DEFAULTS.width
+      ),
+      height: clampNumber(
+        source.height,
+        OVERLAY_BOUNDS.minHeight,
+        OVERLAY_BOUNDS.maxHeight,
+        OVERLAY_DEFAULTS.height
+      ),
       offsetRight: clampNumber(
         source.offsetRight,
         OVERLAY_BOUNDS.minOffsetRight,
@@ -324,17 +371,17 @@
         OVERLAY_BOUNDS.minOffsetBottom,
         OVERLAY_BOUNDS.maxOffsetBottom,
         OVERLAY_DEFAULTS.offsetBottom
-      )
+      ),
     };
   }
 
   function normalizeGlobalControls(rawControls) {
-    const source = rawControls && typeof rawControls === "object" ? rawControls : {};
+    const source = rawControls && typeof rawControls === 'object' ? rawControls : {};
     return {
       reviewDanmakuEnabled: source.reviewDanmakuEnabled === true,
       webPageEnabled: source.webPageEnabled !== false,
       siteRules: normalizeDomainRules(source.siteRules),
-      overlayState: normalizeOverlayState(source.overlayState)
+      overlayState: normalizeOverlayState(source.overlayState),
     };
   }
 
@@ -346,11 +393,11 @@
     const result = [];
     const usedIds = new Set();
     rawProfiles.forEach((item, index) => {
-      if (!item || typeof item !== "object" || result.length >= MAX_CUSTOM_PROFILES) {
+      if (!item || typeof item !== 'object' || result.length >= MAX_CUSTOM_PROFILES) {
         return;
       }
 
-      const sourceConfig = item.config && typeof item.config === "object" ? item.config : item;
+      const sourceConfig = item.config && typeof item.config === 'object' ? item.config : item;
       const normalizedConfig = normalizeProfileConfig(sourceConfig);
       const idCandidate = makeProfileId(item.id || item.name || `custom-${index + 1}`);
       if (BUILTIN_PROFILE_IDS.includes(idCandidate) || usedIds.has(idCandidate)) {
@@ -360,10 +407,12 @@
       usedIds.add(idCandidate);
       result.push({
         id: idCandidate,
-        name: String(item.name || `自定义 ${result.length + 1}`).trim() || `自定义 ${result.length + 1}`,
+        name:
+          String(item.name || `自定义 ${result.length + 1}`).trim() ||
+          `自定义 ${result.length + 1}`,
         config: normalizedConfig,
         createdAt: Math.max(0, Math.floor(Number(item.createdAt) || Date.now())),
-        updatedAt: Math.max(0, Math.floor(Number(item.updatedAt) || Date.now()))
+        updatedAt: Math.max(0, Math.floor(Number(item.updatedAt) || Date.now())),
       });
     });
     return result;
@@ -372,32 +421,43 @@
   function getDefaultSettingsV3() {
     return {
       schemaVersion: SCHEMA_VERSION_V3,
-      activeProfileId: "balanced",
+      activeProfileId: 'balanced',
       profilesBuiltin: createBuiltinProfiles(),
       profilesCustom: [],
-      globalControls: normalizeGlobalControls(DEFAULT_SETTINGS)
+      globalControls: normalizeGlobalControls(DEFAULT_SETTINGS),
     };
   }
 
   function normalizeSettingsV3(payload) {
     const defaults = getDefaultSettingsV3();
-    const source = payload && typeof payload === "object" ? payload : {};
+    const source = payload && typeof payload === 'object' ? payload : {};
 
-    const rawBuiltin = source.profilesBuiltin && typeof source.profilesBuiltin === "object"
-      ? source.profilesBuiltin
-      : {};
+    const rawBuiltin =
+      source.profilesBuiltin && typeof source.profilesBuiltin === 'object'
+        ? source.profilesBuiltin
+        : {};
     const profilesBuiltin = {
-      gentle: normalizeProfileConfig({ ...defaults.profilesBuiltin.gentle, ...(rawBuiltin.gentle || {}) }),
-      balanced: normalizeProfileConfig({ ...defaults.profilesBuiltin.balanced, ...(rawBuiltin.balanced || {}) }),
-      intensive: normalizeProfileConfig({ ...defaults.profilesBuiltin.intensive, ...(rawBuiltin.intensive || {}) })
+      gentle: normalizeProfileConfig({
+        ...defaults.profilesBuiltin.gentle,
+        ...(rawBuiltin.gentle || {}),
+      }),
+      balanced: normalizeProfileConfig({
+        ...defaults.profilesBuiltin.balanced,
+        ...(rawBuiltin.balanced || {}),
+      }),
+      intensive: normalizeProfileConfig({
+        ...defaults.profilesBuiltin.intensive,
+        ...(rawBuiltin.intensive || {}),
+      }),
     };
 
     const profilesCustom = normalizeCustomProfiles(source.profilesCustom);
     const customIds = new Set(profilesCustom.map((profile) => profile.id));
     const activeProfileId = String(source.activeProfileId || defaults.activeProfileId).trim();
-    const normalizedActiveProfileId = BUILTIN_PROFILE_IDS.includes(activeProfileId) || customIds.has(activeProfileId)
-      ? activeProfileId
-      : defaults.activeProfileId;
+    const normalizedActiveProfileId =
+      BUILTIN_PROFILE_IDS.includes(activeProfileId) || customIds.has(activeProfileId)
+        ? activeProfileId
+        : defaults.activeProfileId;
 
     const globalControls = normalizeGlobalControls(source.globalControls);
     return {
@@ -405,7 +465,7 @@
       activeProfileId: normalizedActiveProfileId,
       profilesBuiltin,
       profilesCustom,
-      globalControls
+      globalControls,
     };
   }
 
@@ -427,16 +487,16 @@
   function migrateToV3(legacyPayload) {
     if (
       legacyPayload &&
-      typeof legacyPayload === "object" &&
+      typeof legacyPayload === 'object' &&
       legacyPayload[SETTINGS_STORAGE_KEY_V3] &&
-      typeof legacyPayload[SETTINGS_STORAGE_KEY_V3] === "object"
+      typeof legacyPayload[SETTINGS_STORAGE_KEY_V3] === 'object'
     ) {
       return normalizeSettingsV3(legacyPayload[SETTINGS_STORAGE_KEY_V3]);
     }
 
     if (
       legacyPayload &&
-      typeof legacyPayload === "object" &&
+      typeof legacyPayload === 'object' &&
       Number(legacyPayload.schemaVersion) === SCHEMA_VERSION_V3 &&
       legacyPayload.profilesBuiltin
     ) {
@@ -457,18 +517,18 @@
           width: legacyPayload && legacyPayload.overlayPanelWidth,
           height: legacyPayload && legacyPayload.overlayPanelHeight,
           offsetRight: legacyPayload && legacyPayload.overlayPanelOffsetRight,
-          offsetBottom: legacyPayload && legacyPayload.overlayPanelOffsetBottom
-        }
-      })
+          offsetBottom: legacyPayload && legacyPayload.overlayPanelOffsetBottom,
+        },
+      }),
     };
 
     if (!isSameProfileConfig(normalizedLegacy, result.profilesBuiltin.balanced)) {
       const importedProfile = {
-        id: "legacy-imported",
-        name: "历史配置",
+        id: 'legacy-imported',
+        name: '历史配置',
         config: normalizeProfileConfig(normalizedLegacy),
         createdAt: Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
       };
       result.profilesCustom = [importedProfile];
       result.activeProfileId = importedProfile.id;
@@ -484,20 +544,20 @@
       ...profile,
       reviewDanmakuEnabled: normalizedV3.globalControls.reviewDanmakuEnabled,
       webPageEnabled: normalizedV3.globalControls.webPageEnabled,
-      domainRules: normalizedV3.globalControls.siteRules
+      domainRules: normalizedV3.globalControls.siteRules,
     });
 
-    const hostname = context && typeof context === "object" ? context.hostname : "";
+    const hostname = context && typeof context === 'object' ? context.hostname : '';
     const siteEnabled = isDomainEnabled(hostname, runtime);
     return {
       ...runtime,
-      siteEnabled
+      siteEnabled,
     };
   }
 
   function upsertCustomProfile(settingsV3, profileInput) {
     const normalized = normalizeSettingsV3(settingsV3);
-    const input = profileInput && typeof profileInput === "object" ? profileInput : {};
+    const input = profileInput && typeof profileInput === 'object' ? profileInput : {};
     const id = makeProfileId(input.id || input.name || `custom-${Date.now()}`);
     if (BUILTIN_PROFILE_IDS.includes(id)) {
       return normalized;
@@ -505,10 +565,10 @@
 
     const nextItem = {
       id,
-      name: String(input.name || "自定义配置").trim() || "自定义配置",
+      name: String(input.name || '自定义配置').trim() || '自定义配置',
       config: normalizeProfileConfig(input.config || input),
       createdAt: Math.max(0, Math.floor(Number(input.createdAt) || Date.now())),
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
     };
 
     const existingIndex = normalized.profilesCustom.findIndex((item) => item.id === id);
@@ -517,7 +577,7 @@
       nextProfiles[existingIndex] = {
         ...nextProfiles[existingIndex],
         ...nextItem,
-        createdAt: nextProfiles[existingIndex].createdAt
+        createdAt: nextProfiles[existingIndex].createdAt,
       };
     } else if (nextProfiles.length < MAX_CUSTOM_PROFILES) {
       nextProfiles.push(nextItem);
@@ -525,41 +585,40 @@
 
     return normalizeSettingsV3({
       ...normalized,
-      profilesCustom: nextProfiles
+      profilesCustom: nextProfiles,
     });
   }
 
   function removeCustomProfile(settingsV3, profileId) {
     const normalized = normalizeSettingsV3(settingsV3);
-    const targetId = String(profileId || "").trim();
+    const targetId = String(profileId || '').trim();
     if (!targetId) {
       return normalized;
     }
 
     const nextProfiles = normalized.profilesCustom.filter((item) => item.id !== targetId);
-    const nextActiveProfileId = normalized.activeProfileId === targetId
-      ? "balanced"
-      : normalized.activeProfileId;
+    const nextActiveProfileId =
+      normalized.activeProfileId === targetId ? 'balanced' : normalized.activeProfileId;
     return normalizeSettingsV3({
       ...normalized,
       activeProfileId: nextActiveProfileId,
-      profilesCustom: nextProfiles
+      profilesCustom: nextProfiles,
     });
   }
 
   function buildSettingsPayload(baseSettings, formValues) {
     const normalizedBase = normalizeSettings(baseSettings);
-    const updates = formValues && typeof formValues === "object" ? formValues : {};
+    const updates = formValues && typeof formValues === 'object' ? formValues : {};
     const source = {
       ...normalizedBase,
-      ...updates
+      ...updates,
     };
 
-    if (!Object.prototype.hasOwnProperty.call(updates, "domainRules")) {
+    if (!Object.prototype.hasOwnProperty.call(updates, 'domainRules')) {
       source.domainRules = normalizedBase.domainRules;
     }
 
-    if (!Object.prototype.hasOwnProperty.call(updates, "schemaVersion")) {
+    if (!Object.prototype.hasOwnProperty.call(updates, 'schemaVersion')) {
       source.schemaVersion = normalizedBase.schemaVersion;
     }
 
@@ -568,74 +627,77 @@
 
   function getReviewDanmakuSpeedLabel(speed) {
     const preset = normalizeReviewDanmakuSpeed(speed);
-    if (preset === "slow") {
-      return "慢";
+    if (preset === 'slow') {
+      return '慢';
     }
-    if (preset === "fast") {
-      return "快";
+    if (preset === 'fast') {
+      return '快';
     }
-    return "标准";
+    return '标准';
   }
 
   function getHeroMetricMeta(type, value) {
-    if (type === "ratio") {
-      const ratio = Math.min(0.3, Math.max(0.1, parseFiniteNumber(value, DEFAULT_SETTINGS.replaceRatio)));
+    if (type === 'ratio') {
+      const ratio = Math.min(
+        0.3,
+        Math.max(0.1, parseFiniteNumber(value, DEFAULT_SETTINGS.replaceRatio))
+      );
       if (ratio <= 0.15) {
-        return "轻量低扰";
+        return '轻量低扰';
       }
       if (ratio >= 0.25) {
-        return "强化输入";
+        return '强化输入';
       }
-      return "均衡曝光";
+      return '均衡曝光';
     }
 
-    if (type === "reviewSpeed") {
+    if (type === 'reviewSpeed') {
       const speed = normalizeReviewDanmakuSpeed(value);
-      if (speed === "slow") {
-        return "低压慢复习";
+      if (speed === 'slow') {
+        return '低压慢复习';
       }
-      if (speed === "fast") {
-        return "冲刺高频";
+      if (speed === 'fast') {
+        return '冲刺高频';
       }
-      return "稳定推进";
+      return '稳定推进';
     }
 
-    if (type === "cefr") {
+    if (type === 'cefr') {
       const cefr = normalizeTargetCefr(value);
-      if (["A1", "A2"].includes(cefr)) {
-        return "稳步入门";
+      if (['A1', 'A2'].includes(cefr)) {
+        return '稳步入门';
       }
-      if (["C1", "C2"].includes(cefr)) {
-        return "进阶挑战";
+      if (['C1', 'C2'].includes(cefr)) {
+        return '进阶挑战';
       }
-      return "渐进提升";
+      return '渐进提升';
     }
 
-    if (type === "maxReplace") {
+    if (type === 'maxReplace') {
       const count = Math.min(
         5,
         Math.max(1, Math.floor(parseFiniteNumber(value, DEFAULT_SETTINGS.maxReplaceCount)))
       );
       if (count >= 4) {
-        return "高密度命中";
+        return '高密度命中';
       }
       if (count <= 1) {
-        return "轻量点状";
+        return '轻量点状';
       }
-      return "低干扰节奏";
+      return '低干扰节奏';
     }
 
-    return "实时同步";
+    return '实时同步';
   }
 
   function getMockPreviewData(targetCefr, ratio, maxReplaceCount) {
     const presetMap = {
-      A1: ["learn", "watch", "word"],
-      A2: ["improve", "listen", "memory"],
-      B1: ["build", "focus", "exposure"],
-      B2: ["establish", "vocabulary", "context"],
-      C1: ["internalize", "retention", "comprehension"],
-      C2: ["synthesize", "lexicon", "fluency"]
+      A1: ['learn', 'watch', 'word'],
+      A2: ['improve', 'listen', 'memory'],
+      B1: ['build', 'focus', 'exposure'],
+      B2: ['establish', 'vocabulary', 'context'],
+      C1: ['internalize', 'retention', 'comprehension'],
+      C2: ['synthesize', 'lexicon', 'fluency'],
     };
 
     const words = presetMap[normalizeTargetCefr(targetCefr)] || presetMap.B2;
@@ -648,43 +710,43 @@
     const normalized = normalizeSettings(settings);
     if (!normalized.enabled) {
       return {
-        tone: "gentle",
-        label: "轻量待机",
-        summary: "当前未启用，可随时恢复温和输入"
+        tone: 'gentle',
+        label: '轻量待机',
+        summary: '当前未启用，可随时恢复温和输入',
       };
     }
 
     if (normalized.replaceRatio >= 0.25 || normalized.maxReplaceCount >= 4) {
       return {
-        tone: "intensive",
-        label: "强化曝光",
-        summary: "适合熟悉内容后集中强化词汇刺激"
+        tone: 'intensive',
+        label: '强化曝光',
+        summary: '适合熟悉内容后集中强化词汇刺激',
       };
     }
 
     if (normalized.replaceRatio <= 0.15 && normalized.maxReplaceCount <= 2) {
       return {
-        tone: "gentle",
-        label: "轻量输入",
-        summary: "尽量保留字幕流畅性，降低理解压力"
+        tone: 'gentle',
+        label: '轻量输入',
+        summary: '尽量保留字幕流畅性，降低理解压力',
       };
     }
 
     return {
-      tone: "balanced",
-      label: "均衡输入",
-      summary: "理解优先，保持稳定词汇曝光"
+      tone: 'balanced',
+      label: '均衡输入',
+      summary: '理解优先，保持稳定词汇曝光',
     };
   }
 
   function buildSettingsPreview(settings) {
     const normalized = normalizeSettings(settings);
     if (!normalized.enabled) {
-      return "当前字幕替换处于关闭状态。保存并启用后，扩展会按照你的学习目标自动调整词汇曝光。";
+      return '当前字幕替换处于关闭状态。保存并启用后，扩展会按照你的学习目标自动调整词汇曝光。';
     }
 
-    const modeLabel = normalized.vocabularyMode === "core" ? "核心高频" : "全量扩展";
-    const preferenceLabel = normalized.examPreference === "exam-first" ? "考试优先" : "均衡筛选";
+    const modeLabel = normalized.vocabularyMode === 'core' ? '核心高频' : '全量扩展';
+    const preferenceLabel = normalized.examPreference === 'exam-first' ? '考试优先' : '均衡筛选';
     return `当前会在每句字幕中替换约 ${Math.round(normalized.replaceRatio * 100)}% 的词汇，单句最多 ${normalized.maxReplaceCount} 个词，帮助你以 ${normalized.targetCefr} 难度并结合 ${normalized.activeLevels.length} 个词库持续曝光；词库模式为${modeLabel}，筛选策略为${preferenceLabel}，复习节奏为${getReviewDanmakuSpeedLabel(normalized.reviewDanmakuSpeed)}。`;
   }
 
@@ -695,7 +757,7 @@
       normalized.maxReplaceCount <= SCENE_PRESETS.light.maxReplaceCount &&
       normalized.reviewDanmakuSpeed === SCENE_PRESETS.light.reviewDanmakuSpeed
     ) {
-      return "light";
+      return 'light';
     }
 
     if (
@@ -703,10 +765,10 @@
       normalized.maxReplaceCount >= SCENE_PRESETS.intensive.maxReplaceCount &&
       normalized.reviewDanmakuSpeed === SCENE_PRESETS.intensive.reviewDanmakuSpeed
     ) {
-      return "intensive";
+      return 'intensive';
     }
 
-    return "balanced";
+    return 'balanced';
   }
 
   const api = {
@@ -726,6 +788,7 @@
     OVERLAY_DEFAULTS,
     normalizeHostname,
     normalizeDomainRules,
+    setExactDomainRuleEnabled,
     normalizeTargetCefr,
     normalizeReviewDanmakuSpeed,
     normalizeActiveLevels,
@@ -750,12 +813,12 @@
     getMockPreviewData,
     getLearningProfile,
     buildSettingsPreview,
-    getPresetKeyFromSettings
+    getPresetKeyFromSettings,
   };
 
   globalScope.SharedSettings = api;
 
-  if (typeof module !== "undefined" && module.exports) {
+  if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
   }
-})(typeof globalThis !== "undefined" ? globalThis : window);
+})(typeof globalThis !== 'undefined' ? globalThis : window);

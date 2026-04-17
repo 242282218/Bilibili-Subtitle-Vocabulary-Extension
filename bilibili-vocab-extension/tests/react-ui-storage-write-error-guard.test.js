@@ -1,14 +1,14 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 function readProjectFile(fileName) {
-  return fs.readFileSync(path.join(__dirname, "..", fileName), "utf8");
+  return fs.readFileSync(path.join(__dirname, '..', fileName), 'utf8');
 }
 
-test("react ui storage write guard: should reject on chrome runtime write error", () => {
-  const source = readProjectFile("react-ui/src/storage.ts");
+test('react ui storage write guard: should reject on chrome runtime write error', () => {
+  const source = readProjectFile('react-ui/src/storage.ts');
 
   assert.match(source, /function getChromeRuntimeError\(fallbackMessage: string\): Error \| null/);
   assert.match(

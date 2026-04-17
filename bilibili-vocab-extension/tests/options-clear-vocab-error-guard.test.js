@@ -1,23 +1,23 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const path = require("node:path");
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
 
-const VOCABULARY_BOOK_STORAGE_KEY = "bili_vocab_word_stats_v2";
+const VOCABULARY_BOOK_STORAGE_KEY = 'bili_vocab_word_stats_v2';
 
 function createClassList() {
   return {
     add() {},
     remove() {},
-    toggle() {}
+    toggle() {},
   };
 }
 
 function createElementStub() {
   return {
     checked: false,
-    value: "",
-    textContent: "",
-    innerHTML: "",
+    value: '',
+    textContent: '',
+    innerHTML: '',
     dataset: {},
     classList: createClassList(),
     style: {},
@@ -28,16 +28,16 @@ function createElementStub() {
     removeChild() {},
     querySelector() {
       return null;
-    }
+    },
   };
 }
 
 function createDocumentStub() {
   const nodes = new Map();
-  const activeLevelNodes = ["CET4", "CET6", "KAOYAN", "IELTS", "TOEFL"].map((value) => ({
+  const activeLevelNodes = ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL'].map((value) => ({
     value,
-    checked: value === "CET4" || value === "CET6",
-    addEventListener() {}
+    checked: value === 'CET4' || value === 'CET6',
+    addEventListener() {},
   }));
 
   const getNode = (id) => {
@@ -48,28 +48,28 @@ function createDocumentStub() {
   };
 
   return {
-    readyState: "loading",
+    readyState: 'loading',
     body: {
       classList: createClassList(),
       dataset: {},
       appendChild() {},
-      removeChild() {}
+      removeChild() {},
     },
     addEventListener() {},
     getElementById(id) {
       return getNode(id);
     },
     querySelectorAll(selector) {
-      if (selector === ".hero-metric__meta") {
+      if (selector === '.hero-metric__meta') {
         return [createElementStub(), createElementStub(), createElementStub()];
       }
-      if (selector === ".hub-scenario-card") {
+      if (selector === '.hub-scenario-card') {
         return [];
       }
       if (selector === 'input[name="activeLevels"]') {
         return activeLevelNodes;
       }
-      if (selector === ".hub-reveal-target") {
+      if (selector === '.hub-reveal-target') {
         return [];
       }
       return [];
@@ -79,13 +79,13 @@ function createDocumentStub() {
     },
     __getNode(id) {
       return getNode(id);
-    }
+    },
   };
 }
 
 function createChromeStorageStub(storageState) {
   const runtime = {
-    lastError: null
+    lastError: null,
   };
 
   return {
@@ -104,10 +104,10 @@ function createChromeStorageStub(storageState) {
             return;
           }
 
-          if (keysOrDefaults && typeof keysOrDefaults === "object") {
+          if (keysOrDefaults && typeof keysOrDefaults === 'object') {
             callback({
               ...keysOrDefaults,
-              ...storageState
+              ...storageState,
             });
             return;
           }
@@ -119,33 +119,33 @@ function createChromeStorageStub(storageState) {
           if (!failed) {
             Object.assign(storageState, payload);
           }
-          runtime.lastError = failed ? { message: "mock set failure" } : null;
-          if (typeof callback === "function") {
+          runtime.lastError = failed ? { message: 'mock set failure' } : null;
+          if (typeof callback === 'function') {
             callback();
           }
           runtime.lastError = null;
-        }
-      }
-    }
+        },
+      },
+    },
   };
 }
 
-test("options clear vocabulary: should keep data and show failure when storage write fails", async () => {
+test('options clear vocabulary: should keep data and show failure when storage write fails', async () => {
   const previousDocument = global.document;
   const previousChrome = global.chrome;
   const previousConfirm = global.confirm;
   const previousSetTimeout = global.setTimeout;
   const previousClearTimeout = global.clearTimeout;
-  const optionsPath = path.join(__dirname, "..", "options.js");
+  const optionsPath = path.join(__dirname, '..', 'options.js');
 
   const storageState = {
     [VOCABULARY_BOOK_STORAGE_KEY]: {
       focus: {
-        word: "focus",
-        status: "saved",
-        savedAt: 1700000000000
-      }
-    }
+        word: 'focus',
+        status: 'saved',
+        savedAt: 1700000000000,
+      },
+    },
   };
 
   try {
@@ -160,9 +160,9 @@ test("options clear vocabulary: should keep data and show failure when storage w
 
     await options.clearVocabularyBook();
 
-    assert.equal(storageState[VOCABULARY_BOOK_STORAGE_KEY].focus.status, "saved");
+    assert.equal(storageState[VOCABULARY_BOOK_STORAGE_KEY].focus.status, 'saved');
     assert.equal(storageState[VOCABULARY_BOOK_STORAGE_KEY].focus.savedAt, 1700000000000);
-    assert.equal(global.document.__getNode("toast").textContent, "清空失败，请重试");
+    assert.equal(global.document.__getNode('toast').textContent, '清空失败，请重试');
   } finally {
     delete require.cache[require.resolve(optionsPath)];
     global.document = previousDocument;

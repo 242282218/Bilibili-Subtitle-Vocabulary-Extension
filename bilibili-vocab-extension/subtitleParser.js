@@ -1,154 +1,165 @@
 ﻿(function (globalScope) {
   const SUBTITLE_SELECTORS = [
     // Bilibili
-    ".bpx-player-subtitle-wrap .bpx-player-subtitle-panel-text",
-    ".bpx-player-subtitle-wrap .bpx-player-subtitle-panel > span",
-    ".bpx-player-subtitle-wrap span",
-    ".bilibili-player-video-subtitle .bilibili-player-video-subtitle-item-text",
-    ".bilibili-player-video-subtitle span",
+    '.bpx-player-subtitle-wrap .bpx-player-subtitle-panel-text',
+    '.bpx-player-subtitle-wrap .bpx-player-subtitle-panel > span',
+    '.bpx-player-subtitle-wrap span',
+    '.bilibili-player-video-subtitle .bilibili-player-video-subtitle-item-text',
+    '.bilibili-player-video-subtitle span',
     // YouTube
-    ".ytp-caption-window-container .ytp-caption-segment",
-    ".ytp-caption-window-container span.ytp-caption-segment",
+    '.ytp-caption-window-container .ytp-caption-segment',
+    '.ytp-caption-window-container span.ytp-caption-segment',
     // 腾讯视频
-    ".txp-subtitle .txp-subtitle-text",
-    ".txp-subtitle-item span",
-    ".txp-caption span",
+    '.txp-subtitle .txp-subtitle-text',
+    '.txp-subtitle-item span',
+    '.txp-caption span',
     // 爱奇艺
-    ".iqp-subtitle-content",
-    ".iqp-subtitle-text span",
-    ".iqiyi-player-subtitle span",
+    '.iqp-subtitle-content',
+    '.iqp-subtitle-text span',
+    '.iqiyi-player-subtitle span',
     // Netflix
-    ".player-timedtext-text-container span",
-    ".nf-player-caption span",
+    '.player-timedtext-text-container span',
+    '.nf-player-caption span',
     // 优酷
-    ".kui-subtitle-text",
-    ".youku-player-subtitle span",
-    ".yk-caption span"
+    '.kui-subtitle-text',
+    '.youku-player-subtitle span',
+    '.yk-caption span',
   ];
 
   const GENERIC_TEXT_SELECTORS = [
-    "article p",
-    "main p",
-    "main li",
-    "main blockquote",
-    "main h1",
-    "main h2",
-    "main h3",
+    'article p',
+    'main p',
+    'main li',
+    'main blockquote',
+    'main h1',
+    'main h2',
+    'main h3',
     "[role='main'] p",
     "[role='main'] li",
-    ".article p",
-    ".article li",
-    ".post-content p",
-    ".post-content li",
-    ".entry-content p",
-    ".entry-content li",
-    ".markdown p",
-    ".markdown li"
+    '.article p',
+    '.article li',
+    '.post-content p',
+    '.post-content li',
+    '.entry-content p',
+    '.entry-content li',
+    '.markdown p',
+    '.markdown li',
   ];
 
   const PLAYER_CONTAINER_SELECTORS = [
     // Bilibili
-    ".bpx-player-container",
-    ".bpx-player-video-area",
-    ".bilibili-player-video-wrap",
-    "#bilibili-player",
+    '.bpx-player-container',
+    '.bpx-player-video-area',
+    '.bilibili-player-video-wrap',
+    '#bilibili-player',
     // YouTube
-    "#movie_player",
-    ".html5-video-player",
-    "ytd-player",
+    '#movie_player',
+    '.html5-video-player',
+    'ytd-player',
     // 腾讯视频
-    ".txp-player",
-    ".txp-video-wrap",
-    "#腾讯视频播放器",
+    '.txp-player',
+    '.txp-video-wrap',
+    '#腾讯视频播放器',
     // 爱奇艺
-    ".iqp-player",
-    ".iqiyi-player-wrap",
-    "#iqiyi-player",
+    '.iqp-player',
+    '.iqiyi-player-wrap',
+    '#iqiyi-player',
     // Netflix
-    ".nf-player-container",
-    ".watch-video--player-view",
+    '.nf-player-container',
+    '.watch-video--player-view',
     // 优酷
-    ".kui-player",
-    ".youku-player-container",
-    "#ykPlayer"
+    '.kui-player',
+    '.youku-player-container',
+    '#ykPlayer',
   ];
 
   const EXCLUDED_ANCESTOR_SELECTORS = [
-    ".bpx-player-ctrl-wrap",
-    ".bpx-player-ctrl-bottom",
-    ".bpx-player-control-wrap",
-    ".bpx-player-ctrl-setting",
-    ".bpx-player-subtitle-setting",
-    ".bpx-player-dialog-wrap",
-    ".bpx-player-contextmenu",
-    ".bpx-player-toast-wrap",
-    ".ytp-settings-menu",
-    ".ytp-popup",
-    ".ytp-menuitem",
-    ".ytp-tooltip",
-    ".ytp-chrome-top",
-    ".ytp-chrome-bottom",
-    "nav",
-    "header",
-    "footer",
-    "aside",
-    "form",
-    "pre",
-    "code",
-    "kbd",
-    "samp",
-    "script",
-    "style",
-    "noscript",
-    "iframe",
-    "svg",
-    "canvas",
+    '.bpx-player-ctrl-wrap',
+    '.bpx-player-ctrl-bottom',
+    '.bpx-player-control-wrap',
+    '.bpx-player-ctrl-setting',
+    '.bpx-player-subtitle-setting',
+    '.bpx-player-dialog-wrap',
+    '.bpx-player-contextmenu',
+    '.bpx-player-toast-wrap',
+    '.ytp-settings-menu',
+    '.ytp-popup',
+    '.ytp-menuitem',
+    '.ytp-tooltip',
+    '.ytp-chrome-top',
+    '.ytp-chrome-bottom',
+    'nav',
+    'header',
+    'footer',
+    'aside',
+    'form',
+    'pre',
+    'code',
+    'kbd',
+    'samp',
+    'script',
+    'style',
+    'noscript',
+    'iframe',
+    'svg',
+    'canvas',
     "[contenteditable='true']",
     "[role='textbox']",
     "[role='button']",
     "[role='menu']",
-    "button",
-    "a",
-    "input",
-    "textarea",
-    "select",
-    "label"
+    'button',
+    'a',
+    'input',
+    'textarea',
+    'select',
+    'label',
   ];
 
   const HEURISTIC_SELECTORS = [
     // Bilibili
     ".bpx-player-subtitle-wrap [class*='subtitle']",
-    ".bpx-player-subtitle-wrap span",
+    '.bpx-player-subtitle-wrap span',
     ".bilibili-player-video-subtitle [class*='text']",
-    ".bilibili-player-video-subtitle span",
+    '.bilibili-player-video-subtitle span',
     // YouTube
-    ".ytp-caption-window-container .caption-window",
-    ".ytp-caption-window-container .ytp-caption-segment",
-    ".ytp-caption-window-container span.ytp-caption-segment",
+    '.ytp-caption-window-container .caption-window',
+    '.ytp-caption-window-container .ytp-caption-segment',
+    '.ytp-caption-window-container span.ytp-caption-segment',
     // 腾讯视频
     ".txp-subtitle [class*='subtitle']",
-    ".txp-subtitle span",
+    '.txp-subtitle span',
     // 爱奇艺
     ".iqp-subtitle [class*='subtitle']",
-    ".iqp-subtitle span",
+    '.iqp-subtitle span',
     // Netflix
     ".player-timedtext [class*='text']",
-    ".nf-player-caption span",
+    '.nf-player-caption span',
     // 优酷
     ".kui-subtitle [class*='subtitle']",
-    ".kui-subtitle span"
+    '.kui-subtitle span',
   ];
 
-  const PLAYER_API_ENDPOINT = "https://api.bilibili.com/x/player/v2";
+  const PLAYER_API_ENDPOINT = 'https://api.bilibili.com/x/player/v2';
 
   let subtitleTimeline = [];
   let subtitleTimelinePromise = null;
 
-  const normalizeText = (globalThis.Utils && globalThis.Utils.normalizeText) || ((text) => String(text || "").replace(/\s+/g, " ").trim());
+  const normalizeText =
+    (globalThis.Utils && globalThis.Utils.normalizeText) ||
+    ((text) =>
+      String(text || '')
+        .replace(/\s+/g, ' ')
+        .trim());
 
   function isHostOrSubdomain(hostname, domain) {
-    const host = String(hostname || "").trim().toLowerCase().replace(/\.+$/, "");
-    const normalizedDomain = String(domain || "").trim().toLowerCase().replace(/\.+$/, "");
+    const host = String(hostname || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\.+$/, '');
+    const normalizedDomain = String(domain || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\.+$/, '');
     if (!host || !normalizedDomain) {
       return false;
     }
@@ -157,28 +168,28 @@
   }
 
   function isBilibiliHost(hostname) {
-    return isHostOrSubdomain(hostname, "bilibili.com");
+    return isHostOrSubdomain(hostname, 'bilibili.com');
   }
 
   function isYouTubeHost(hostname) {
-    const host = String(hostname || "").toLowerCase();
-    return host === "youtube.com" || host.endsWith(".youtube.com");
+    const host = String(hostname || '').toLowerCase();
+    return host === 'youtube.com' || host.endsWith('.youtube.com');
   }
 
   function isTencentHost(hostname) {
-    return isHostOrSubdomain(hostname, "v.qq.com");
+    return isHostOrSubdomain(hostname, 'v.qq.com');
   }
 
   function isIqiyiHost(hostname) {
-    return isHostOrSubdomain(hostname, "iqiyi.com");
+    return isHostOrSubdomain(hostname, 'iqiyi.com');
   }
 
   function isNetflixHost(hostname) {
-    return isHostOrSubdomain(hostname, "netflix.com");
+    return isHostOrSubdomain(hostname, 'netflix.com');
   }
 
   function isYoukuHost(hostname) {
-    return isHostOrSubdomain(hostname, "youku.com");
+    return isHostOrSubdomain(hostname, 'youku.com');
   }
 
   function isElementVisible(element) {
@@ -187,7 +198,7 @@
     }
 
     const style = window.getComputedStyle(element);
-    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
       return false;
     }
 
@@ -196,15 +207,15 @@
   }
 
   function hasChineseText(text) {
-    return /[\u4e00-\u9fff]/.test(String(text || ""));
+    return /[\u4e00-\u9fff]/.test(String(text || ''));
   }
 
   function isRenderedWordElement(element) {
     return Boolean(
       element &&
-        element.classList &&
-        typeof element.classList.contains === "function" &&
-        element.classList.contains("bili-vocab-word")
+      element.classList &&
+      typeof element.classList.contains === 'function' &&
+      element.classList.contains('bili-vocab-word')
     );
   }
 
@@ -217,23 +228,20 @@
       return true;
     }
 
-    return Boolean(
-      typeof element.closest === "function" &&
-        element.closest(".bili-vocab-word")
-    );
+    return Boolean(typeof element.closest === 'function' && element.closest('.bili-vocab-word'));
   }
 
   function extractOriginalTextFromRenderedNode(node) {
     if (!node) {
-      return "";
+      return '';
     }
 
     if (node.nodeType === 3) {
-      return String(node.textContent || "");
+      return String(node.textContent || '');
     }
 
     if (!(node instanceof HTMLElement)) {
-      return String(node.textContent || "");
+      return String(node.textContent || '');
     }
 
     if (isRenderedWordElement(node)) {
@@ -243,27 +251,31 @@
       }
 
       const sourceText = normalizeText(node.dataset && node.dataset.sourceText);
-      return sourceText || String(node.textContent || "");
+      return sourceText || String(node.textContent || '');
     }
 
-    const childNodes = Array.isArray(node.childNodes) ? node.childNodes : Array.from(node.childNodes || []);
+    const childNodes = Array.isArray(node.childNodes)
+      ? node.childNodes
+      : Array.from(node.childNodes || []);
     if (childNodes.length === 0) {
-      return String(node.textContent || "");
+      return String(node.textContent || '');
     }
 
-    return childNodes.map((child) => extractOriginalTextFromRenderedNode(child)).join("");
+    return childNodes.map((child) => extractOriginalTextFromRenderedNode(child)).join('');
   }
 
   function extractFullOriginalSubtitleFromRenderedNode(node) {
     if (!node || !(node instanceof HTMLElement)) {
-      return "";
+      return '';
     }
 
     if (isRenderedWordElement(node)) {
       return normalizeText(node.dataset && node.dataset.originalSubtitle);
     }
 
-    const childNodes = Array.isArray(node.childNodes) ? node.childNodes : Array.from(node.childNodes || []);
+    const childNodes = Array.isArray(node.childNodes)
+      ? node.childNodes
+      : Array.from(node.childNodes || []);
     for (let index = 0; index < childNodes.length; index += 1) {
       const candidate = extractFullOriginalSubtitleFromRenderedNode(childNodes[index]);
       if (candidate) {
@@ -271,7 +283,7 @@
       }
     }
 
-    return "";
+    return '';
   }
 
   function containsRenderedWordNode(node) {
@@ -283,13 +295,15 @@
       return true;
     }
 
-    const childNodes = Array.isArray(node.childNodes) ? node.childNodes : Array.from(node.childNodes || []);
+    const childNodes = Array.isArray(node.childNodes)
+      ? node.childNodes
+      : Array.from(node.childNodes || []);
     return childNodes.some((child) => containsRenderedWordNode(child));
   }
 
   function extractSubtitleText(element) {
     if (!(element instanceof HTMLElement)) {
-      return "";
+      return '';
     }
 
     const originalText = normalizeText(element.dataset && element.dataset.biliVocabOriginalText);
@@ -313,7 +327,7 @@
   }
 
   function getPlayerRect() {
-    const video = document.querySelector("video");
+    const video = document.querySelector('video');
     if (video instanceof HTMLElement) {
       const rect = video.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
@@ -397,13 +411,13 @@
   }
 
   function addElementByContainment(candidate, collected) {
-    if (!candidate || typeof candidate.contains !== "function" || !Array.isArray(collected)) {
+    if (!candidate || typeof candidate.contains !== 'function' || !Array.isArray(collected)) {
       return false;
     }
 
     for (let index = collected.length - 1; index >= 0; index -= 1) {
       const existing = collected[index];
-      if (!existing || typeof existing.contains !== "function") {
+      if (!existing || typeof existing.contains !== 'function') {
         continue;
       }
 
@@ -433,12 +447,12 @@
       return false;
     }
 
-    const tagName = String(element.tagName || "").toUpperCase();
-    if (!["P", "LI", "BLOCKQUOTE", "H1", "H2", "H3"].includes(tagName)) {
+    const tagName = String(element.tagName || '').toUpperCase();
+    if (!['P', 'LI', 'BLOCKQUOTE', 'H1', 'H2', 'H3'].includes(tagName)) {
       return false;
     }
 
-    const text = normalizeText(element.textContent || "");
+    const text = normalizeText(element.textContent || '');
     if (!text || text.length < 12 || text.length > 280) {
       return false;
     }
@@ -488,7 +502,7 @@
       return true;
     }
 
-    return Boolean(document.querySelector("video"));
+    return Boolean(document.querySelector('video'));
   }
 
   function collectWithHeuristic(seen, playerRect) {
@@ -558,12 +572,12 @@
   }
 
   function normalizeSubtitleUrl(rawUrl) {
-    const url = String(rawUrl || "").trim();
+    const url = String(rawUrl || '').trim();
     if (!url) {
-      return "";
+      return '';
     }
 
-    if (url.startsWith("//")) {
+    if (url.startsWith('//')) {
       return `https:${url}`;
     }
 
@@ -575,13 +589,13 @@
       return null;
     }
 
-    const priorities = ["zh-Hans", "zh-CN", "zh", "en-US", "en"];
+    const priorities = ['zh-Hans', 'zh-CN', 'zh', 'en-US', 'en'];
     const sorted = subtitles
-      .filter((item) => item && typeof item === "object")
+      .filter((item) => item && typeof item === 'object')
       .slice()
       .sort((left, right) => {
-        const leftLan = String(left.lan || "").trim();
-        const rightLan = String(right.lan || "").trim();
+        const leftLan = String(left.lan || '').trim();
+        const rightLan = String(right.lan || '').trim();
         const leftPriority = priorities.indexOf(leftLan);
         const rightPriority = priorities.indexOf(rightLan);
         const normalizedLeft = leftPriority < 0 ? priorities.length + 1 : leftPriority;
@@ -628,24 +642,24 @@
       cid = Number((matchedPage && matchedPage.cid) || videoData.pages[0].cid || 0);
     }
 
-    const bvid = String(videoData.bvid || state.bvid || "").trim();
+    const bvid = String(videoData.bvid || state.bvid || '').trim();
     const aid = Number(videoData.aid || state.aid || 0);
 
     return {
       aid: Number.isFinite(aid) && aid > 0 ? aid : 0,
       bvid,
-      cid: Number.isFinite(cid) && cid > 0 ? cid : 0
+      cid: Number.isFinite(cid) && cid > 0 ? cid : 0,
     };
   }
 
   function buildPlayerApiUrl(identifiers) {
     const params = new URLSearchParams();
     if (identifiers.bvid) {
-      params.set("bvid", identifiers.bvid);
+      params.set('bvid', identifiers.bvid);
     } else if (identifiers.aid) {
-      params.set("aid", String(identifiers.aid));
+      params.set('aid', String(identifiers.aid));
     }
-    params.set("cid", String(identifiers.cid));
+    params.set('cid', String(identifiers.cid));
     return `${PLAYER_API_ENDPOINT}?${params.toString()}`;
   }
 
@@ -668,7 +682,7 @@
         return [];
       }
 
-      const response = await fetch(buildPlayerApiUrl(identifiers), { credentials: "include" });
+      const response = await fetch(buildPlayerApiUrl(identifiers), { credentials: 'include' });
       if (!response.ok) {
         return [];
       }
@@ -680,29 +694,35 @@
         return [];
       }
 
-      const subtitleResponse = await fetch(normalizeSubtitleUrl(track.subtitle_url), { credentials: "include" });
+      const subtitleResponse = await fetch(normalizeSubtitleUrl(track.subtitle_url), {
+        credentials: 'include',
+      });
       if (!subtitleResponse.ok) {
         return [];
       }
 
       const subtitlePayload = await subtitleResponse.json();
-      const body = Array.isArray(subtitlePayload && subtitlePayload.body) ? subtitlePayload.body : [];
+      const body = Array.isArray(subtitlePayload && subtitlePayload.body)
+        ? subtitlePayload.body
+        : [];
       subtitleTimeline = body
         .map((item) => ({
           from: Number(item.from),
           to: Number(item.to),
-          content: normalizeText(item.content)
+          content: normalizeText(item.content),
         }))
-        .filter((item) => Number.isFinite(item.from) && Number.isFinite(item.to) && Boolean(item.content))
+        .filter(
+          (item) => Number.isFinite(item.from) && Number.isFinite(item.to) && Boolean(item.content)
+        )
         .sort((left, right) => left.from - right.from);
 
       return subtitleTimeline;
     })()
       .catch((error) => {
         if (globalThis.Utils && globalThis.Utils.logError) {
-          globalThis.Utils.logError("Subtitle timeline load failed", error);
+          globalThis.Utils.logError('Subtitle timeline load failed', error);
         } else {
-          console.error("[BiliVocab] Subtitle timeline load failed:", error);
+          console.error('[BiliVocab] Subtitle timeline load failed:', error);
         }
         return [];
       })
@@ -715,13 +735,13 @@
 
   function getSubtitleFromTimelineAtCurrentTime() {
     if (!Array.isArray(subtitleTimeline) || subtitleTimeline.length === 0) {
-      return "";
+      return '';
     }
 
-    const video = document.querySelector("video");
+    const video = document.querySelector('video');
     const currentTime = video ? Number(video.currentTime) : NaN;
     const matched = findSubtitleByTime(subtitleTimeline, currentTime);
-    return matched ? normalizeText(matched.content) : "";
+    return matched ? normalizeText(matched.content) : '';
   }
 
   function getCurrentSubtitleItems() {
@@ -729,14 +749,14 @@
       return detectSubtitleElements().map((element) => ({
         element,
         text: extractSubtitleText(element),
-        mode: "subtitle"
+        mode: 'subtitle',
       }));
     }
 
     return detectGenericTextElements().map((element) => ({
       element,
       text: extractSubtitleText(element),
-      mode: "page"
+      mode: 'page',
     }));
   }
 
@@ -756,12 +776,12 @@
     findSubtitleByTime,
     extractVideoIdentifiers,
     loadSubtitleTimeline,
-    getSubtitleFromTimelineAtCurrentTime
+    getSubtitleFromTimelineAtCurrentTime,
   };
 
   globalScope.SubtitleParser = api;
 
-  if (typeof module !== "undefined" && module.exports) {
+  if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
   }
-})(typeof globalThis !== "undefined" ? globalThis : window);
+})(typeof globalThis !== 'undefined' ? globalThis : window);

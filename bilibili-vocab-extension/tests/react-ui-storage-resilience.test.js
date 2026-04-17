@@ -204,6 +204,45 @@ test('react ui storage resilience: loadSettingsV3 should not overwrite storage a
   assert.equal(setCalls, 0);
 });
 
+test('react ui storage resilience: loadSettingsV3 should not overwrite newer v3 settings discovered after migration read', async () => {
+  let getCalls = 0;
+  let setCalls = 0;
+  const newerSettings = {
+    schemaVersion: 3,
+    activeProfileId: 'intensive',
+  };
+  const { module: storageModule } = createStorageModule({
+    getImpl({ keys, callback }) {
+      getCalls += 1;
+      if (getCalls === 1) {
+        callback({
+          enabled: true,
+          replaceRatio: 0.2,
+        });
+        return;
+      }
+
+      assert.equal(Array.isArray(keys), true);
+      assert.equal(keys.length, 1);
+      assert.equal(keys[0], SETTINGS_STORAGE_KEY_V3);
+      callback({
+        [SETTINGS_STORAGE_KEY_V3]: newerSettings,
+      });
+    },
+    setImpl({ callback }) {
+      setCalls += 1;
+      if (typeof callback === 'function') {
+        callback();
+      }
+    },
+  });
+
+  const loaded = await storageModule.loadSettingsV3();
+  assert.equal(getCalls, 2);
+  assert.equal(setCalls, 0);
+  assert.deepEqual(loaded, newerSettings);
+});
+
 test('react ui storage resilience: saveSettingsV3 should delegate without rewriting metrics payload', async () => {
   const { module: storageModule, storageState } = createStorageModule({
     initialState: {
