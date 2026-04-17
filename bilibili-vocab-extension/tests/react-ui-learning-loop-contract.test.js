@@ -25,4 +25,5 @@ test('react ui learning loop contract: popup should render shipped quick review 
   assert.match(source, /handleQuickReviewAction/);
   assert.match(source, /readEncounteredWordRanking/);
   assert.match(source, /submitQuickReviewFeedback/);
+  assert.doesNotMatch(source, /readLearningStreak/);
 });

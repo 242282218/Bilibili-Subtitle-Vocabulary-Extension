@@ -29,7 +29,6 @@ import { StudyPreview } from './study-preview';
 import {
   AdaptiveTuningState,
   ExperienceMetricsSnapshot,
-  LearningStreak,
   LearningSummary,
   QuickReviewDashboard,
   VocabularyExportFormat,
@@ -45,7 +44,6 @@ import {
   exportVocabularyBook,
   getCurrentTabHostname,
   openOptionsPage,
-  readLearningStreak,
   subscribeQuickReviewSource,
 } from './storage';
 import { getThemeModeLabel, useDocumentTheme } from './ui-theme';
@@ -118,13 +116,6 @@ function PopupApp() {
   const [reviewSubmitting, setReviewSubmitting] = useState<QuickReviewAction | null>(null);
   const [rankingSort, setRankingSort] = useState<EncounteredWordSortMode>('asc');
   const [rankingItems, setRankingItems] = useState<EncounteredWordRankingItem[]>([]);
-  const [, setStreak] = useState<LearningStreak>({
-    currentStreak: 0,
-    maxStreak: 0,
-    lastActiveDate: '',
-    totalActiveDays: 0,
-    activeDays: [],
-  });
   const [hostname, setHostname] = useState('');
   const [adaptiveState, setAdaptiveState] = useState<AdaptiveTuningState | null>(null);
   const [experienceMetrics, setExperienceMetrics] = useState<ExperienceMetricsSnapshot | null>(
@@ -144,10 +135,9 @@ function PopupApp() {
     let cancelled = false;
     void (async () => {
       try {
-        const [dashboardPayload, currentHostname, streakPayload] = await Promise.all([
+        const [dashboardPayload, currentHostname] = await Promise.all([
           readQuickReviewDashboard(),
           getCurrentTabHostname(),
-          readLearningStreak(),
         ]);
         if (cancelled) {
           return;
@@ -155,7 +145,6 @@ function PopupApp() {
         setSummary(dashboardPayload.summary);
         setQuickReview(dashboardPayload);
         setHostname(normalizeHostname(currentHostname));
-        setStreak(streakPayload);
         setStatus('已加载当前策略，可快速调整后手动保存。');
       } catch {
         if (!cancelled) {
