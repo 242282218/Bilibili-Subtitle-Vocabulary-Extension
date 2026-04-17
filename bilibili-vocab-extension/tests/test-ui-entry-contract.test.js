@@ -1,41 +1,94 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+
+const { collectUiTestFiles, runUiTests } = require('../scripts/run-ui-tests.js');
 
 function readPackageScripts() {
-  const packageJsonPath = path.join(__dirname, "..", "package.json");
-  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  const packageJsonPath = path.join(__dirname, '..', 'package.json');
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
   return packageJson.scripts || {};
 }
 
 function normalizeScript(script) {
-  return String(script || "")
-    .replace(/\s+/g, " ")
+  return String(script || '')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
-function hasUiTargetingArg(script) {
-  return (
-    /--project\s+ui\b/.test(script) ||
-    /--config\s+\S*ui\S*/.test(script) ||
-    /--include\s+\S*(ui|react-ui)\S*/.test(script) ||
-    /tests\/\S*(ui|react-ui)\S*\.test\./.test(script) ||
-    /\b(ui|react-ui)\b/.test(script)
-  );
-}
-
-test("test ui entry contract: test:ui should not run vitest with root-wide scan", () => {
+test('test ui entry contract: test:ui should not run vitest with root-wide scan', () => {
   const scripts = readPackageScripts();
-  const testUiScript = normalizeScript(scripts["test:ui"]);
+  const testUiScript = normalizeScript(scripts['test:ui']);
 
-  assert.notEqual(testUiScript, "");
+  assert.notEqual(testUiScript, '');
   assert.doesNotMatch(testUiScript, /(?:^|\s)vitest\s+run\s+--root\s+\.(?:\s|$)/);
 });
 
-test("test ui entry contract: test:ui should explicitly target ui-related scope", () => {
+test('test ui entry contract: test:ui should explicitly target ui-related scope', () => {
   const scripts = readPackageScripts();
-  const testUiScript = normalizeScript(scripts["test:ui"]);
+  const testUiScript = normalizeScript(scripts['test:ui']);
 
-  assert.equal(hasUiTargetingArg(testUiScript), true);
+  assert.match(testUiScript, /^node scripts\/run-ui-tests\.js$/);
+});
+
+test('test ui entry contract: run-ui-tests should select only ui contract files', () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'run-ui-tests-'));
+  const testsDir = path.join(workspace, 'tests');
+
+  try {
+    fs.mkdirSync(testsDir, { recursive: true });
+    fs.writeFileSync(path.join(testsDir, 'popup.test.js'), '', 'utf8');
+    fs.writeFileSync(path.join(testsDir, 'react-overlay-layout.test.js'), '', 'utf8');
+    fs.writeFileSync(path.join(testsDir, 'renderer.test.js'), '', 'utf8');
+    fs.writeFileSync(path.join(testsDir, 'shared-settings-integration.test.js'), '', 'utf8');
+
+    const testFiles = collectUiTestFiles(testsDir);
+
+    assert.deepEqual(testFiles, [
+      path.join('tests', 'popup.test.js'),
+      path.join('tests', 'react-overlay-layout.test.js'),
+      path.join('tests', 'shared-settings-integration.test.js'),
+    ]);
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('test ui entry contract: run-ui-tests should execute node test with explicit file list', () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'run-ui-tests-runner-'));
+  const testsDir = path.join(workspace, 'tests');
+
+  try {
+    fs.mkdirSync(testsDir, { recursive: true });
+    fs.writeFileSync(path.join(testsDir, 'popup.test.js'), '', 'utf8');
+    fs.writeFileSync(path.join(testsDir, 'renderer.test.js'), '', 'utf8');
+
+    const calls = [];
+    const result = runUiTests({
+      projectRoot: workspace,
+      testsDir,
+      runner(command, args, options) {
+        calls.push({ command, args, options });
+        return { status: 0 };
+      },
+      execPath: 'node',
+      stdio: 'pipe',
+    });
+
+    assert.equal(result.status, 0);
+    assert.deepEqual(calls, [
+      {
+        command: 'node',
+        args: ['--test', path.join('tests', 'popup.test.js')],
+        options: {
+          cwd: workspace,
+          stdio: 'pipe',
+        },
+      },
+    ]);
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
 });

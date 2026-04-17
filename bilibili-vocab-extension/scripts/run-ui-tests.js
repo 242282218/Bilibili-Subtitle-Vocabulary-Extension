@@ -1,0 +1,73 @@
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+
+const projectRoot = path.resolve(__dirname, '..');
+const testsDir = path.join(projectRoot, 'tests');
+
+const uiTestPatterns = [
+  /^react-ui-.*\.test\.js$/,
+  /^react-overlay-.*\.test\.js$/,
+  /^popup(?:-.*)?\.test\.js$/,
+  /^settings(?:-.*)?\.test\.js$/,
+  /^overlay-panel(?:-.*)?\.test\.js$/,
+  /^background-overlay(?:-.*)?\.test\.js$/,
+  /^contentScript-overlay-loader\.test\.js$/,
+  /^shared-settings(?:-integration)?\.test\.js$/,
+];
+
+function collectUiTestFiles(targetTestsDir = testsDir) {
+  return fs
+    .readdirSync(targetTestsDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.test.js'))
+    .map((entry) => entry.name)
+    .filter((name) => uiTestPatterns.some((pattern) => pattern.test(name)))
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => path.join('tests', name));
+}
+
+function runUiTests(options = {}) {
+  const targetProjectRoot = path.resolve(options.projectRoot || projectRoot);
+  const targetTestsDir = options.testsDir || path.join(targetProjectRoot, 'tests');
+  const runner = options.runner || spawnSync;
+  const execPath = options.execPath || process.execPath;
+  const stdio = options.stdio || 'inherit';
+  const testFiles = options.testFiles || collectUiTestFiles(targetTestsDir);
+
+  if (testFiles.length === 0) {
+    throw new Error('No UI contract tests matched.');
+  }
+
+  const result = runner(execPath, ['--test', ...testFiles], {
+    cwd: targetProjectRoot,
+    stdio,
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return result;
+}
+
+function runCli() {
+  try {
+    const result = runUiTests();
+    process.exit(result.status ?? 1);
+  } catch (error) {
+    console.error(error && error.message ? error.message : error);
+    process.exit(1);
+  }
+}
+
+if (require.main === module) {
+  runCli();
+}
+
+module.exports = {
+  uiTestPatterns,
+  collectUiTestFiles,
+  runUiTests,
+};

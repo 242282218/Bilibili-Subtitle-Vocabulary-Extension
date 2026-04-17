@@ -1,13 +1,20 @@
-const fs = require("node:fs");
-const path = require("node:path");
-const os = require("node:os");
-const { spawnSync } = require("node:child_process");
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 
-const DEFAULT_OUTPUT_NAME = "extension.zip";
-const DEFAULT_INCLUDE_GLOBS = ["*.js", "*.html"];
-const FIXED_INCLUDE_PATHS = ["dist", "manifest.json", "data", "styles.css", "background.js", "contentScript.js"];
-const WIN_ARCHIVE_SCRIPT_FILE = "pack-extension.ps1";
-const REQUIRED_ARCHIVE_ENTRIES = ["dist", "manifest.json", "data"];
+const DEFAULT_OUTPUT_NAME = 'extension.zip';
+const DEFAULT_INCLUDE_GLOBS = ['*.js', '*.html'];
+const FIXED_INCLUDE_PATHS = [
+  'dist',
+  'manifest.json',
+  'data',
+  'styles.css',
+  'background.js',
+  'contentScript.js',
+];
+const WIN_ARCHIVE_SCRIPT_FILE = 'pack-extension.ps1';
+const REQUIRED_ARCHIVE_ENTRIES = FIXED_INCLUDE_PATHS.slice();
 const WINDOWS_PACK_MAX_RETRY = 2;
 
 function listProjectRootFiles(rootDir) {
@@ -19,7 +26,7 @@ function resolveGlobMatches(rootDir, patterns = DEFAULT_INCLUDE_GLOBS) {
   const matches = [];
 
   for (const pattern of patterns) {
-    if (!pattern.startsWith("*.")) {
+    if (!pattern.startsWith('*.')) {
       continue;
     }
 
@@ -39,12 +46,16 @@ function resolveGlobMatches(rootDir, patterns = DEFAULT_INCLUDE_GLOBS) {
 
 function collectPackEntries(rootDir, options = {}) {
   const fixedPaths = options.fixedPaths || FIXED_INCLUDE_PATHS;
+  const requiredFixedPaths = options.requiredFixedPaths || fixedPaths;
   const globPatterns = options.globPatterns || DEFAULT_INCLUDE_GLOBS;
   const entries = [];
 
   for (const fixedPath of fixedPaths) {
     const absolute = path.resolve(rootDir, fixedPath);
     if (!fs.existsSync(absolute)) {
+      if (requiredFixedPaths.includes(fixedPath)) {
+        throw new Error(`Pack entry missing required path: ${fixedPath}`);
+      }
       continue;
     }
     if (!entries.includes(fixedPath)) {
@@ -68,18 +79,22 @@ function normalizeOutputZipPath(rootDir, outputZip) {
 }
 
 function normalizeArchivePathForCheck(entryPath) {
-  return entryPath.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/$/, "");
+  return entryPath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, '');
 }
 
 function parseZipEntryList(stdoutText) {
-  const lines = String(stdoutText || "")
+  const lines = String(stdoutText || '')
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
 
   const entries = [];
   for (const line of lines) {
-    if (!line.startsWith("Archive: ") && !line.startsWith("Length ") && !line.startsWith("---------")) {
+    if (
+      !line.startsWith('Archive: ') &&
+      !line.startsWith('Length ') &&
+      !line.startsWith('---------')
+    ) {
       const parts = line.split(/\s+/);
       if (parts.length >= 4) {
         entries.push(parts[parts.length - 1]);
@@ -91,29 +106,29 @@ function parseZipEntryList(stdoutText) {
 }
 
 function parsePowerShellZipEntries(stdoutText) {
-  return String(stdoutText || "")
+  return String(stdoutText || '')
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => line.replace(/\\/g, "/"));
+    .map((line) => line.replace(/\\/g, '/'));
 }
 
 function listArchiveEntries(outputZipPath, options = {}) {
   const runner = options.runner || spawnSync;
   const platform = options.platform || process.platform;
 
-  if (platform === "win32") {
+  if (platform === 'win32') {
     const result = runner(
-      "powershell",
+      'powershell',
       [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        `Add-Type -AssemblyName System.IO.Compression.FileSystem; $zip=[System.IO.Compression.ZipFile]::OpenRead('${outputZipPath.replace(/'/g, "''")}'); $zip.Entries | ForEach-Object { $_.FullName }; $zip.Dispose()`
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        `Add-Type -AssemblyName System.IO.Compression.FileSystem; $zip=[System.IO.Compression.ZipFile]::OpenRead('${outputZipPath.replace(/'/g, "''")}'); $zip.Entries | ForEach-Object { $_.FullName }; $zip.Dispose()`,
       ],
       {
-        encoding: "utf8"
+        encoding: 'utf8',
       }
     );
 
@@ -124,7 +139,7 @@ function listArchiveEntries(outputZipPath, options = {}) {
     return parsePowerShellZipEntries(result.stdout);
   }
 
-  const result = runner("unzip", ["-l", outputZipPath], { encoding: "utf8" });
+  const result = runner('unzip', ['-l', outputZipPath], { encoding: 'utf8' });
   if (result.status !== 0) {
     throw new Error(`Failed to inspect archive entries (exit code ${result.status}).`);
   }
@@ -152,40 +167,40 @@ function validateArchiveEntries(outputZipPath, options = {}) {
 
 function buildPosixZipCommand(outputZipPath, entries) {
   return {
-    command: "zip",
-    args: ["-r", outputZipPath, ...entries],
-    options: { stdio: "inherit" }
+    command: 'zip',
+    args: ['-r', outputZipPath, ...entries],
+    options: { stdio: 'inherit' },
   };
 }
 
 function buildWindowsArchiveScript(outputZipPath, entries) {
   const escapedOutput = outputZipPath.replace(/'/g, "''");
-  const escapedEntries = entries.map((entry) => `'${entry.replace(/'/g, "''")}'`).join(", ");
+  const escapedEntries = entries.map((entry) => `'${entry.replace(/'/g, "''")}'`).join(', ');
 
   return [
     "$ErrorActionPreference = 'Stop'",
     `Set-Location -LiteralPath '${process.cwd().replace(/'/g, "''")}'`,
     `if (Test-Path -LiteralPath '${escapedOutput}') { Remove-Item -LiteralPath '${escapedOutput}' -Force }`,
     `$entries = @(${escapedEntries})`,
-    "$existing = @()",
-    "foreach ($item in $entries) {",
-    "  if (Test-Path -LiteralPath $item) { $existing += $item }",
-    "}",
+    '$existing = @()',
+    'foreach ($item in $entries) {',
+    '  if (Test-Path -LiteralPath $item) { $existing += $item }',
+    '}',
     "if ($existing.Count -eq 0) { throw 'No files matched for packaging.' }",
-    `Compress-Archive -Path $existing -DestinationPath '${escapedOutput}' -Force`
-  ].join("\n");
+    `Compress-Archive -Path $existing -DestinationPath '${escapedOutput}' -Force`,
+  ].join('\n');
 }
 
 function shouldRetryWindowsPack(result) {
   if (!result || result.status === 0) {
     return false;
   }
-  const stderr = String(result.stderr || "");
-  const stdout = String(result.stdout || "");
+  const stderr = String(result.stderr || '');
+  const stdout = String(result.stdout || '');
   const combined = `${stderr}\n${stdout}`.toLowerCase();
   return (
-    combined.includes("because it is being used by another process") ||
-    combined.includes("compressarchiveunauthorizedaccesserror")
+    combined.includes('because it is being used by another process') ||
+    combined.includes('compressarchiveunauthorizedaccesserror')
   );
 }
 
@@ -207,7 +222,7 @@ function runPackCommandWithRetry(commandSpec, options = {}) {
       return result;
     }
 
-    const canRetry = platform === "win32" && shouldRetryWindowsPack(result) && attempt < maxRetry;
+    const canRetry = platform === 'win32' && shouldRetryWindowsPack(result) && attempt < maxRetry;
     if (!canRetry) {
       return result;
     }
@@ -221,42 +236,42 @@ function runPackCommandWithRetry(commandSpec, options = {}) {
 function buildWindowsZipCommand(outputZipPath, entries, tempDir) {
   const scriptPath = path.join(tempDir, WIN_ARCHIVE_SCRIPT_FILE);
   const script = buildWindowsArchiveScript(outputZipPath, entries);
-  fs.writeFileSync(scriptPath, script, "utf8");
+  fs.writeFileSync(scriptPath, script, 'utf8');
 
   return {
-    command: "powershell",
-    args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath],
-    options: { stdio: "inherit" }
+    command: 'powershell',
+    args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath],
+    options: { stdio: 'inherit' },
   };
 }
 
 function createZipCommand(rootDir, outputZipPath, entries, options = {}) {
   const platform = options.platform || process.platform;
 
-  if (platform === "win32") {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ext-pack-"));
+  if (platform === 'win32') {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ext-pack-'));
     const command = buildWindowsZipCommand(outputZipPath, entries, tempDir);
     return {
       ...command,
       cleanup: () => {
         fs.rmSync(tempDir, { recursive: true, force: true });
-      }
+      },
     };
   }
 
   return {
     ...buildPosixZipCommand(outputZipPath, entries),
-    cleanup: null
+    cleanup: null,
   };
 }
 
 function runPack(options = {}) {
-  const rootDir = path.resolve(options.rootDir || path.resolve(__dirname, ".."));
+  const rootDir = path.resolve(options.rootDir || path.resolve(__dirname, '..'));
   const outputZipPath = normalizeOutputZipPath(rootDir, options.outputZip);
   const entries = collectPackEntries(rootDir, options);
 
   if (entries.length === 0) {
-    throw new Error("No files matched for packaging.");
+    throw new Error('No files matched for packaging.');
   }
 
   const runner = options.runner || spawnSync;
@@ -275,7 +290,7 @@ function runPack(options = {}) {
     const result = runPackCommandWithRetry(commandSpec, {
       runner,
       platform: options.platform,
-      maxRetry: options.maxRetry
+      maxRetry: options.maxRetry,
     });
 
     if (result.status !== 0) {
@@ -289,7 +304,7 @@ function runPack(options = {}) {
     const archiveEntries = validateArchiveEntries(outputZipPath, {
       platform: options.platform,
       runner: inspectorRunner,
-      requiredEntries: options.requiredEntries
+      requiredEntries: options.requiredEntries,
     });
 
     return {
@@ -298,11 +313,11 @@ function runPack(options = {}) {
       entries,
       archiveEntries,
       command: commandSpec.command,
-      args: commandSpec.args
+      args: commandSpec.args,
     };
   } finally {
     process.chdir(originalCwd);
-    if (typeof cleanup === "function") {
+    if (typeof cleanup === 'function') {
       cleanup();
     }
   }
@@ -341,5 +356,5 @@ module.exports = {
   shouldRetryWindowsPack,
   runPackCommandWithRetry,
   createZipCommand,
-  runPack
+  runPack,
 };

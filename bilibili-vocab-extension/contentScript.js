@@ -3,40 +3,57 @@
     enabled: true,
     schemaVersion: 2,
     reviewDanmakuEnabled: false,
-    reviewDanmakuSpeed: "normal",
+    reviewDanmakuSpeed: 'normal',
     webPageEnabled: true,
     domainRules: {},
-    activeLevels: ["CET4", "CET6", "KAOYAN", "IELTS", "TOEFL"],
+    activeLevels: ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL'],
     replaceRatio: 0.2,
     maxReplaceCount: 2,
-    targetCefr: "B2"
+    targetCefr: 'B2',
   };
-  const sharedSettings = globalThis.SharedSettings || (typeof require === "function" ? require("./sharedSettings.js") : null);
+  const sharedSettings =
+    globalThis.SharedSettings ||
+    (typeof require === 'function' ? require('./sharedSettings.js') : null);
 
   const PROCESS_DELAY_MS = 120;
   const TIMELINE_POLL_MS = 300;
   const TRANSLATION_CACHE_LIMIT = 200;
   const WEB_TEXT_PROCESS_INTERVAL = 1000; // 网页文本处理间隔
-  const LEGACY_WEB_TEXT_PIPELINE_FLAG = "__BILI_VOCAB_ENABLE_LEGACY_WEB_TEXT_PIPELINE__";
-  const VIDEO_SITE_HOSTS = ["bilibili.com", "youtube.com", "v.qq.com", "iqiyi.com", "netflix.com", "youku.com"];
-  const TRANSLATION_SETTINGS_KEYS = sharedSettings && Array.isArray(sharedSettings.SETTINGS_STORAGE_KEYS)
-    ? sharedSettings.SETTINGS_STORAGE_KEYS.filter((key) => key !== "reviewDanmakuEnabled" && key !== "reviewDanmakuSpeed")
-    : [
-      "enabled",
-      "activeLevels",
-      "replaceRatio",
-      "maxReplaceCount",
-      "targetCefr",
-      "vocabularyMode",
-      "examPreference",
-      "webPageEnabled",
-      "domainRules",
-      "schemaVersion"
-    ];
-  const RUNTIME_SETTINGS_KEYS = [...TRANSLATION_SETTINGS_KEYS, "reviewDanmakuEnabled", "reviewDanmakuSpeed"];
-  const SETTINGS_STORAGE_KEY_V3 = sharedSettings && sharedSettings.SETTINGS_STORAGE_KEY_V3
-    ? sharedSettings.SETTINGS_STORAGE_KEY_V3
-    : "bili_vocab_settings_v3";
+  const LEGACY_WEB_TEXT_PIPELINE_FLAG = '__BILI_VOCAB_ENABLE_LEGACY_WEB_TEXT_PIPELINE__';
+  const VIDEO_SITE_HOSTS = [
+    'bilibili.com',
+    'youtube.com',
+    'v.qq.com',
+    'iqiyi.com',
+    'netflix.com',
+    'youku.com',
+  ];
+  const TRANSLATION_SETTINGS_KEYS =
+    sharedSettings && Array.isArray(sharedSettings.SETTINGS_STORAGE_KEYS)
+      ? sharedSettings.SETTINGS_STORAGE_KEYS.filter(
+          (key) => key !== 'reviewDanmakuEnabled' && key !== 'reviewDanmakuSpeed'
+        )
+      : [
+          'enabled',
+          'activeLevels',
+          'replaceRatio',
+          'maxReplaceCount',
+          'targetCefr',
+          'vocabularyMode',
+          'examPreference',
+          'webPageEnabled',
+          'domainRules',
+          'schemaVersion',
+        ];
+  const RUNTIME_SETTINGS_KEYS = [
+    ...TRANSLATION_SETTINGS_KEYS,
+    'reviewDanmakuEnabled',
+    'reviewDanmakuSpeed',
+  ];
+  const SETTINGS_STORAGE_KEY_V3 =
+    sharedSettings && sharedSettings.SETTINGS_STORAGE_KEY_V3
+      ? sharedSettings.SETTINGS_STORAGE_KEY_V3
+      : 'bili_vocab_settings_v3';
 
   let observer = null;
   let observerTarget = null;
@@ -45,13 +62,14 @@
   let processing = false;
   let pendingProcess = false;
   let settings = { ...DEFAULT_SETTINGS };
-  const LRUCacheCtor = globalThis.Utils && typeof globalThis.Utils.LRUCache === "function"
-    ? globalThis.Utils.LRUCache
-    : class SimpleMapCache extends Map {
-      constructor() {
-        super();
-      }
-    };
+  const LRUCacheCtor =
+    globalThis.Utils && typeof globalThis.Utils.LRUCache === 'function'
+      ? globalThis.Utils.LRUCache
+      : class SimpleMapCache extends Map {
+          constructor() {
+            super();
+          }
+        };
   const translationCache = new LRUCacheCtor(TRANSLATION_CACHE_LIMIT);
   let boundVideo = null;
   let webTextProcessTimer = null;
@@ -60,14 +78,27 @@
   let renderGeneration = 0;
   let overlayModuleCache = null;
   let overlayModulePromise = null;
-  const HIT_SIGNATURE_DATA_KEY = "biliVocabHitSignature";
-  const RENDER_SIGNATURE_DATA_KEY = "biliVocabRenderSignature";
-  const LEARNING_WORD_STATS_STORAGE_KEY = globalThis.LearningState ? globalThis.LearningState.STORAGE_KEYS.WORD_STATS_V2 : "bili_vocab_word_stats_v2";
-  const REVIEW_QUEUE_STORAGE_KEY = globalThis.LearningState ? globalThis.LearningState.STORAGE_KEYS.REVIEW_QUEUE : "bili_vocab_review_queue_v1";
-  const LEARNING_SUMMARY_STORAGE_KEY = globalThis.LearningState ? globalThis.LearningState.STORAGE_KEYS.LEARNING_SUMMARY : "bili_vocab_learning_summary_v1";
+  const HIT_SIGNATURE_DATA_KEY = 'biliVocabHitSignature';
+  const RENDER_SIGNATURE_DATA_KEY = 'biliVocabRenderSignature';
+  const LEARNING_WORD_STATS_STORAGE_KEY = globalThis.LearningState
+    ? globalThis.LearningState.STORAGE_KEYS.WORD_STATS_V2
+    : 'bili_vocab_word_stats_v2';
+  const REVIEW_QUEUE_STORAGE_KEY = globalThis.LearningState
+    ? globalThis.LearningState.STORAGE_KEYS.REVIEW_QUEUE
+    : 'bili_vocab_review_queue_v1';
+  const LEARNING_SUMMARY_STORAGE_KEY = globalThis.LearningState
+    ? globalThis.LearningState.STORAGE_KEYS.LEARNING_SUMMARY
+    : 'bili_vocab_learning_summary_v1';
 
-  const normalizeText = (globalThis.Utils && globalThis.Utils.normalizeText) || ((text) => String(text || "").replace(/\s+/g, " ").trim());
-  const logError = (globalThis.Utils && globalThis.Utils.logError) || ((context, error) => console.error(`[BiliVocab] ${context}:`, error));
+  const normalizeText =
+    (globalThis.Utils && globalThis.Utils.normalizeText) ||
+    ((text) =>
+      String(text || '')
+        .replace(/\s+/g, ' ')
+        .trim());
+  const logError =
+    (globalThis.Utils && globalThis.Utils.logError) ||
+    ((context, error) => console.error(`[BiliVocab] ${context}:`, error));
 
   if (sharedSettings) {
     Object.assign(DEFAULT_SETTINGS, sharedSettings.DEFAULT_SETTINGS);
@@ -78,28 +109,31 @@
       return sharedSettings.normalizeReviewDanmakuSpeed(speed);
     }
 
-    const normalized = String(speed || DEFAULT_SETTINGS.reviewDanmakuSpeed).trim().toLowerCase();
-    return ["slow", "normal", "fast"].includes(normalized) ? normalized : DEFAULT_SETTINGS.reviewDanmakuSpeed;
+    const normalized = String(speed || DEFAULT_SETTINGS.reviewDanmakuSpeed)
+      .trim()
+      .toLowerCase();
+    return ['slow', 'normal', 'fast'].includes(normalized)
+      ? normalized
+      : DEFAULT_SETTINGS.reviewDanmakuSpeed;
   }
 
   function hasMethod(obj, method) {
-    return obj && typeof obj[method] === "function";
+    return obj && typeof obj[method] === 'function';
   }
 
   function isVideoSiteHost(hostname) {
-    const normalized = String(hostname || "").toLowerCase();
+    const normalized = String(hostname || '').toLowerCase();
     return VIDEO_SITE_HOSTS.some((site) => normalized === site || normalized.endsWith(`.${site}`));
   }
 
   function shouldEnableTimelinePolling() {
     const doc = globalThis.document;
-    return Boolean(doc && typeof doc.querySelector === "function" && doc.querySelector("video"));
+    return Boolean(doc && typeof doc.querySelector === 'function' && doc.querySelector('video'));
   }
 
   function shouldObserveDomMutations(runtimeSettings, hostname) {
-    const currentHost = typeof hostname === "string"
-      ? hostname
-      : (globalThis.location && globalThis.location.hostname);
+    const currentHost =
+      typeof hostname === 'string' ? hostname : globalThis.location && globalThis.location.hostname;
 
     if (isVideoSiteHost(currentHost) || shouldEnableTimelinePolling()) {
       return true;
@@ -117,7 +151,7 @@
   }
 
   function resolveSubtitleObserverTarget(runtimeSettings) {
-    const subtitleContainer = document.querySelector(".bpx-player-subtitle-wrap");
+    const subtitleContainer = document.querySelector('.bpx-player-subtitle-wrap');
     if (subtitleContainer) {
       return subtitleContainer;
     }
@@ -129,16 +163,17 @@
   }
 
   function runInAnimationFrame(task) {
-    const scheduleFrame = typeof globalThis.requestAnimationFrame === "function"
-      ? globalThis.requestAnimationFrame.bind(globalThis)
-      : (callback) => setTimeout(callback, 0);
+    const scheduleFrame =
+      typeof globalThis.requestAnimationFrame === 'function'
+        ? globalThis.requestAnimationFrame.bind(globalThis)
+        : (callback) => setTimeout(callback, 0);
 
     return new Promise((resolve) => {
       scheduleFrame(() => {
         Promise.resolve()
           .then(() => task())
           .catch((error) => {
-            logError("Animation frame batch failed", error);
+            logError('Animation frame batch failed', error);
           })
           .finally(() => {
             resolve();
@@ -164,39 +199,57 @@
 
     const source = { ...DEFAULT_SETTINGS, ...(rawSettings || {}) };
     const activeLevels = Array.isArray(source.activeLevels)
-      ? source.activeLevels.map((level) => String(level || "").trim().toUpperCase()).filter(Boolean)
+      ? source.activeLevels
+          .map((level) =>
+            String(level || '')
+              .trim()
+              .toUpperCase()
+          )
+          .filter(Boolean)
       : DEFAULT_SETTINGS.activeLevels.slice();
 
     return {
       enabled: source.enabled !== false,
       reviewDanmakuEnabled: source.reviewDanmakuEnabled === true,
       reviewDanmakuSpeed: normalizeReviewDanmakuSpeed(source.reviewDanmakuSpeed),
-      activeLevels: activeLevels.length ? Array.from(new Set(activeLevels)) : DEFAULT_SETTINGS.activeLevels.slice(),
-      replaceRatio: Math.min(0.3, Math.max(0.1, Number(source.replaceRatio) || DEFAULT_SETTINGS.replaceRatio)),
-      maxReplaceCount: Math.min(5, Math.max(1, Math.floor(Number(source.maxReplaceCount) || DEFAULT_SETTINGS.maxReplaceCount))),
-      targetCefr: hasMethod(globalThis.SubtitleTranslator, "normalizeTargetCefr")
+      activeLevels: activeLevels.length
+        ? Array.from(new Set(activeLevels))
+        : DEFAULT_SETTINGS.activeLevels.slice(),
+      replaceRatio: Math.min(
+        0.3,
+        Math.max(0.1, Number(source.replaceRatio) || DEFAULT_SETTINGS.replaceRatio)
+      ),
+      maxReplaceCount: Math.min(
+        5,
+        Math.max(1, Math.floor(Number(source.maxReplaceCount) || DEFAULT_SETTINGS.maxReplaceCount))
+      ),
+      targetCefr: hasMethod(globalThis.SubtitleTranslator, 'normalizeTargetCefr')
         ? globalThis.SubtitleTranslator.normalizeTargetCefr(source.targetCefr)
         : DEFAULT_SETTINGS.targetCefr,
       webPageEnabled: source.webPageEnabled !== false,
-      domainRules: source.domainRules && typeof source.domainRules === "object" ? source.domainRules : {},
-      schemaVersion: Number(source.schemaVersion) || 2
+      domainRules:
+        source.domainRules && typeof source.domainRules === 'object' ? source.domainRules : {},
+      schemaVersion: Number(source.schemaVersion) || 2,
     };
   }
 
   function buildRuntimeSettings(baseSettings, updates) {
-    if (sharedSettings && typeof sharedSettings.buildSettingsPayload === "function") {
+    if (sharedSettings && typeof sharedSettings.buildSettingsPayload === 'function') {
       return sharedSettings.buildSettingsPayload(baseSettings, updates);
     }
 
     return normalizeSettings({
       ...(baseSettings || {}),
-      ...(updates || {})
+      ...(updates || {}),
     });
   }
 
   function isCurrentSiteEnabled(runtimeSettings) {
-    if (sharedSettings && typeof sharedSettings.isDomainEnabled === "function") {
-      return sharedSettings.isDomainEnabled(globalThis.location && globalThis.location.hostname, runtimeSettings);
+    if (sharedSettings && typeof sharedSettings.isDomainEnabled === 'function') {
+      return sharedSettings.isDomainEnabled(
+        globalThis.location && globalThis.location.hostname,
+        runtimeSettings
+      );
     }
     return true;
   }
@@ -211,7 +264,9 @@
         return;
       }
 
-      const sourceText = normalizeText(item.text || SubtitleParser.extractSubtitleText(item.element));
+      const sourceText = normalizeText(
+        item.text || SubtitleParser.extractSubtitleText(item.element)
+      );
       SubtitleRenderer.restoreSubtitleElement(item.element, sourceText);
     });
   }
@@ -221,17 +276,21 @@
       chrome.storage.local.get(null, (stored) => {
         if (
           sharedSettings &&
-          typeof sharedSettings.migrateToV3 === "function" &&
-          typeof sharedSettings.resolveEffectiveRuntime === "function"
+          typeof sharedSettings.migrateToV3 === 'function' &&
+          typeof sharedSettings.resolveEffectiveRuntime === 'function'
         ) {
           const nextV3 = sharedSettings.migrateToV3(stored);
-          if (chrome.storage && chrome.storage.local && typeof chrome.storage.local.set === "function") {
+          if (
+            chrome.storage &&
+            chrome.storage.local &&
+            typeof chrome.storage.local.set === 'function'
+          ) {
             chrome.storage.local.set({
-              [SETTINGS_STORAGE_KEY_V3]: nextV3
+              [SETTINGS_STORAGE_KEY_V3]: nextV3,
             });
           }
           settings = sharedSettings.resolveEffectiveRuntime(nextV3, {
-            hostname: globalThis.location && globalThis.location.hostname
+            hostname: globalThis.location && globalThis.location.hostname,
           });
           resolve(settings);
           return;
@@ -250,29 +309,29 @@
   function createCacheKey(text, runtimeSettings) {
     const normalizedText = normalizeText(text);
     if (!normalizedText) {
-      return "";
+      return '';
     }
 
-    if (hasMethod(globalThis.SubtitleTranslator, "createSettingsFingerprint")) {
+    if (hasMethod(globalThis.SubtitleTranslator, 'createSettingsFingerprint')) {
       const fingerprint = globalThis.SubtitleTranslator.createSettingsFingerprint(runtimeSettings);
       return `${normalizedText}::${fingerprint}`;
     }
 
     const normalized = normalizeSettings(runtimeSettings);
-    const sortedLevels = normalized.activeLevels.slice().sort().join(",");
+    const sortedLevels = normalized.activeLevels.slice().sort().join(',');
     return `${normalizedText}::${normalized.replaceRatio.toFixed(2)}|${normalized.maxReplaceCount}|${sortedLevels}`;
   }
 
   function createRenderSignature(text, runtimeSettings) {
     const normalizedText = normalizeText(text);
     if (!normalizedText) {
-      return "";
+      return '';
     }
 
     const normalized = normalizeSettings(runtimeSettings);
-    const mode = normalized.enabled ? "enabled" : "disabled";
-    const pageMode = normalized.webPageEnabled ? "page-on" : "page-off";
-    const siteMode = isCurrentSiteEnabled(normalized) ? "site-on" : "site-off";
+    const mode = normalized.enabled ? 'enabled' : 'disabled';
+    const pageMode = normalized.webPageEnabled ? 'page-on' : 'page-off';
+    const siteMode = isCurrentSiteEnabled(normalized) ? 'site-on' : 'site-off';
     const cacheKey = createCacheKey(normalizedText, normalized);
     return `${mode}::${pageMode}::${siteMode}::${cacheKey}`;
   }
@@ -302,39 +361,31 @@
       return;
     }
 
-    if (translationCache.has(cacheKey)) {
-      translationCache.delete(cacheKey);
-    }
-
     translationCache.set(cacheKey, result);
-
-    if (translationCache.size > TRANSLATION_CACHE_LIMIT) {
-      const oldestKey = translationCache.keys().next().value;
-      if (oldestKey) {
-        translationCache.delete(oldestKey);
-      }
-    }
   }
 
-  const scheduleProcess = (function() {
-    const debouncedProcess = globalThis.Utils && globalThis.Utils.debounce
-      ? globalThis.Utils.debounce(() => {
-          processAll().catch((error) => logError("Process failed", error));
-        }, PROCESS_DELAY_MS)
-      : function() {
-          if (processTimer) {
-            clearTimeout(processTimer);
-          }
-          processTimer = setTimeout(() => {
-            processTimer = null;
-            processAll().catch((error) => logError("Process failed", error));
-          }, PROCESS_DELAY_MS);
-        };
+  const scheduleProcess = (function () {
+    const debouncedProcess =
+      globalThis.Utils && globalThis.Utils.debounce
+        ? globalThis.Utils.debounce(() => {
+            processAll().catch((error) => logError('Process failed', error));
+          }, PROCESS_DELAY_MS)
+        : function () {
+            if (processTimer) {
+              clearTimeout(processTimer);
+            }
+            processTimer = setTimeout(() => {
+              processTimer = null;
+              processAll().catch((error) => logError('Process failed', error));
+            }, PROCESS_DELAY_MS);
+          };
     return debouncedProcess;
   })();
 
   async function applyTranslation(element, sourceTextOverride) {
-    const currentText = normalizeText(sourceTextOverride || SubtitleParser.extractSubtitleText(element));
+    const currentText = normalizeText(
+      sourceTextOverride || SubtitleParser.extractSubtitleText(element)
+    );
     if (!currentText) {
       return;
     }
@@ -379,19 +430,23 @@
 
   function createHitTrackingSignature(result, sourceText) {
     if (!result || !Array.isArray(result.tokens)) {
-      return "";
+      return '';
     }
 
     const words = result.tokens
-      .filter((token) => token && token.type === "word")
-      .map((token) => String(token.word || "").trim().toLowerCase())
+      .filter((token) => token && token.type === 'word')
+      .map((token) =>
+        String(token.word || '')
+          .trim()
+          .toLowerCase()
+      )
       .filter(Boolean);
 
     if (words.length === 0) {
-      return "";
+      return '';
     }
 
-    return `${normalizeText(sourceText)}::${words.join("|")}`;
+    return `${normalizeText(sourceText)}::${words.join('|')}`;
   }
 
   function resetHitTrackingIfSourceChanged(element, sourceText) {
@@ -399,7 +454,7 @@
       return;
     }
 
-    const previousOriginalText = normalizeText(element.dataset.biliVocabOriginalText || "");
+    const previousOriginalText = normalizeText(element.dataset.biliVocabOriginalText || '');
     const nextOriginalText = normalizeText(sourceText);
     if (!previousOriginalText || !nextOriginalText || previousOriginalText === nextOriginalText) {
       return;
@@ -409,7 +464,11 @@
   }
 
   function recordRenderedHits(element, result, sourceText) {
-    if (!result || !Array.isArray(result.tokens) || !hasMethod(globalThis.VocabularyModule, "recordHit")) {
+    if (
+      !result ||
+      !Array.isArray(result.tokens) ||
+      !hasMethod(globalThis.VocabularyModule, 'recordHit')
+    ) {
       return;
     }
 
@@ -423,11 +482,11 @@
     }
 
     result.tokens.forEach((token) => {
-      if (!token || token.type !== "word") {
+      if (!token || token.type !== 'word') {
         return;
       }
 
-      const word = String(token.word || "").trim();
+      const word = String(token.word || '').trim();
       if (!word) {
         return;
       }
@@ -441,42 +500,44 @@
   }
 
   function startReviewEngine() {
-    if (hasMethod(globalThis.SchedulerModule, "startEngine")) {
+    if (hasMethod(globalThis.SchedulerModule, 'startEngine')) {
       globalThis.SchedulerModule.startEngine();
     }
   }
 
   function stopReviewEngine(clearExistingDanmaku) {
     if (globalThis.SchedulerModule) {
-      if (hasMethod(globalThis.SchedulerModule, "stopEngine")) {
+      if (hasMethod(globalThis.SchedulerModule, 'stopEngine')) {
         globalThis.SchedulerModule.stopEngine();
-      } else if (hasMethod(globalThis.SchedulerModule, "pauseEngine")) {
+      } else if (hasMethod(globalThis.SchedulerModule, 'pauseEngine')) {
         globalThis.SchedulerModule.pauseEngine();
       }
     }
 
-    if (clearExistingDanmaku && hasMethod(globalThis.DanmakuModule, "clearDanmaku")) {
+    if (clearExistingDanmaku && hasMethod(globalThis.DanmakuModule, 'clearDanmaku')) {
       globalThis.DanmakuModule.clearDanmaku();
     }
   }
 
   function pauseReviewEngine() {
-    if (hasMethod(globalThis.SchedulerModule, "pauseEngine")) {
+    if (hasMethod(globalThis.SchedulerModule, 'pauseEngine')) {
       globalThis.SchedulerModule.pauseEngine();
     }
   }
 
   function syncDanmakuSettings() {
-    if (hasMethod(globalThis.DanmakuModule, "setSpeedPreset")) {
+    if (hasMethod(globalThis.DanmakuModule, 'setSpeedPreset')) {
       globalThis.DanmakuModule.setSpeedPreset(settings.reviewDanmakuSpeed);
     }
   }
 
   function shouldRunReviewDanmaku(runtimeSettings = {}, playbackState = {}) {
-    return runtimeSettings.reviewDanmakuEnabled === true &&
+    return (
+      runtimeSettings.reviewDanmakuEnabled === true &&
       playbackState.hasVideo === true &&
       playbackState.paused !== true &&
-      playbackState.ended !== true;
+      playbackState.ended !== true
+    );
   }
 
   function getPlaybackState() {
@@ -484,14 +545,14 @@
       return {
         hasVideo: false,
         paused: true,
-        ended: true
+        ended: true,
       };
     }
 
     return {
       hasVideo: true,
       paused: Boolean(boundVideo.paused),
-      ended: Boolean(boundVideo.ended)
+      ended: Boolean(boundVideo.ended),
     };
   }
 
@@ -507,13 +568,13 @@
     if (!(video instanceof HTMLVideoElement)) {
       return;
     }
-    video.removeEventListener("play", onVideoPlay);
-    video.removeEventListener("pause", onVideoPauseOrEnd);
-    video.removeEventListener("ended", onVideoPauseOrEnd);
+    video.removeEventListener('play', onVideoPlay);
+    video.removeEventListener('pause', onVideoPauseOrEnd);
+    video.removeEventListener('ended', onVideoPauseOrEnd);
   }
 
   function bindVideoPlaybackEvents() {
-    const video = document.querySelector("video");
+    const video = document.querySelector('video');
     if (!(video instanceof HTMLVideoElement)) {
       unbindVideoPlaybackEvents(boundVideo);
       boundVideo = null;
@@ -527,9 +588,9 @@
     unbindVideoPlaybackEvents(boundVideo);
 
     boundVideo = video;
-    boundVideo.addEventListener("play", onVideoPlay);
-    boundVideo.addEventListener("pause", onVideoPauseOrEnd);
-    boundVideo.addEventListener("ended", onVideoPauseOrEnd);
+    boundVideo.addEventListener('play', onVideoPlay);
+    boundVideo.addEventListener('pause', onVideoPauseOrEnd);
+    boundVideo.addEventListener('ended', onVideoPauseOrEnd);
   }
 
   function syncEngineWithPlayback() {
@@ -550,7 +611,7 @@
   function ensureRuntimeBindings() {
     bindVideoPlaybackEvents();
 
-    if (hasMethod(globalThis.DanmakuModule, "initDanmakuContainer")) {
+    if (hasMethod(globalThis.DanmakuModule, 'initDanmakuContainer')) {
       globalThis.DanmakuModule.initDanmakuContainer();
     }
 
@@ -574,23 +635,23 @@
       return;
     }
 
-    const webItems = subtitleItems.filter((item) => item && item.mode === "page");
-    const subtitleModeItems = subtitleItems.filter((item) => !item || item.mode !== "page");
+    const webItems = subtitleItems.filter((item) => item && item.mode === 'page');
+    const subtitleModeItems = subtitleItems.filter((item) => !item || item.mode !== 'page');
 
     // 批量更新DOM，减少重排重绘
     await runInAnimationFrame(async () => {
-        for (let i = 0; i < subtitleModeItems.length; i += 1) {
-          await applyTranslation(subtitleModeItems[i].element);
-        }
+      for (let i = 0; i < subtitleModeItems.length; i += 1) {
+        await applyTranslation(subtitleModeItems[i].element);
+      }
 
-        if (shouldRestoreWebItems(settings)) {
-          restoreItemsToSourceText(webItems);
-          return;
-        }
+      if (shouldRestoreWebItems(settings)) {
+        restoreItemsToSourceText(webItems);
+        return;
+      }
 
-        for (let i = 0; i < webItems.length; i += 1) {
-          await applyTranslation(webItems[i].element, webItems[i].text);
-        }
+      for (let i = 0; i < webItems.length; i += 1) {
+        await applyTranslation(webItems[i].element, webItems[i].text);
+      }
     });
   }
 
@@ -660,28 +721,29 @@
 
       // 选择所有正文文本节点
       const textNodes = [];
-      const walker = document.createTreeWalker(
-        document.body,
-        NodeFilter.SHOW_TEXT,
-        {
-          acceptNode: (node) => {
-            // 过滤掉非正文内容
-            if (!node.parentElement || node.parentElement.tagName.match(/^(SCRIPT|STYLE|NOSCRIPT|IFRAME|BUTTON|A|INPUT|TEXTAREA|SELECT|LABEL|NAV|HEADER|FOOTER|ASIDE|PRE|CODE)$/)) {
-              return NodeFilter.FILTER_REJECT;
-            }
-            // 跳过已处理的内容
-            if (node.parentElement.closest('.bili-vocab-word, .bili-vocab-tooltip')) {
-              return NodeFilter.FILTER_REJECT;
-            }
-            // 只处理包含中文的文本
-            const text = node.textContent.trim();
-            if (text.length < 2 || !/[\u4e00-\u9fff]/.test(text)) {
-              return NodeFilter.FILTER_REJECT;
-            }
-            return NodeFilter.FILTER_ACCEPT;
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) => {
+          // 过滤掉非正文内容
+          if (
+            !node.parentElement ||
+            node.parentElement.tagName.match(
+              /^(SCRIPT|STYLE|NOSCRIPT|IFRAME|BUTTON|A|INPUT|TEXTAREA|SELECT|LABEL|NAV|HEADER|FOOTER|ASIDE|PRE|CODE)$/
+            )
+          ) {
+            return NodeFilter.FILTER_REJECT;
           }
-        }
-      );
+          // 跳过已处理的内容
+          if (node.parentElement.closest('.bili-vocab-word, .bili-vocab-tooltip')) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          // 只处理包含中文的文本
+          const text = node.textContent.trim();
+          if (text.length < 2 || !/[\u4e00-\u9fff]/.test(text)) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        },
+      });
 
       let node;
       while ((node = walker.nextNode())) {
@@ -692,9 +754,9 @@
       const batchSize = 20;
       for (let i = 0; i < textNodes.length; i += batchSize) {
         const batch = textNodes.slice(i, i + batchSize);
-        await Promise.all(batch.map(node => processTextNode(node)));
+        await Promise.all(batch.map((node) => processTextNode(node)));
         // 给浏览器喘息时间
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
     } finally {
       webTextProcessing = false;
@@ -730,7 +792,7 @@
   }
 
   function shouldReplaceWebTextNode(result, sourceText) {
-    if (!result || typeof result !== "object") {
+    if (!result || typeof result !== 'object') {
       return false;
     }
 
@@ -744,12 +806,15 @@
       return false;
     }
 
-    return result.tokens.some((token) => token && token.type === "word");
+    return result.tokens.some((token) => token && token.type === 'word');
   }
 
   function renderWebTextReplacementHtml(result, sourceText, runtimeSettings) {
-    if (!globalThis.SubtitleRenderer || typeof globalThis.SubtitleRenderer.renderToHtml !== "function") {
-      return "";
+    if (
+      !globalThis.SubtitleRenderer ||
+      typeof globalThis.SubtitleRenderer.renderToHtml !== 'function'
+    ) {
+      return '';
     }
 
     return globalThis.SubtitleRenderer.renderToHtml(result, sourceText, runtimeSettings);
@@ -782,7 +847,7 @@
     observer.observe(observeTarget, {
       childList: true,
       subtree: true,
-      characterData: true
+      characterData: true,
     });
   }
 
@@ -821,7 +886,7 @@
 
   function watchStorageChanges() {
     chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName !== "local") {
+      if (areaName !== 'local') {
         return;
       }
 
@@ -834,19 +899,26 @@
         changes[LEARNING_SUMMARY_STORAGE_KEY]
       );
       const hasTranslationChange = hasTranslationSettingChange(changes);
-      if (!reviewDanmakuChanged && !reviewDanmakuSpeedChanged && !hasTranslationChange && !learningStateChanged) {
+      if (
+        !reviewDanmakuChanged &&
+        !reviewDanmakuSpeedChanged &&
+        !hasTranslationChange &&
+        !learningStateChanged
+      ) {
         return;
       }
 
       if (
         v3Changed &&
         sharedSettings &&
-        typeof sharedSettings.normalizeSettingsV3 === "function" &&
-        typeof sharedSettings.resolveEffectiveRuntime === "function"
+        typeof sharedSettings.normalizeSettingsV3 === 'function' &&
+        typeof sharedSettings.resolveEffectiveRuntime === 'function'
       ) {
-        const nextV3 = sharedSettings.normalizeSettingsV3(changes[SETTINGS_STORAGE_KEY_V3].newValue);
+        const nextV3 = sharedSettings.normalizeSettingsV3(
+          changes[SETTINGS_STORAGE_KEY_V3].newValue
+        );
         settings = sharedSettings.resolveEffectiveRuntime(nextV3, {
-          hostname: globalThis.location && globalThis.location.hostname
+          hostname: globalThis.location && globalThis.location.hostname,
         });
       } else {
         const updates = {};
@@ -881,21 +953,24 @@
         scheduleProcess();
       }
 
-      if (learningStateChanged && hasMethod(globalThis.VocabularyModule, "refreshLearningStateFromStorage")) {
+      if (
+        learningStateChanged &&
+        hasMethod(globalThis.VocabularyModule, 'refreshLearningStateFromStorage')
+      ) {
         globalThis.VocabularyModule.refreshLearningStateFromStorage()
           .then(() => {
             clearTranslationCache();
             invalidateRenderedSubtitles();
             scheduleProcess();
           })
-          .catch((error) => logError("Learning state refresh failed", error));
+          .catch((error) => logError('Learning state refresh failed', error));
       }
     });
   }
 
   function getOverlayModuleFromGlobal() {
     const module = globalThis.ReactOverlayModule || globalThis.OverlayPanelModule;
-    if (module && typeof module.mountOverlayPanel === "function") {
+    if (module && typeof module.mountOverlayPanel === 'function') {
       return module;
     }
     return null;
@@ -917,28 +992,28 @@
     }
 
     if (
-      typeof chrome === "undefined" ||
+      typeof chrome === 'undefined' ||
       !chrome.runtime ||
-      typeof chrome.runtime.getURL !== "function"
+      typeof chrome.runtime.getURL !== 'function'
     ) {
       return null;
     }
 
-    overlayModulePromise = import(chrome.runtime.getURL("dist/overlay.js"))
+    overlayModulePromise = import(chrome.runtime.getURL('dist/overlay.js'))
       .then((module) => {
         const globalModule = getOverlayModuleFromGlobal();
         if (globalModule) {
           overlayModuleCache = globalModule;
           return globalModule;
         }
-        if (module && typeof module.mountOverlayPanel === "function") {
+        if (module && typeof module.mountOverlayPanel === 'function') {
           overlayModuleCache = module;
           return module;
         }
         return null;
       })
       .catch((error) => {
-        logError("Overlay module load failed", error);
+        logError('Overlay module load failed', error);
         return null;
       })
       .finally(() => {
@@ -958,16 +1033,16 @@
       !globalThis.TooltipModule ||
       !overlayModule
     ) {
-      console.error("[BiliVocab] Required modules are missing.");
+      console.error('[BiliVocab] Required modules are missing.');
       return;
     }
 
     await Promise.all([
       VocabularyModule.loadVocabulary(),
       SubtitleParser.loadSubtitleTimeline().catch((error) => {
-        logError("Subtitle timeline load failed", error);
+        logError('Subtitle timeline load failed', error);
         return [];
-      })
+      }),
     ]);
     await getSettings();
     clearTranslationCache();
@@ -980,18 +1055,18 @@
     startTimelinePolling();
     scheduleProcess();
 
-    console.log("[BiliVocab] Running with settings:", settings);
+    console.log('[BiliVocab] Running with settings:', settings);
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => {
-      init().catch((error) => logError("Initialization failed", error));
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      init().catch((error) => logError('Initialization failed', error));
     });
   } else {
-    init().catch((error) => logError("Initialization failed", error));
+    init().catch((error) => logError('Initialization failed', error));
   }
 
-  if (typeof module !== "undefined" && module.exports) {
+  if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
       TRANSLATION_SETTINGS_KEYS,
       buildRuntimeSettings,
@@ -1015,10 +1090,13 @@
       shouldRunLegacyWebTextPipeline,
       shouldReplaceWebTextNode,
       renderWebTextReplacementHtml,
+      __readFromCacheForTest: readFromCache,
+      __writeToCacheForTest: writeToCache,
+      __clearTranslationCacheForTest: clearTranslationCache,
       __resetOverlayModuleStateForTest() {
         overlayModuleCache = null;
         overlayModulePromise = null;
-      }
+      },
     };
   }
 })();
