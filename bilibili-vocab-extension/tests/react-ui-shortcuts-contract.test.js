@@ -16,8 +16,13 @@ test('react ui shortcuts contract: should define shipped shortcut guide metadata
   assert.match(source, /降低替换比例/);
   assert.match(source, /Ctrl\+Shift\+E/);
   assert.match(source, /Ctrl\+Shift\+O/);
-  assert.match(source, /Ctrl\+Shift\+↑/);
-  assert.match(source, /Ctrl\+Shift\+↓/);
+  assert.match(source, /Ctrl\+Shift\+Up/);
+  assert.match(source, /Ctrl\+Shift\+Down/);
+  assert.match(source, /chrome\.commands\.getAll/);
+  assert.match(source, /已读取浏览器绑定/);
+  assert.match(source, /显示推荐默认值/);
+  assert.match(source, /未分配/);
+  assert.match(source, /推荐默认值：/);
   assert.match(source, /chrome:\/\/extensions\/shortcuts/);
   assert.match(source, /macOS 使用 Command 替代 Ctrl/);
 });

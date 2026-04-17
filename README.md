@@ -56,6 +56,7 @@
 - `Ctrl+Shift+Up`：提高当前配置的替换比例
 - `Ctrl+Shift+Down`：降低当前配置的替换比例
 - macOS 默认使用 `Command` 替代 `Ctrl`
+- shipped React `Popup / Options` 中的快捷键速览会读取浏览器当前已生效绑定；若某个命令未分配，会直接标记为“未分配”并给出推荐默认值
 - 可在 `chrome://extensions/shortcuts` 或 `edge://extensions/shortcuts` 自定义
 
 ## 生词本导出
