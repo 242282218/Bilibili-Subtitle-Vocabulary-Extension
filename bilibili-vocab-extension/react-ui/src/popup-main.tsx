@@ -7,9 +7,9 @@ import {
   cloneSettingsV3,
   getProfileConfigById,
   listProfileOptions,
-  normalizeDomainRules,
   normalizeHostname,
   resolveEffectiveRuntime,
+  setExactDomainRuleEnabled,
   setActiveProfileConfig,
 } from './settings-bridge';
 import {
@@ -240,21 +240,15 @@ function PopupApp() {
     }
     const before = cloneSettingsV3(working);
     const enabled = runtime ? runtime.siteEnabled : true;
-    const nextRules = { ...working.globalControls.siteRules };
-    if (enabled) {
-      nextRules[hostname] = { enabled: false };
-    } else {
-      delete nextRules[hostname];
-    }
     setGlobalSettings({
-      siteRules: normalizeDomainRules(nextRules),
+      siteRules: setExactDomainRuleEnabled(working.globalControls.siteRules, hostname, !enabled),
     });
     registerHighRiskUndo(before, enabled ? `已暂停站点 ${hostname}` : `已恢复站点 ${hostname}`);
   }
 
   async function onSave() {
-    const persisted = await save('策略已保存。');
-    if (!persisted) {
+    const saveResult = await save('策略已保存。');
+    if (!saveResult) {
       return;
     }
     setPendingUndo(null);
@@ -264,9 +258,17 @@ function PopupApp() {
         readExperienceMetricsSnapshot(7),
       ]);
       applyAdaptiveSnapshot(nextAdaptive, nextMetrics);
-      setStatus(`策略已保存。${nextAdaptive.hint}`);
+      setStatus(
+        saveResult.preservedLocalEdits
+          ? `最近一次保存已完成，当前仍有未保存修改。${nextAdaptive.hint}`
+          : `策略已保存。${nextAdaptive.hint}`
+      );
     } catch {
-      setStatus('策略已保存，但自动调优状态刷新失败，请稍后重试。');
+      setStatus(
+        saveResult.preservedLocalEdits
+          ? '最近一次保存已完成，当前仍有未保存修改；自动调优状态刷新失败，请稍后重试。'
+          : '策略已保存，但自动调优状态刷新失败，请稍后重试。'
+      );
     }
   }
 

@@ -24,6 +24,7 @@ import {
   normalizeDomainRules,
   normalizeHostname,
   resolveEffectiveRuntime,
+  setExactDomainRuleEnabled,
   setActiveProfileConfig,
   upsertCustomProfile,
   removeCustomProfile,
@@ -339,10 +340,11 @@ function OptionsApp() {
       return;
     }
     updateWorking((draft) => {
-      draft.globalControls.siteRules = normalizeDomainRules({
-        ...draft.globalControls.siteRules,
-        [hostname]: { enabled: true },
-      });
+      draft.globalControls.siteRules = setExactDomainRuleEnabled(
+        draft.globalControls.siteRules,
+        hostname,
+        true
+      );
       return draft;
     });
     setNewSite('');
@@ -367,8 +369,8 @@ function OptionsApp() {
   }
 
   async function onSave() {
-    const persisted = await save('配置已保存并应用到扩展。');
-    if (!persisted) {
+    const saveResult = await save('配置已保存并应用到扩展。');
+    if (!saveResult) {
       return;
     }
     setPendingUndo(null);
@@ -378,9 +380,17 @@ function OptionsApp() {
         readExperienceMetricsSnapshot(7),
       ]);
       applyAdaptiveSnapshot(nextAdaptive, nextMetrics);
-      setStatus(`配置已保存并应用到扩展。${nextAdaptive.hint}`);
+      setStatus(
+        saveResult.preservedLocalEdits
+          ? `最近一次保存已完成，当前仍有未保存修改。${nextAdaptive.hint}`
+          : `配置已保存并应用到扩展。${nextAdaptive.hint}`
+      );
     } catch {
-      setStatus('配置已保存，但自动调优状态刷新失败，请稍后重试。');
+      setStatus(
+        saveResult.preservedLocalEdits
+          ? '最近一次保存已完成，当前仍有未保存修改；自动调优状态刷新失败，请稍后重试。'
+          : '配置已保存，但自动调优状态刷新失败，请稍后重试。'
+      );
     }
   }
 
@@ -845,13 +855,11 @@ function OptionsApp() {
                         className="btn ghost"
                         onClick={() => {
                           updateWorking((draft) => {
-                            draft.globalControls.siteRules = normalizeDomainRules({
-                              ...draft.globalControls.siteRules,
-                              [hostname]: {
-                                ...rule,
-                                enabled: rule.enabled === false,
-                              },
-                            });
+                            draft.globalControls.siteRules = setExactDomainRuleEnabled(
+                              draft.globalControls.siteRules,
+                              hostname,
+                              rule.enabled === false
+                            );
                             return draft;
                           });
                         }}
