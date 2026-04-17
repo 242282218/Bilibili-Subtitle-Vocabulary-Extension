@@ -41,6 +41,7 @@ const FALLBACK_PROFILE: ProfileConfig = {
   vocabularyMode: 'core',
   examPreference: 'balanced',
   bilingualMode: 'default',
+  themeMode: 'auto',
 };
 
 const FALLBACK_OVERLAY: OverlayState = {
@@ -146,6 +147,16 @@ function normalizeBilingualMode(value: unknown): ProfileConfig['bilingualMode'] 
   return 'default';
 }
 
+function normalizeThemeMode(value: unknown): ProfileConfig['themeMode'] {
+  const normalized = String(value || FALLBACK_PROFILE.themeMode)
+    .trim()
+    .toLowerCase();
+  if (normalized === 'light' || normalized === 'dark') {
+    return normalized;
+  }
+  return 'auto';
+}
+
 function normalizeLevels(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return FALLBACK_PROFILE.activeLevels.slice();
@@ -178,6 +189,7 @@ function normalizeProfileConfigFallback(value: unknown): ProfileConfig {
     vocabularyMode: normalizeVocabularyMode(source.vocabularyMode),
     examPreference: normalizeExamPreference(source.examPreference),
     bilingualMode: normalizeBilingualMode(source.bilingualMode),
+    themeMode: normalizeThemeMode(source.themeMode),
   };
 }
 

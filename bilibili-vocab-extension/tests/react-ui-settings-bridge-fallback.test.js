@@ -61,6 +61,7 @@ test('react ui settings bridge fallback: should migrate legacy flat settings int
     vocabularyMode: 'full',
     examPreference: 'exam-first',
     bilingualMode: 'bilingual',
+    themeMode: 'dark',
     overlayPanelHidden: true,
     overlayPanelCollapsed: true,
     overlayPanelWidth: 500,
@@ -77,6 +78,7 @@ test('react ui settings bridge fallback: should migrate legacy flat settings int
   assert.equal(migrated.profilesCustom[0].config.replaceRatio, 0.3);
   assert.equal(migrated.profilesCustom[0].config.maxReplaceCount, 4);
   assert.equal(migrated.profilesCustom[0].config.bilingualMode, 'bilingual');
+  assert.equal(migrated.profilesCustom[0].config.themeMode, 'dark');
   assert.deepEqual(Array.from(migrated.profilesCustom[0].config.activeLevels), ['IELTS']);
   assert.equal(migrated.globalControls.reviewDanmakuEnabled, true);
   assert.equal(migrated.globalControls.webPageEnabled, false);
@@ -111,6 +113,7 @@ test('react ui settings bridge fallback: should honor parent-domain rules, pause
 
   assert.equal(runtime.siteEnabled, false);
   assert.equal(runtime.bilingualMode, 'default');
+  assert.equal(runtime.themeMode, 'auto');
   assert.equal(
     settingsBridge.isDomainEnabled('nested.paused.dev', {
       enabled: true,
@@ -164,4 +167,15 @@ test('react ui settings bridge fallback: should clamp zero ratio and count inste
 
   assert.equal(normalized.profilesBuiltin.balanced.replaceRatio, 0.1);
   assert.equal(normalized.profilesBuiltin.balanced.maxReplaceCount, 1);
+});
+
+test('react ui settings bridge fallback: should retain theme mode inside normalized profile config', () => {
+  const settingsBridge = createSettingsBridgeModule();
+  const normalized = settingsBridge.normalizeProfileConfig({
+    themeMode: 'dark',
+    bilingualMode: 'english-only',
+  });
+
+  assert.equal(normalized.themeMode, 'dark');
+  assert.equal(normalized.bilingualMode, 'english-only');
 });

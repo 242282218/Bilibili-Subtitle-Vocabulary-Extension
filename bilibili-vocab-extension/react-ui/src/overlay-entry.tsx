@@ -12,6 +12,7 @@ import {
   setActiveProfileConfig,
 } from './overlay-settings';
 import { saveOverlaySettingsV3, readLearningSummary, LearningSummary } from './overlay-storage';
+import { getThemeModeLabel, THEME_MODE_OPTIONS, useResolvedTheme } from './ui-theme';
 import { useOverlaySettings } from './use-overlay-settings';
 
 const ROOT_ID = 'bili-vocab-react-overlay-root';
@@ -78,6 +79,7 @@ function OverlayApp() {
     }
     return getProfileConfigById(settings, settings.activeProfileId);
   }, [settings]);
+  const resolvedTheme = useResolvedTheme(profile ? profile.themeMode : 'auto');
 
   if (!settings || !profile) {
     return null;
@@ -154,7 +156,7 @@ function OverlayApp() {
   }
 
   return (
-    <div className="rv-overlay-root">
+    <div className="rv-overlay-root" data-theme={resolvedTheme}>
       <aside
         className="rv-overlay-panel"
         data-collapsed={overlayState.collapsed}
@@ -340,6 +342,24 @@ function OverlayApp() {
                     {REVIEW_SPEEDS.map((item) => (
                       <option key={item} value={item}>
                         {item}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="rv-field">
+                  <label htmlFor="rvTheme">主题模式</label>
+                  <select
+                    id="rvTheme"
+                    value={profile.themeMode}
+                    onChange={(event) =>
+                      patchProfile({
+                        themeMode: event.target.value as 'auto' | 'light' | 'dark',
+                      })
+                    }
+                  >
+                    {THEME_MODE_OPTIONS.map((mode) => (
+                      <option key={mode} value={mode}>
+                        {getThemeModeLabel(mode)}
                       </option>
                     ))}
                   </select>

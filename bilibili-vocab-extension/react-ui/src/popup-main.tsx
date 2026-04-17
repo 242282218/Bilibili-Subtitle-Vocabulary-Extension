@@ -4,6 +4,7 @@ import './ui.css';
 import {
   CEFR_LEVELS,
   REVIEW_SPEEDS,
+  THEME_MODES,
   cloneSettingsV3,
   getProfileConfigById,
   isDomainEnabled,
@@ -47,6 +48,7 @@ import {
   readLearningStreak,
   subscribeQuickReviewSource,
 } from './storage';
+import { getThemeModeLabel, useDocumentTheme } from './ui-theme';
 import { useV3Settings } from './use-v3-settings';
 
 const HIGH_RISK_UNDO_WINDOW_MS = 6 * 1000;
@@ -277,6 +279,7 @@ function PopupApp() {
     }
     return getProfileConfigById(working, working.activeProfileId);
   }, [working]);
+  useDocumentTheme(activeProfile ? activeProfile.themeMode : 'auto');
 
   const runtime = useMemo(() => {
     if (!working) {
@@ -849,6 +852,24 @@ function PopupApp() {
               <option value="default">默认模式（词汇 + 括号释义）</option>
               <option value="bilingual">双语模式（整句对照）</option>
               <option value="english-only">纯英文模式（不显示括号）</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="popupThemeMode">主题模式</label>
+            <select
+              id="popupThemeMode"
+              value={activeProfile.themeMode}
+              onChange={(event) =>
+                patchActiveProfile({
+                  themeMode: event.target.value as 'auto' | 'light' | 'dark',
+                })
+              }
+            >
+              {THEME_MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {getThemeModeLabel(mode)}
+                </option>
+              ))}
             </select>
           </div>
           <div className="field">

@@ -1,10 +1,51 @@
 .rv-overlay-root {
+  --rv-text: #f8f6f1;
+  --rv-text-muted: rgba(243, 233, 213, 0.7);
+  --rv-border: rgba(246, 218, 169, 0.28);
+  --rv-border-soft: rgba(246, 218, 169, 0.18);
+  --rv-border-faint: rgba(246, 218, 169, 0.16);
+  --rv-panel-bg:
+    radial-gradient(420px 180px at 102% -4%, rgba(247, 185, 95, 0.22), transparent 70%),
+    linear-gradient(165deg, rgba(18, 24, 34, 0.96), rgba(11, 15, 24, 0.96));
+  --rv-card-bg: rgba(255, 255, 255, 0.02);
+  --rv-card-highlight-bg: linear-gradient(135deg, rgba(254, 204, 119, 0.1), rgba(240, 167, 79, 0.05));
+  --rv-card-highlight-border: rgba(254, 204, 119, 0.3);
+  --rv-button-bg: rgba(255, 255, 255, 0.06);
+  --rv-button-border: rgba(255, 255, 255, 0.16);
+  --rv-button-text: #f3e9d5;
+  --rv-input-bg: rgba(9, 13, 20, 0.86);
+  --rv-input-border: rgba(243, 219, 181, 0.24);
+  --rv-input-text: #fff6e8;
+  --rv-stat: #feca77;
+  --rv-shadow: 0 24px 58px -30px rgba(0, 0, 0, 0.78);
   position: fixed;
   right: 0;
   bottom: 0;
   z-index: 2147483600;
   font-family: "Avenir Next", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  color: #f8f6f1;
+  color: var(--rv-text);
+}
+
+.rv-overlay-root[data-theme="light"] {
+  --rv-text: #273244;
+  --rv-text-muted: rgba(68, 82, 103, 0.78);
+  --rv-border: rgba(183, 147, 98, 0.24);
+  --rv-border-soft: rgba(183, 147, 98, 0.18);
+  --rv-border-faint: rgba(183, 147, 98, 0.16);
+  --rv-panel-bg:
+    radial-gradient(420px 180px at 102% -4%, rgba(241, 190, 118, 0.22), transparent 70%),
+    linear-gradient(165deg, rgba(253, 249, 242, 0.98), rgba(243, 236, 225, 0.98));
+  --rv-card-bg: rgba(255, 255, 255, 0.74);
+  --rv-card-highlight-bg: linear-gradient(135deg, rgba(251, 211, 144, 0.22), rgba(239, 173, 86, 0.08));
+  --rv-card-highlight-border: rgba(227, 164, 78, 0.34);
+  --rv-button-bg: rgba(255, 255, 255, 0.82);
+  --rv-button-border: rgba(166, 136, 92, 0.2);
+  --rv-button-text: #5d4227;
+  --rv-input-bg: rgba(255, 255, 255, 0.92);
+  --rv-input-border: rgba(183, 147, 98, 0.26);
+  --rv-input-text: #2d2a25;
+  --rv-stat: #b96c16;
+  --rv-shadow: 0 24px 58px -30px rgba(74, 48, 18, 0.28);
 }
 
 .rv-overlay-panel {
@@ -14,13 +55,11 @@
   max-height: min(86vh, 760px);
   margin-right: var(--rv-right, 24px);
   margin-bottom: var(--rv-bottom, 96px);
-  border: 1px solid rgba(246, 218, 169, 0.28);
+  border: 1px solid var(--rv-border);
   border-radius: 18px;
   overflow: hidden;
-  background:
-    radial-gradient(420px 180px at 102% -4%, rgba(247, 185, 95, 0.22), transparent 70%),
-    linear-gradient(165deg, rgba(18, 24, 34, 0.96), rgba(11, 15, 24, 0.96));
-  box-shadow: 0 24px 58px -30px rgba(0, 0, 0, 0.78);
+  background: var(--rv-panel-bg);
+  box-shadow: var(--rv-shadow);
   backdrop-filter: blur(8px);
   display: grid;
   grid-template-rows: auto 1fr;
@@ -35,7 +74,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  border-bottom: 1px solid rgba(246, 218, 169, 0.16);
+  border-bottom: 1px solid var(--rv-border-faint);
 }
 
 .rv-overlay-title {
@@ -57,9 +96,9 @@
 
 .rv-btn {
   appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #f3e9d5;
-  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--rv-button-border);
+  color: var(--rv-button-text);
+  background: var(--rv-button-bg);
   border-radius: 999px;
   font: inherit;
   font-size: 12px;
@@ -96,15 +135,15 @@
 }
 
 .rv-card {
-  border: 1px solid rgba(246, 218, 169, 0.18);
+  border: 1px solid var(--rv-border-soft);
   border-radius: 12px;
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--rv-card-bg);
 }
 
 .rv-stats-card {
-  background: linear-gradient(135deg, rgba(254, 204, 119, 0.1), rgba(240, 167, 79, 0.05));
-  border-color: rgba(254, 204, 119, 0.3);
+  background: var(--rv-card-highlight-bg);
+  border-color: var(--rv-card-highlight-border);
 }
 
 .rv-stats-grid {
@@ -124,19 +163,19 @@
 .rv-stat-value {
   font-size: 24px;
   font-weight: 700;
-  color: #feca77;
+  color: var(--rv-stat);
   line-height: 1;
 }
 
 .rv-stat-label {
   font-size: 12px;
-  color: rgba(243, 233, 213, 0.7);
+  color: var(--rv-text-muted);
 }
 
 .rv-card h4 {
   margin: 0 0 7px;
   font-size: 12px;
-  color: rgba(252, 232, 198, 0.95);
+  color: color-mix(in srgb, var(--rv-text) 88%, transparent);
 }
 
 .rv-field {
@@ -146,16 +185,16 @@
 
 .rv-field label {
   font-size: 11px;
-  color: rgba(235, 226, 208, 0.74);
+  color: var(--rv-text-muted);
 }
 
 .rv-field select,
 .rv-field input[type="number"] {
   width: 100%;
-  border: 1px solid rgba(243, 219, 181, 0.24);
+  border: 1px solid var(--rv-input-border);
   border-radius: 10px;
-  background: rgba(9, 13, 20, 0.86);
-  color: #fff6e8;
+  background: var(--rv-input-bg);
+  color: var(--rv-input-text);
   padding: 7px 8px;
   font: inherit;
   font-size: 12px;
@@ -171,7 +210,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  border: 1px solid rgba(246, 218, 169, 0.18);
+  border: 1px solid var(--rv-border-soft);
   border-radius: 10px;
   padding: 7px 8px;
 }
@@ -179,12 +218,12 @@
 .rv-switch span {
   display: block;
   font-size: 11px;
-  color: rgba(235, 226, 208, 0.74);
+  color: var(--rv-text-muted);
 }
 
 .rv-switch strong {
   display: block;
-  color: #fff4df;
+  color: var(--rv-text);
   margin-bottom: 2px;
 }
 
@@ -194,13 +233,13 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  border-top: 1px solid rgba(246, 218, 169, 0.16);
+  border-top: 1px solid var(--rv-border-faint);
   padding-top: 8px;
 }
 
 .rv-status {
   font-size: 11px;
-  color: rgba(241, 224, 198, 0.84);
+  color: color-mix(in srgb, var(--rv-text) 82%, transparent);
 }
 
 .rv-shift {
@@ -214,10 +253,10 @@
   right: 16px;
   bottom: 82px;
   z-index: 2147483600;
-  border: 1px solid rgba(252, 214, 147, 0.5);
+  border: 1px solid var(--rv-card-highlight-border);
   border-radius: 999px;
-  background: linear-gradient(140deg, rgba(22, 31, 47, 0.95), rgba(37, 52, 74, 0.95));
-  color: #f8ecd7;
+  background: var(--rv-panel-bg);
+  color: var(--rv-text);
   padding: 9px 12px;
   font-size: 12px;
   cursor: pointer;

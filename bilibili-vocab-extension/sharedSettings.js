@@ -320,6 +320,7 @@
       vocabularyMode: normalized.vocabularyMode,
       examPreference: normalized.examPreference,
       bilingualMode: normalized.bilingualMode,
+      themeMode: normalized.themeMode,
     };
   }
 

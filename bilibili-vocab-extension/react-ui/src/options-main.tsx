@@ -25,6 +25,7 @@ import {
   migrateToV3,
   PROFILE_META,
   REVIEW_SPEEDS,
+  THEME_MODES,
   SettingsV3,
   getProfileConfigById,
   listProfileOptions,
@@ -38,6 +39,7 @@ import {
 } from './settings-bridge';
 import { ShortcutGuide } from './shortcut-guide';
 import { StudyPreview } from './study-preview';
+import { getThemeModeLabel, useDocumentTheme } from './ui-theme';
 import { useV3Settings } from './use-v3-settings';
 
 type SectionKey = 'profiles' | 'learning' | 'siteRules' | 'overlay';
@@ -187,6 +189,7 @@ function OptionsApp() {
     }
     return getProfileConfigById(working, working.activeProfileId);
   }, [working]);
+  useDocumentTheme(activeProfile ? activeProfile.themeMode : 'auto');
 
   const profileOptions = useMemo(() => {
     if (!working) {
@@ -995,6 +998,24 @@ function OptionsApp() {
                     <option value="english-only">纯英文模式（不显示括号）</option>
                   </select>
                 </div>
+                <div className="field">
+                  <label htmlFor="themeMode">主题模式</label>
+                  <select
+                    id="themeMode"
+                    value={activeProfile.themeMode}
+                    onChange={(event) =>
+                      patchActiveProfile({
+                        themeMode: event.target.value as 'auto' | 'light' | 'dark',
+                      })
+                    }
+                  >
+                    {THEME_MODES.map((mode) => (
+                      <option key={mode} value={mode}>
+                        {getThemeModeLabel(mode)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="field">
                 <label>词库范围</label>
@@ -1049,6 +1070,10 @@ function OptionsApp() {
                   {Math.round(activeProfile.replaceRatio * 100)}% 曝光 · 单句{' '}
                   {activeProfile.maxReplaceCount} 词 · 目标 {activeProfile.targetCefr}
                 </span>
+              </div>
+              <div className="summary-item">
+                <strong>当前界面主题</strong>
+                <span>{getThemeModeLabel(activeProfile.themeMode)}</span>
               </div>
               <div className="summary-item">
                 <strong>近 7 天验收指标</strong>

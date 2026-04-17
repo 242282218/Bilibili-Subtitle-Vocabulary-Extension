@@ -1,5 +1,8 @@
 :root {
-  color-scheme: only light;
+  color-scheme: light dark;
+  --ui-page-radial-a: radial-gradient(1200px 420px at -8% -15%, oklch(0.89 0.08 72 / 0.32), transparent 56%);
+  --ui-page-radial-b: radial-gradient(1000px 320px at 108% 0%, oklch(0.88 0.08 35 / 0.24), transparent 52%);
+  --ui-page-linear: linear-gradient(180deg, oklch(0.985 0.004 95), oklch(0.97 0.01 95));
   --ui-bg: oklch(0.97 0.01 95);
   --ui-bg-soft: oklch(0.95 0.018 85);
   --ui-surface: oklch(0.995 0.005 95);
@@ -26,13 +29,30 @@
 body.v3-page {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(1200px 420px at -8% -15%, oklch(0.89 0.08 72 / 0.32), transparent 56%),
-    radial-gradient(1000px 320px at 108% 0%, oklch(0.88 0.08 35 / 0.24), transparent 52%),
-    linear-gradient(180deg, oklch(0.985 0.004 95), var(--ui-bg));
+  color-scheme: light;
+  background: var(--ui-page-radial-a), var(--ui-page-radial-b), var(--ui-page-linear);
   color: var(--ui-text);
   font-family: var(--ui-body-font);
   line-height: 1.5;
+}
+
+body.v3-page[data-ui-theme="dark"] {
+  color-scheme: dark;
+  --ui-page-radial-a: radial-gradient(1280px 480px at -8% -15%, oklch(0.32 0.08 65 / 0.34), transparent 58%);
+  --ui-page-radial-b: radial-gradient(920px 320px at 108% 0%, oklch(0.34 0.08 25 / 0.26), transparent 52%);
+  --ui-page-linear: linear-gradient(180deg, oklch(0.21 0.018 250), oklch(0.17 0.02 250));
+  --ui-bg: oklch(0.17 0.02 250);
+  --ui-bg-soft: oklch(0.22 0.018 255);
+  --ui-surface: oklch(0.24 0.016 255);
+  --ui-surface-strong: oklch(0.3 0.02 255);
+  --ui-border: oklch(0.42 0.03 255);
+  --ui-text: oklch(0.93 0.015 90);
+  --ui-text-muted: oklch(0.78 0.02 85);
+  --ui-accent: oklch(0.74 0.13 55);
+  --ui-accent-soft: oklch(0.46 0.08 55);
+  --ui-good: oklch(0.74 0.12 145);
+  --ui-warn: oklch(0.76 0.15 58);
+  --ui-shadow: 0 26px 56px -36px oklch(0.02 0 0 / 0.75);
 }
 
 .studio-shell {

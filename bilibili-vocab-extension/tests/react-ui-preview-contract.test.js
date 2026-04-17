@@ -90,6 +90,8 @@ test('react ui preview contract: options should render scene presets and shipped
   assert.match(source, /<StudyPreview/);
   assert.match(source, /双语显示模式/);
   assert.match(source, /bilingualMode/);
+  assert.match(source, /主题模式/);
+  assert.match(source, /themeMode/);
 });
 
 test('react ui preview contract: popup should render shipped study preview instead of only legacy mockups', () => {
@@ -100,4 +102,5 @@ test('react ui preview contract: popup should render shipped study preview inste
   assert.match(source, /sentenceVariant="popup"/);
   assert.match(source, /显示模式/);
   assert.match(source, /popupBilingualMode/);
+  assert.match(source, /popupThemeMode/);
 });

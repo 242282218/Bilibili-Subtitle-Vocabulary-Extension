@@ -2,6 +2,7 @@ type ReviewDanmakuSpeed = 'slow' | 'normal' | 'fast';
 type VocabularyMode = 'core' | 'full';
 type ExamPreference = 'balanced' | 'exam-first';
 export type BilingualMode = 'default' | 'bilingual' | 'english-only';
+export type ThemeMode = 'auto' | 'light' | 'dark';
 export type BuiltinProfileId = 'gentle' | 'balanced' | 'intensive';
 export type ProfileId = BuiltinProfileId | string;
 export type ScenePresetKey = 'light' | 'balanced' | 'intensive';
@@ -16,6 +17,7 @@ export interface ProfileConfig {
   vocabularyMode: VocabularyMode;
   examPreference: ExamPreference;
   bilingualMode: BilingualMode;
+  themeMode: ThemeMode;
 }
 
 export interface DomainRule {
@@ -120,6 +122,7 @@ declare global {
 const FALLBACK_LEVELS = ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL'];
 const FALLBACK_CEFR = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const FALLBACK_REVIEW_SPEEDS = ['slow', 'normal', 'fast'];
+const FALLBACK_THEME_MODES: ThemeMode[] = ['auto', 'light', 'dark'];
 
 const FALLBACK_OVERLAY: OverlayState = {
   hidden: false,
@@ -140,6 +143,7 @@ const FALLBACK_PROFILE: ProfileConfig = {
   vocabularyMode: 'core',
   examPreference: 'balanced',
   bilingualMode: 'default',
+  themeMode: 'auto',
 };
 
 const FALLBACK_SCENE_PRESETS: Record<ScenePresetKey, ScenePreset> = {
@@ -236,6 +240,16 @@ function normalizeBilingualMode(value: unknown): BilingualMode {
   return 'default';
 }
 
+function normalizeThemeMode(value: unknown): ThemeMode {
+  const normalized = String(value || FALLBACK_PROFILE.themeMode)
+    .trim()
+    .toLowerCase();
+  if (normalized === 'light' || normalized === 'dark') {
+    return normalized;
+  }
+  return 'auto';
+}
+
 function normalizeCefr(value: unknown): string {
   const normalized = String(value || FALLBACK_PROFILE.targetCefr)
     .trim()
@@ -280,6 +294,7 @@ function normalizeProfileConfigFallback(value: unknown): ProfileConfig {
     vocabularyMode: normalizeMode(source.vocabularyMode),
     examPreference: normalizePreference(source.examPreference),
     bilingualMode: normalizeBilingualMode(source.bilingualMode),
+    themeMode: normalizeThemeMode(source.themeMode),
   };
 }
 
@@ -445,6 +460,7 @@ export const CEFR_LEVELS = Array.isArray(shared.CEFR_LEVELS)
 export const REVIEW_SPEEDS = Array.isArray(shared.REVIEW_SPEEDS)
   ? shared.REVIEW_SPEEDS.slice()
   : FALLBACK_REVIEW_SPEEDS.slice();
+export const THEME_MODES = FALLBACK_THEME_MODES.slice();
 export const OVERLAY_DEFAULTS = shared.OVERLAY_DEFAULTS
   ? { ...shared.OVERLAY_DEFAULTS }
   : { ...FALLBACK_OVERLAY };
