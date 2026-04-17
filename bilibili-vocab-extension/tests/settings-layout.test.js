@@ -1,23 +1,23 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 function readProjectFile(fileName) {
-  return fs.readFileSync(path.join(__dirname, "..", fileName), "utf8");
+  return fs.readFileSync(path.join(__dirname, '..', fileName), 'utf8');
 }
 
 function readManifest() {
-  const raw = readProjectFile("manifest.json").replace(/^\uFEFF/, "");
+  const raw = readProjectFile('manifest.json').replace(/^\uFEFF/, '');
   return JSON.parse(raw);
 }
 
-test("options layout: should assert the shipped react options entry instead of legacy options shell", () => {
+test('options layout: should assert the shipped react options entry instead of legacy options shell', () => {
   const manifest = readManifest();
-  const optionsHtml = readProjectFile("react-ui/options.html");
-  const optionsSource = readProjectFile("react-ui/src/options-main.tsx");
+  const optionsHtml = readProjectFile('react-ui/options.html');
+  const optionsSource = readProjectFile('react-ui/src/options-main.tsx');
 
-  assert.equal(manifest.options_page, "dist/options.html");
+  assert.equal(manifest.options_page, 'dist/options.html');
   assert.match(optionsHtml, /id="root"/);
   assert.match(optionsHtml, /src="\/src\/options-main\.tsx"/);
   assert.match(optionsSource, /字幕学习配置中心/);
@@ -28,12 +28,12 @@ test("options layout: should assert the shipped react options entry instead of l
   assert.match(optionsSource, /近 7 天验收指标/);
 });
 
-test("popup layout: should assert the shipped react popup entry instead of legacy popup shell", () => {
+test('popup layout: should assert the shipped react popup entry instead of legacy popup shell', () => {
   const manifest = readManifest();
-  const popupHtml = readProjectFile("react-ui/popup.html");
-  const popupSource = readProjectFile("react-ui/src/popup-main.tsx");
+  const popupHtml = readProjectFile('react-ui/popup.html');
+  const popupSource = readProjectFile('react-ui/src/popup-main.tsx');
 
-  assert.equal(manifest.action && manifest.action.default_popup, "dist/popup.html");
+  assert.equal(manifest.action && manifest.action.default_popup, 'dist/popup.html');
   assert.match(popupHtml, /id="root"/);
   assert.match(popupHtml, /src="\/src\/popup-main\.tsx"/);
   assert.match(popupSource, /学习策略快控台/);
@@ -41,10 +41,11 @@ test("popup layout: should assert the shipped react popup entry instead of legac
   assert.match(popupSource, /启用自动调优/);
   assert.match(popupSource, /打开完整配置页/);
   assert.match(popupSource, /导出JSON/);
+  assert.match(popupSource, /导出Anki TSV/);
 });
 
-test("shared styles: should define dashboard shell and single-column options layout", () => {
-  const stylesheet = readProjectFile("styles.css");
+test('shared styles: should define dashboard shell and single-column options layout', () => {
+  const stylesheet = readProjectFile('styles.css');
 
   assert.match(stylesheet, /\.hub-page\s*\{/);
   assert.match(stylesheet, /\.hub-app-shell--single-column\s*\{/);

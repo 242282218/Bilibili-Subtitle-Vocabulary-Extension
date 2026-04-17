@@ -42,6 +42,8 @@ export interface VocabularyWord {
   };
 }
 
+export type VocabularyExportFormat = 'json' | 'csv' | 'anki';
+
 function normalizeVocabularyWord(input: unknown): VocabularyWord | null {
   if (!input || typeof input !== 'object') {
     return null;
@@ -379,11 +381,18 @@ export function writeStorage(payload: Record<string, unknown>): Promise<void> {
 export async function loadSettingsV3(): Promise<SettingsV3> {
   return enqueueStorageMutation(async () => {
     const allPayload = await readStorage<Record<string, unknown>>(null);
-    const settingsV3 = normalizeSettingsV3(migrateToV3(allPayload));
+    const migratedSettings = normalizeSettingsV3(migrateToV3(allPayload));
+    const currentPayload = await readStorage<Record<string, unknown>>([SETTINGS_STORAGE_KEY_V3]);
+    const currentStoredSettings = currentPayload[SETTINGS_STORAGE_KEY_V3];
+
+    if (currentStoredSettings != null) {
+      return normalizeSettingsV3(currentStoredSettings);
+    }
+
     await writeStorage({
-      [SETTINGS_STORAGE_KEY_V3]: settingsV3,
+      [SETTINGS_STORAGE_KEY_V3]: migratedSettings,
     });
-    return settingsV3;
+    return migratedSettings;
   });
 }
 
@@ -468,8 +477,28 @@ export async function getCurrentTabHostname(): Promise<string> {
   });
 }
 
+function sanitizeAnkiField(value: unknown): string {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildAnkiTsv(savedWords: VocabularyWord[]): string {
+  const headers = ['Front', 'Back', 'Level', 'Phonetic', 'SavedAt'];
+  const rows = savedWords.map((word) => [
+    sanitizeAnkiField(word.word),
+    sanitizeAnkiField(word.details?.meaning || ''),
+    sanitizeAnkiField(word.details?.level || ''),
+    sanitizeAnkiField(word.details?.phonetic || ''),
+    word.savedAt ? new Date(word.savedAt).toISOString() : '',
+  ]);
+  return [headers.join('\t'), ...rows.map((row) => row.join('\t'))].join('\n');
+}
+
 // 生词本导出功能
-export async function exportVocabularyBook(format: 'json' | 'csv' = 'json'): Promise<string> {
+export async function exportVocabularyBook(
+  format: VocabularyExportFormat = 'json'
+): Promise<string> {
   const payload = await readStorage<Record<string, unknown>>([VOCABULARY_BOOK_STORAGE_KEY]);
   const wordStats = (payload[VOCABULARY_BOOK_STORAGE_KEY] as Record<string, VocabularyWord>) || {};
 
@@ -492,6 +521,10 @@ export async function exportVocabularyBook(format: 'json' | 'csv' = 'json'): Pro
       headers.join(','),
       ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
     ].join('\n');
+  }
+
+  if (format === 'anki') {
+    return buildAnkiTsv(savedWords);
   }
 
   return JSON.stringify(savedWords, null, 2);

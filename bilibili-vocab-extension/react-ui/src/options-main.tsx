@@ -29,6 +29,7 @@ import {
   upsertCustomProfile,
   removeCustomProfile,
 } from './settings-bridge';
+import { ShortcutGuide } from './shortcut-guide';
 import { useV3Settings } from './use-v3-settings';
 
 type SectionKey = 'profiles' | 'learning' | 'siteRules' | 'overlay';
@@ -636,6 +637,7 @@ function OptionsApp() {
                   </div>
                 </div>
               )}
+              <ShortcutGuide />
             </aside>
           </>
         )}

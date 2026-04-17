@@ -46,6 +46,21 @@
 4. 播放视频，字幕中会自动插入英文词汇
 5. 播放器顶部会出现复习弹幕
 
+## 快捷键
+
+- `Ctrl+Shift+E`：切换字幕替换总开关
+- `Ctrl+Shift+O`：切换悬浮学习面板
+- `Ctrl+Shift+Up`：提高当前配置的替换比例
+- `Ctrl+Shift+Down`：降低当前配置的替换比例
+- macOS 默认使用 `Command` 替代 `Ctrl`
+- 可在 `chrome://extensions/shortcuts` 或 `edge://extensions/shortcuts` 自定义
+
+## 生词本导出
+
+- Popup 可直接导出生词本为 `JSON`、`CSV`、`Anki TSV`
+- `Anki TSV` 默认字段为 `Front / Back / Level / Phonetic / SavedAt`
+- 完整配置、站点规则和悬浮面板参数可在选项页统一管理
+
 ## 网页模式行为
 
 - 非视频网页默认使用 `SubtitleParser.getCurrentSubtitleItems()` 的段落级单链路替换，避免重复扫描与重复改写 DOM。

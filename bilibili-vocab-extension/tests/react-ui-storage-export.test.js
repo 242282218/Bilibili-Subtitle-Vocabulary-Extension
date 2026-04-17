@@ -126,4 +126,11 @@ test('react ui storage export: should ignore malformed vocabulary records', asyn
   assert.match(csvPayload, /"beta"/);
   assert.match(csvPayload, /"alpha"/);
   assert.doesNotMatch(csvPayload, /"draft"/);
+
+  const ankiPayload = await storageModule.exportVocabularyBook('anki');
+  const [header, firstRow, secondRow] = ankiPayload.split('\n');
+  assert.equal(header, 'Front\tBack\tLevel\tPhonetic\tSavedAt');
+  assert.match(firstRow, /^beta\tB\tCET6\t\/b\/\t/);
+  assert.match(secondRow, /^alpha\tA\tCET4\t\/a\/\t/);
+  assert.doesNotMatch(ankiPayload, /draft/);
 });

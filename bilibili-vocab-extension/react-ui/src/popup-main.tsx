@@ -14,11 +14,13 @@ import {
   setActiveProfileConfig,
 } from './settings-bridge';
 import { getSiteToggleUiState } from './site-toggle-state';
+import { ShortcutGuide } from './shortcut-guide';
 import {
   AdaptiveTuningState,
   ExperienceMetricsSnapshot,
   LearningStreak,
   LearningSummary,
+  VocabularyExportFormat,
   readAdaptiveTuningState,
   readExperienceMetricsSnapshot,
   setAdaptiveTuningEnabled,
@@ -34,6 +36,26 @@ import {
 import { useV3Settings } from './use-v3-settings';
 
 const HIGH_RISK_UNDO_WINDOW_MS = 6 * 1000;
+const EXPORT_META: Record<
+  VocabularyExportFormat,
+  { label: string; extension: string; mimeType: string }
+> = {
+  json: {
+    label: 'JSON',
+    extension: 'json',
+    mimeType: 'application/json',
+  },
+  csv: {
+    label: 'CSV',
+    extension: 'csv',
+    mimeType: 'text/csv;charset=utf-8;',
+  },
+  anki: {
+    label: 'Anki TSV',
+    extension: 'tsv',
+    mimeType: 'text/tab-separated-values;charset=utf-8;',
+  },
+};
 
 interface PendingUndoAction {
   label: string;
@@ -317,24 +339,23 @@ function PopupApp() {
     }
   }
 
-  async function handleExportVocabularyBook(format: 'json' | 'csv') {
+  async function handleExportVocabularyBook(format: VocabularyExportFormat) {
     try {
+      const exportMeta = EXPORT_META[format];
       const content = await exportVocabularyBook(format);
-      const blob = new Blob([content], {
-        type: format === 'json' ? 'application/json' : 'text/csv;charset=utf-8;',
-      });
+      const blob = new Blob([content], { type: exportMeta.mimeType });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute(
         'download',
-        `bilibili-vocab-book-${new Date().toISOString().slice(0, 10)}.${format}`
+        `bilibili-vocab-book-${new Date().toISOString().slice(0, 10)}.${exportMeta.extension}`
       );
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      setStatus(`生词本已导出（${format.toUpperCase()}格式）`);
+      setStatus(`生词本已导出（${exportMeta.label}）`);
     } catch (e) {
       setStatus('导出生词本失败，请重试');
       console.error('Export failed:', e);
@@ -609,6 +630,13 @@ function PopupApp() {
             >
               导出CSV
             </button>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => handleExportVocabularyBook('anki')}
+            >
+              导出Anki TSV
+            </button>
           </div>
           <button
             type="button"
@@ -642,6 +670,10 @@ function PopupApp() {
           </div>
         </section>
       )}
+
+      <section className="panel stack">
+        <ShortcutGuide title="快捷键速览" compact />
+      </section>
     </main>
   );
 }
