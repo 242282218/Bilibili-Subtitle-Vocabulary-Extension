@@ -909,6 +909,9 @@
     }
 
     scheduleStatsPersist();
+    if (learningState && typeof learningState.updateLearningStreak === 'function') {
+      void learningState.updateLearningStreak(now);
+    }
     return true;
   }
 
@@ -1048,6 +1051,9 @@
       refreshLearningSummary(buildActiveLearningRecords(vocabularyEntries));
       scheduleStatsPersist();
       maybePersistAdaptiveFeedback(normalizedAction, now);
+      if (typeof learningState.updateLearningStreak === 'function') {
+        void learningState.updateLearningStreak(now);
+      }
       return committedRecord;
     });
   }

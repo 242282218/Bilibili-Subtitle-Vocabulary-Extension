@@ -80,6 +80,12 @@
 - quick review 反馈会继续透传自动调优链路；若触发调优，Popup 的自动调优状态与指标会同步刷新
 - shipped React Overlay 会跟随学习状态实时刷新今日进度与最近词汇，视频内调参时不需要手动刷新页面确认学习面板是否同步
 
+## 连续学习进度
+
+- `learning streak` 现在不再只是 legacy / storage 里的静态字段；字幕命中、正文命中、tooltip 收藏/反馈、Popup quick review 都会把当天学习活动记入连续学习进度
+- streak 同一天只会记录一次，不会因为一次观看里多次命中或多次复习把连续天数刷高
+- shipped React `Popup / Options` 会实时显示 `连续学习 / 总学习天数 / 最长连续`，并随 storage 变化自动刷新
+
 ## 策略预设与实时预览
 
 - `Options` 页提供 `轻量输入 / 均衡输入 / 强化曝光` 三档策略预设，点击后会直接填充当前配置档，保存后生效

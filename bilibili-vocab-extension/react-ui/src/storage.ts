@@ -82,6 +82,7 @@ interface LearningStateApi {
     record: LearningRecord,
     now: number
   ) => Record<string, ReviewQueueEntry>;
+  updateLearningStreak?: (now?: number) => Promise<LearningStreak> | LearningStreak;
 }
 
 declare global {
@@ -772,6 +773,8 @@ export async function submitQuickReviewFeedback(
       [LEARNING_SUMMARY_STORAGE_KEY]: nextSummary,
     });
 
+    // Streak bookkeeping should not block the main review commit path.
+    void touchLearningStreak(now);
     const adaptiveApplied = await persistQuickReviewAdaptiveFeedback(normalizedAction, now);
     return {
       word: String(nextRecord.word || normalizedWord).trim(),
@@ -956,6 +959,14 @@ export async function readLearningStreak(): Promise<LearningStreak> {
   return normalizeLearningStreak(payload[LEARNING_STREAK_STORAGE_KEY]);
 }
 
+async function touchLearningStreak(now: number): Promise<void> {
+  const learningState = getLearningStateApi();
+  if (!learningState || typeof learningState.updateLearningStreak !== 'function') {
+    return;
+  }
+  await learningState.updateLearningStreak(now);
+}
+
 export function subscribeSettingsChanges(onUpdate: (settings: SettingsV3) => void): () => void {
   if (
     typeof chrome === 'undefined' ||
@@ -1025,6 +1036,27 @@ export function subscribeExperienceMetricsSnapshot(
       Date.now()
     );
     onUpdate(snapshot);
+  };
+  chrome.storage.onChanged.addListener(listener);
+  return () => {
+    chrome.storage.onChanged.removeListener(listener);
+  };
+}
+
+export function subscribeLearningStreak(onUpdate: (streak: LearningStreak) => void): () => void {
+  if (
+    typeof chrome === 'undefined' ||
+    !chrome.storage ||
+    !chrome.storage.onChanged ||
+    typeof chrome.storage.onChanged.addListener !== 'function'
+  ) {
+    return () => {};
+  }
+  const listener = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+    if (areaName !== 'local' || !changes[LEARNING_STREAK_STORAGE_KEY]) {
+      return;
+    }
+    onUpdate(normalizeLearningStreak(changes[LEARNING_STREAK_STORAGE_KEY].newValue));
   };
   chrome.storage.onChanged.addListener(listener);
   return () => {

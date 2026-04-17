@@ -7,9 +7,12 @@ import {
   clearVocabularyBook,
   readExperienceMetricsSnapshot,
   readAdaptiveTuningState,
+  readLearningStreak,
   setAdaptiveTuningEnabled,
   subscribeAdaptiveTuningState,
   subscribeExperienceMetricsSnapshot,
+  subscribeLearningStreak,
+  LearningStreak,
 } from './storage';
 import {
   BUILTIN_PROFILE_IDS,
@@ -73,6 +76,14 @@ interface PendingUndoAction {
   expiresAt: number;
 }
 
+const EMPTY_STREAK: LearningStreak = {
+  currentStreak: 0,
+  maxStreak: 0,
+  lastActiveDate: '',
+  totalActiveDays: 0,
+  activeDays: [],
+};
+
 function asNumber(value: string, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -106,6 +117,27 @@ function formatPercent(value: number): string {
     return '0%';
   }
   return `${Math.round(value * 100)}%`;
+}
+
+function getTodayDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatLearningStreakStatus(streak: LearningStreak): string {
+  if (streak.currentStreak > 0) {
+    return `${streak.currentStreak} 天`;
+  }
+  return '未开始';
+}
+
+function formatLearningStreakLastActive(streak: LearningStreak): string {
+  if (!streak.lastActiveDate) {
+    return '完成任一学习动作后会开始记录';
+  }
+  if (streak.lastActiveDate === getTodayDateString()) {
+    return '今天已记录学习活动';
+  }
+  return `上次活跃 ${streak.lastActiveDate}`;
 }
 
 function downloadTextFile(content: string, filename: string, mimeType: string) {
@@ -171,6 +203,7 @@ function OptionsApp() {
   const [experienceMetrics, setExperienceMetrics] = useState<ExperienceMetricsSnapshot | null>(
     null
   );
+  const [learningStreak, setLearningStreak] = useState<LearningStreak>(EMPTY_STREAK);
   const [pendingUndo, setPendingUndo] = useState<PendingUndoAction | null>(null);
   const [maintenanceBusy, setMaintenanceBusy] = useState<MaintenanceAction | null>(null);
   const importSettingsInputRef = useRef<HTMLInputElement | null>(null);
@@ -246,6 +279,28 @@ function OptionsApp() {
       unsubscribeMetrics();
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void readLearningStreak()
+      .then((next) => {
+        if (!cancelled) {
+          setLearningStreak(next);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStatus('连续学习进度读取失败，请稍后重试。');
+        }
+      });
+    const unsubscribeLearningStreak = subscribeLearningStreak((next) => {
+      setLearningStreak(next);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribeLearningStreak();
+    };
+  }, [setStatus]);
 
   useEffect(() => {
     if (!pendingUndo) {
@@ -612,6 +667,10 @@ function OptionsApp() {
                 : '已关闭'
               : '读取中'}
           </span>
+          <span className="status-pill">
+            <strong>连续学习</strong>
+            {formatLearningStreakStatus(learningStreak)}
+          </span>
         </div>
       </section>
 
@@ -784,6 +843,24 @@ function OptionsApp() {
                   </div>
                 </div>
               )}
+              <div className="progress-metrics">
+                <div className="popup-metric">
+                  <span>连续学习</span>
+                  <strong>{learningStreak.currentStreak}</strong>
+                </div>
+                <div className="popup-metric">
+                  <span>总学习天数</span>
+                  <strong>{learningStreak.totalActiveDays}</strong>
+                </div>
+                <div className="popup-metric">
+                  <span>最长连续</span>
+                  <strong>{learningStreak.maxStreak}</strong>
+                </div>
+              </div>
+              <div className="summary-item">
+                <strong>学习进度</strong>
+                <span>{formatLearningStreakLastActive(learningStreak)}</span>
+              </div>
               <ShortcutGuide />
             </aside>
             <article className="panel stack stagger-enter" data-index="4">

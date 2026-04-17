@@ -17,6 +17,7 @@ const LEARNING_DASHBOARD_SOURCE_PATH = path.join(
 const SETTINGS_STORAGE_KEY_V3 = 'bili_vocab_settings_v3';
 const ADAPTIVE_TUNING_STORAGE_KEY = 'bili_vocab_adaptive_tuning_v1';
 const EXPERIENCE_METRICS_STORAGE_KEY = 'bili_vocab_experience_metrics_v1';
+const LEARNING_STREAK_STORAGE_KEY = 'bili_vocab_learning_streak_v1';
 
 function cloneValue(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -105,6 +106,7 @@ function createStorageModule(options = {}) {
   };
   const moduleRef = { exports: {} };
   const MockDate = createMockDate(options.now || 1700000000000);
+  const storageChangeListeners = new Set();
   const chrome = {
     storage: {
       local: {
@@ -127,8 +129,12 @@ function createStorageModule(options = {}) {
         },
       },
       onChanged: {
-        addListener() {},
-        removeListener() {},
+        addListener(listener) {
+          storageChangeListeners.add(listener);
+        },
+        removeListener(listener) {
+          storageChangeListeners.delete(listener);
+        },
       },
     },
     tabs: {
@@ -203,6 +209,11 @@ function createStorageModule(options = {}) {
     module: moduleRef.exports,
     storageState,
     runtime,
+    emitStorageChange(changes, areaName = 'local') {
+      storageChangeListeners.forEach((listener) => {
+        listener(changes, areaName);
+      });
+    },
   };
 }
 
@@ -351,6 +362,70 @@ test('react ui storage resilience: setAdaptiveTuningEnabled should delegate to r
   const nextState = await storageModule.setAdaptiveTuningEnabled(true);
   assert.equal(nextState.enabled, true);
   assert.equal(nextState.manualOverrideActive, true);
+});
+
+test('react ui storage resilience: readLearningStreak should normalize malformed streak payload', async () => {
+  const { module: storageModule } = createStorageModule({
+    initialState: {
+      [LEARNING_STREAK_STORAGE_KEY]: {
+        currentStreak: '4.8',
+        maxStreak: 'bad',
+        lastActiveDate: 20260418,
+        totalActiveDays: -3,
+        activeDays: ['2026-04-18', '', null],
+      },
+    },
+  });
+
+  const streak = cloneValue(await storageModule.readLearningStreak());
+
+  assert.deepEqual(streak, {
+    currentStreak: 4,
+    maxStreak: 0,
+    lastActiveDate: '20260418',
+    totalActiveDays: 0,
+    activeDays: ['2026-04-18'],
+  });
+});
+
+test('react ui storage resilience: subscribeLearningStreak should normalize storage changes', () => {
+  const { module: storageModule, emitStorageChange } = createStorageModule();
+  const updates = [];
+
+  const unsubscribe = storageModule.subscribeLearningStreak((next) => {
+    updates.push(next);
+  });
+
+  emitStorageChange({
+    [LEARNING_STREAK_STORAGE_KEY]: {
+      newValue: {
+        currentStreak: 3,
+        maxStreak: 6,
+        lastActiveDate: '2026-04-18',
+        totalActiveDays: 9,
+        activeDays: ['2026-04-16', '2026-04-17', '2026-04-18'],
+      },
+    },
+  });
+
+  assert.equal(updates.length, 1);
+  assert.deepEqual(cloneValue(updates[0]), {
+    currentStreak: 3,
+    maxStreak: 6,
+    lastActiveDate: '2026-04-18',
+    totalActiveDays: 9,
+    activeDays: ['2026-04-16', '2026-04-17', '2026-04-18'],
+  });
+
+  unsubscribe();
+  emitStorageChange({
+    [LEARNING_STREAK_STORAGE_KEY]: {
+      newValue: {
+        currentStreak: 4,
+      },
+    },
+  });
+  assert.equal(updates.length, 1);
 });
 
 test('react ui storage resilience: clearVocabularyBook should only downgrade saved words', async () => {

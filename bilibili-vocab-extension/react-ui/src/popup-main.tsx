@@ -30,17 +30,20 @@ import {
   AdaptiveTuningState,
   ExperienceMetricsSnapshot,
   LearningSummary,
+  LearningStreak,
   QuickReviewDashboard,
   VocabularyExportFormat,
   readAdaptiveTuningState,
   readEncounteredWordRanking,
   readExperienceMetricsSnapshot,
+  readLearningStreak,
   readQuickReviewDashboard,
   setAdaptiveTuningEnabled,
   submitQuickReviewFeedback,
   subscribeEncounteredWordStats,
   subscribeAdaptiveTuningState,
   subscribeExperienceMetricsSnapshot,
+  subscribeLearningStreak,
   exportVocabularyBook,
   getCurrentTabHostname,
   openOptionsPage,
@@ -59,6 +62,13 @@ const EMPTY_SUMMARY: LearningSummary = {
 const EMPTY_REVIEW_DASHBOARD: QuickReviewDashboard = {
   summary: EMPTY_SUMMARY,
   items: [],
+};
+const EMPTY_STREAK: LearningStreak = {
+  currentStreak: 0,
+  maxStreak: 0,
+  lastActiveDate: '',
+  totalActiveDays: 0,
+  activeDays: [],
 };
 const EXPORT_META: Record<
   VocabularyExportFormat,
@@ -92,6 +102,31 @@ function asNumber(value: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function getTodayDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatLearningStreakHeadline(streak: LearningStreak): string {
+  if (streak.currentStreak > 0) {
+    return `已连续学习 ${streak.currentStreak} 天`;
+  }
+  return '连续学习尚未开始';
+}
+
+function formatLearningStreakMeta(streak: LearningStreak): string {
+  const parts = [`总学习 ${streak.totalActiveDays} 天`, `最长 ${streak.maxStreak} 天`];
+  if (streak.lastActiveDate) {
+    parts.push(
+      streak.lastActiveDate === getTodayDateString()
+        ? '今天已记录学习活动'
+        : `上次活跃 ${streak.lastActiveDate}`
+    );
+  } else {
+    parts.push('完成任一学习动作后会开始计数');
+  }
+  return parts.join(' · ');
+}
+
 function PopupApp() {
   const {
     working,
@@ -116,6 +151,7 @@ function PopupApp() {
   const [reviewSubmitting, setReviewSubmitting] = useState<QuickReviewAction | null>(null);
   const [rankingSort, setRankingSort] = useState<EncounteredWordSortMode>('asc');
   const [rankingItems, setRankingItems] = useState<EncounteredWordRankingItem[]>([]);
+  const [learningStreak, setLearningStreak] = useState<LearningStreak>(EMPTY_STREAK);
   const [hostname, setHostname] = useState('');
   const [adaptiveState, setAdaptiveState] = useState<AdaptiveTuningState | null>(null);
   const [experienceMetrics, setExperienceMetrics] = useState<ExperienceMetricsSnapshot | null>(
@@ -202,6 +238,28 @@ function PopupApp() {
       window.clearTimeout(timeout);
     };
   }, [pendingUndo]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void readLearningStreak()
+      .then((next) => {
+        if (!cancelled) {
+          setLearningStreak(next);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStatus('连续学习进度读取失败，请稍后重试。');
+        }
+      });
+    const unsubscribeLearningStreak = subscribeLearningStreak((next) => {
+      setLearningStreak(next);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribeLearningStreak();
+    };
+  }, [setStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -533,6 +591,10 @@ function PopupApp() {
             <span>已掌握</span>
             <strong>{summary.masteredCount}</strong>
           </div>
+        </div>
+        <div className="summary-item">
+          <strong>{formatLearningStreakHeadline(learningStreak)}</strong>
+          <span>{formatLearningStreakMeta(learningStreak)}</span>
         </div>
         <StudyPreview
           profile={activeProfile}

@@ -139,6 +139,8 @@
 
   // 学习 streak 相关功能
   let learningStreak = null;
+  let learningStreakLoadPromise = null;
+  let learningStreakMutationChain = Promise.resolve();
 
   // 生词本持久化状态（供 tooltip/options 同步使用）
   let wordStats = {};
@@ -215,72 +217,90 @@
     return run;
   }
 
+  function queueLearningStreakMutation(task) {
+    const run = learningStreakMutationChain.catch(() => {}).then(task);
+    learningStreakMutationChain = run.catch(() => {});
+    return run;
+  }
+
   async function loadLearningStreak() {
+    if (learningStreak) {
+      return learningStreak;
+    }
+
     if (!hasChromeLocalStorage()) {
       learningStreak = normalizeLearningStreak({});
       return learningStreak;
     }
 
-    try {
-      const payload = await readChromeLocalStorage([STORAGE_KEYS.LEARNING_STREAK]);
-      learningStreak = normalizeLearningStreak(payload[STORAGE_KEYS.LEARNING_STREAK]);
-    } catch (error) {
-      learningStreak = normalizeLearningStreak({});
-      logError('Learning streak read failed', error);
+    if (!learningStreakLoadPromise) {
+      learningStreakLoadPromise = readChromeLocalStorage([STORAGE_KEYS.LEARNING_STREAK])
+        .then((payload) => {
+          learningStreak = normalizeLearningStreak(payload[STORAGE_KEYS.LEARNING_STREAK]);
+          return learningStreak;
+        })
+        .catch((error) => {
+          learningStreak = normalizeLearningStreak({});
+          logError('Learning streak read failed', error);
+          return learningStreak;
+        })
+        .finally(() => {
+          learningStreakLoadPromise = null;
+        });
     }
 
-    return learningStreak;
+    return learningStreakLoadPromise;
   }
 
-  async function updateLearningStreak() {
-    if (!learningStreak) {
-      await loadLearningStreak();
-    }
-
-    const today = getTodayDateString();
-    if (learningStreak.lastActiveDate === today) {
-      // 今日已经记录过
-      return learningStreak;
-    }
-
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().slice(0, 10);
-
-    const nextLearningStreak = normalizeLearningStreak(learningStreak);
-
-    if (nextLearningStreak.lastActiveDate === yesterdayStr) {
-      // 连续学习，streak +1
-      nextLearningStreak.currentStreak += 1;
-    } else if (nextLearningStreak.lastActiveDate !== today) {
-      // 断签了，重置streak
-      nextLearningStreak.currentStreak = 1;
-    }
-
-    // 更新最大 streak
-    nextLearningStreak.maxStreak = Math.max(
-      nextLearningStreak.maxStreak,
-      nextLearningStreak.currentStreak
-    );
-    nextLearningStreak.lastActiveDate = today;
-
-    // 记录活跃天数
-    if (!nextLearningStreak.activeDays.includes(today)) {
-      nextLearningStreak.activeDays = nextLearningStreak.activeDays.concat(today);
-      nextLearningStreak.totalActiveDays = nextLearningStreak.activeDays.length;
-    }
-
-    if (hasChromeLocalStorage()) {
-      try {
-        await writeChromeLocalStorage({ [STORAGE_KEYS.LEARNING_STREAK]: nextLearningStreak });
-      } catch (error) {
-        logError('Learning streak write failed', error);
-        return learningStreak;
+  async function updateLearningStreak(now = Date.now()) {
+    return queueLearningStreakMutation(async () => {
+      const currentLearningStreak = learningStreak || (await loadLearningStreak());
+      const referenceNow = normalizeTimestamp(now) || Date.now();
+      const today = new Date(referenceNow).toISOString().slice(0, 10);
+      if (currentLearningStreak.lastActiveDate === today) {
+        // 今日已经记录过
+        return currentLearningStreak;
       }
-    }
 
-    learningStreak = nextLearningStreak;
-    return learningStreak;
+      const yesterday = new Date(referenceNow);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+      const nextLearningStreak = normalizeLearningStreak(currentLearningStreak);
+
+      if (nextLearningStreak.lastActiveDate === yesterdayStr) {
+        // 连续学习，streak +1
+        nextLearningStreak.currentStreak += 1;
+      } else if (nextLearningStreak.lastActiveDate !== today) {
+        // 断签了，重置streak
+        nextLearningStreak.currentStreak = 1;
+      }
+
+      // 更新最大 streak
+      nextLearningStreak.maxStreak = Math.max(
+        nextLearningStreak.maxStreak,
+        nextLearningStreak.currentStreak
+      );
+      nextLearningStreak.lastActiveDate = today;
+
+      // 记录活跃天数
+      if (!nextLearningStreak.activeDays.includes(today)) {
+        nextLearningStreak.activeDays = nextLearningStreak.activeDays.concat(today);
+        nextLearningStreak.totalActiveDays = nextLearningStreak.activeDays.length;
+      }
+
+      if (hasChromeLocalStorage()) {
+        try {
+          await writeChromeLocalStorage({ [STORAGE_KEYS.LEARNING_STREAK]: nextLearningStreak });
+        } catch (error) {
+          logError('Learning streak write failed', error);
+          return currentLearningStreak;
+        }
+      }
+
+      learningStreak = nextLearningStreak;
+      return learningStreak;
+    });
   }
 
   function getLearningStreak() {
@@ -910,6 +930,7 @@
       }
 
       setWordStatsState(nextWordStats, nextReviewQueue);
+      void updateLearningStreak(now);
       return true;
     });
   }
