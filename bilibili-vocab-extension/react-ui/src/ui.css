@@ -679,6 +679,96 @@ body.v3-page {
   font-size: 1rem;
 }
 
+.review-card,
+.ranking-item {
+  border: 1px solid color-mix(in oklch, var(--ui-border) 84%, white 16%);
+  border-radius: 14px;
+  background: color-mix(in oklch, var(--ui-surface) 92%, var(--ui-bg-soft) 8%);
+}
+
+.review-card {
+  padding: 0.7rem;
+}
+
+.review-card--empty {
+  border-style: dashed;
+}
+
+.review-card__head,
+.ranking-item__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.review-card__head strong,
+.ranking-item__head strong {
+  font-size: 0.92rem;
+}
+
+.review-card__head span,
+.ranking-item__meta,
+.ranking-item__translation,
+.review-card__meta,
+.review-card__description {
+  color: var(--ui-text-muted);
+}
+
+.review-card__head span {
+  font-size: 0.72rem;
+}
+
+.review-card__meta,
+.review-card__description {
+  margin: 0;
+  font-size: 0.74rem;
+}
+
+.ranking-list {
+  display: grid;
+  gap: 0.46rem;
+}
+
+.ranking-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.58rem;
+  align-items: center;
+  padding: 0.58rem 0.62rem;
+}
+
+.ranking-item__main {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.ranking-item__translation,
+.ranking-item__meta {
+  font-size: 0.73rem;
+}
+
+.ranking-item__translation {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ranking-item__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.4rem;
+  padding: 0.28rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--ui-accent) 34%, white 66%);
+  background: color-mix(in oklch, var(--ui-accent-soft) 22%, white 78%);
+  color: color-mix(in oklch, var(--ui-accent) 78%, black 22%);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .status-text {
   min-height: 1.2rem;
   font-size: 0.76rem;
@@ -699,6 +789,8 @@ select:focus-visible {
 .stagger-enter[data-index="1"] { animation-delay: 50ms; }
 .stagger-enter[data-index="2"] { animation-delay: 90ms; }
 .stagger-enter[data-index="3"] { animation-delay: 130ms; }
+.stagger-enter[data-index="4"] { animation-delay: 170ms; }
+.stagger-enter[data-index="5"] { animation-delay: 210ms; }
 
 @keyframes rise-fade {
   from {

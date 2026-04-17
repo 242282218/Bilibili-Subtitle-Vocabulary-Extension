@@ -9,6 +9,13 @@ const sharedSettings = require('../sharedSettings.js');
 const backgroundPath = path.join(__dirname, '..', 'background.js');
 const experienceMetricsPath = path.join(__dirname, '..', 'experienceMetrics.js');
 const storageSourcePath = path.join(__dirname, '..', 'react-ui', 'src', 'storage.ts');
+const learningDashboardSourcePath = path.join(
+  __dirname,
+  '..',
+  'react-ui',
+  'src',
+  'learning-dashboard.ts'
+);
 const storageSourceDir = path.dirname(storageSourcePath);
 const SETTINGS_STORAGE_KEY_V3 = 'bili_vocab_settings_v3';
 const ADAPTIVE_TUNING_STORAGE_KEY = 'bili_vocab_adaptive_tuning_v1';
@@ -118,6 +125,30 @@ function createChromeStub(storageState) {
   };
 }
 
+function loadLearningDashboardModule() {
+  const source = fs.readFileSync(learningDashboardSourcePath, 'utf8');
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      esModuleInterop: true,
+    },
+  }).outputText;
+
+  const moduleRef = { exports: {} };
+  const sandbox = {
+    module: moduleRef,
+    exports: moduleRef.exports,
+    require,
+    Date,
+    console,
+  };
+  sandbox.globalThis = sandbox;
+
+  vm.runInNewContext(transpiled, sandbox, { filename: 'learning-dashboard.js' });
+  return moduleRef.exports;
+}
+
 function loadStorageModule(chrome) {
   const source = fs.readFileSync(storageSourcePath, 'utf8');
   const transpiled = ts.transpileModule(source, {
@@ -144,10 +175,14 @@ function loadStorageModule(chrome) {
           },
         };
       }
+      if (id === './learning-dashboard') {
+        return loadLearningDashboardModule();
+      }
       if (id === './runtime-messaging') {
         return {
           MESSAGE_TYPES: {
             SETTINGS_COMMIT: 'BILI_VOCAB_SETTINGS_COMMIT',
+            ADAPTIVE_PERSIST_FEEDBACK: 'BILI_VOCAB_ADAPTIVE_PERSIST_FEEDBACK',
             ADAPTIVE_SET_ENABLED: 'BILI_VOCAB_ADAPTIVE_SET_ENABLED',
           },
           sendRuntimeMessage(type, payload) {

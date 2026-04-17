@@ -4,10 +4,22 @@ import {
   migrateToV3,
   normalizeSettingsV3,
 } from './settings-bridge';
+import {
+  EncounteredWordRankingItem,
+  EncounteredWordSortMode,
+  QuickReviewAction,
+  QuickReviewItem,
+  normalizeEncounteredWord,
+  sortEncounteredWords,
+  sortQuickReviewItems,
+} from './learning-dashboard';
 import { MESSAGE_TYPES, sendRuntimeMessage } from './runtime-messaging';
 
+const WORD_STATS_STORAGE_KEY = 'bili_vocab_word_stats_v1';
 const LEARNING_SUMMARY_STORAGE_KEY = 'bili_vocab_learning_summary_v1';
 const VOCABULARY_BOOK_STORAGE_KEY = 'bili_vocab_word_stats_v2';
+const LEARNING_WORD_STATS_STORAGE_KEY = 'bili_vocab_word_stats_v2';
+const REVIEW_QUEUE_STORAGE_KEY = 'bili_vocab_review_queue_v1';
 const LEARNING_STREAK_STORAGE_KEY = 'bili_vocab_learning_streak_v1';
 const ADAPTIVE_TUNING_STORAGE_KEY = 'bili_vocab_adaptive_tuning_v1';
 const EXPERIENCE_METRICS_STORAGE_KEY = 'bili_vocab_experience_metrics_v1';
@@ -28,6 +40,64 @@ export interface LearningSummary {
   newCount: number;
   masteredCount: number;
   recentWords: Array<{ word: string; translation?: string; status?: string }>;
+}
+
+interface LearningRecord {
+  word: string;
+  translation?: string;
+  level?: string;
+  status?: string;
+  hitCount?: number;
+  exposureCount?: number;
+  seenCount?: number;
+  lastSeen?: number | null;
+  lastSeenAt?: number | null;
+  nextReviewBucket?: string;
+  nextReviewAt?: number | null;
+  intervalDays?: number | null;
+  easeFactor?: number | null;
+}
+
+interface ReviewQueueEntry {
+  word: string;
+  dueBucket?: string;
+  nextReviewAt?: number | null;
+  intervalDays?: number | null;
+  easeFactor?: number | null;
+  updatedAt?: number | null;
+}
+
+interface LearningStateApi {
+  normalizeLearningRecord?: (record: unknown, fallback?: Record<string, unknown>) => LearningRecord;
+  normalizeReviewQueue?: (queue: unknown) => Record<string, ReviewQueueEntry>;
+  buildLearningSummary?: (
+    records: Record<string, LearningRecord>,
+    queue: Record<string, ReviewQueueEntry>
+  ) => unknown;
+  migrateLegacyStat?: (record: unknown) => LearningRecord;
+  applyLearningAction?: (record: LearningRecord, action: string, now: number) => LearningRecord;
+  applyReviewFeedback?: (record: LearningRecord, action: string, now: number) => LearningRecord;
+  syncReviewQueue?: (
+    queue: Record<string, ReviewQueueEntry>,
+    record: LearningRecord,
+    now: number
+  ) => Record<string, ReviewQueueEntry>;
+}
+
+declare global {
+  interface Window {
+    LearningState?: LearningStateApi;
+  }
+}
+
+export interface QuickReviewDashboard {
+  summary: LearningSummary;
+  items: QuickReviewItem[];
+}
+
+export interface QuickReviewCommitResult extends QuickReviewDashboard {
+  word: string;
+  adaptiveApplied: boolean;
 }
 
 export interface VocabularyWord {
@@ -460,6 +530,297 @@ export async function readLearningSummary(): Promise<LearningSummary> {
   return normalizeLearningSummary(payload[LEARNING_SUMMARY_STORAGE_KEY]);
 }
 
+function getLearningStateApi(): LearningStateApi | null {
+  const scopedGlobal = globalThis as typeof globalThis & { LearningState?: LearningStateApi };
+  return scopedGlobal.LearningState || null;
+}
+
+function buildEmptyLearningSummary(): LearningSummary {
+  const learningState = getLearningStateApi();
+  if (learningState && typeof learningState.buildLearningSummary === 'function') {
+    return normalizeLearningSummary(learningState.buildLearningSummary({}, {}));
+  }
+  return {
+    todayCount: 0,
+    newCount: 0,
+    masteredCount: 0,
+    recentWords: [],
+  };
+}
+
+function normalizeLearningStats(
+  rawStats: unknown,
+  learningState: LearningStateApi
+): Record<string, LearningRecord> {
+  if (!rawStats || typeof rawStats !== 'object' || !learningState.normalizeLearningRecord) {
+    return {};
+  }
+
+  const normalized: Record<string, LearningRecord> = {};
+  Object.keys(rawStats as Record<string, unknown>).forEach((key) => {
+    const item = (rawStats as Record<string, unknown>)[key];
+    if (!item || typeof item !== 'object') {
+      return;
+    }
+
+    const normalizedItem = learningState.normalizeLearningRecord!(item, {
+      word: (item as Record<string, unknown>).word || key,
+      level: (item as Record<string, unknown>).level,
+    });
+    const normalizedWord = String(normalizedItem.word || '')
+      .trim()
+      .toLowerCase();
+    if (!normalizedWord) {
+      return;
+    }
+    normalized[normalizedWord] = normalizedItem;
+  });
+  return normalized;
+}
+
+function migrateLegacyLearningStats(
+  rawStats: unknown,
+  learningState: LearningStateApi
+): Record<string, LearningRecord> {
+  if (!rawStats || typeof rawStats !== 'object' || !learningState.migrateLegacyStat) {
+    return {};
+  }
+
+  const normalized: Record<string, LearningRecord> = {};
+  Object.keys(rawStats as Record<string, unknown>).forEach((key) => {
+    const migrated = learningState.migrateLegacyStat!((rawStats as Record<string, unknown>)[key]);
+    const normalizedWord = String(migrated.word || '')
+      .trim()
+      .toLowerCase();
+    if (!normalizedWord) {
+      return;
+    }
+    normalized[normalizedWord] = migrated;
+  });
+  return normalized;
+}
+
+function normalizeReviewQueue(
+  rawQueue: unknown,
+  learningState: LearningStateApi
+): Record<string, ReviewQueueEntry> {
+  if (!learningState.normalizeReviewQueue) {
+    return {};
+  }
+  return learningState.normalizeReviewQueue(rawQueue);
+}
+
+function buildQuickReviewItems(
+  stats: Record<string, LearningRecord>,
+  queue: Record<string, ReviewQueueEntry>,
+  limit = 5
+): QuickReviewItem[] {
+  const items = Object.values(queue)
+    .map((item) => {
+      const recordKey = String(item.word || '')
+        .trim()
+        .toLowerCase();
+      const record = stats[recordKey];
+      if (!record) {
+        return null;
+      }
+
+      return {
+        word: String(record.word || '').trim(),
+        translation: String(record.translation || '').trim(),
+        level: String(record.level || '')
+          .trim()
+          .toUpperCase(),
+        status: String(record.status || '')
+          .trim()
+          .toLowerCase(),
+        dueBucket: String(item.dueBucket || record.nextReviewBucket || 'today')
+          .trim()
+          .toLowerCase(),
+        nextReviewAt: normalizeTimestamp(item.nextReviewAt ?? record.nextReviewAt),
+        intervalDays: Number.isFinite(Number(item.intervalDays))
+          ? Math.max(1, Math.floor(Number(item.intervalDays)))
+          : null,
+        easeFactor: Number.isFinite(Number(item.easeFactor)) ? Number(item.easeFactor) : null,
+        updatedAt: normalizeTimestamp(item.updatedAt ?? record.lastSeenAt ?? record.lastSeen) || 0,
+      } satisfies QuickReviewItem;
+    })
+    .filter((item): item is QuickReviewItem => Boolean(item && item.word));
+
+  const safeLimit = Math.max(1, Math.floor(Number(limit) || 5));
+  return sortQuickReviewItems(items).slice(0, safeLimit);
+}
+
+async function readQuickReviewState(limit = 5): Promise<{
+  summary: LearningSummary;
+  items: QuickReviewItem[];
+  stats: Record<string, LearningRecord>;
+  queue: Record<string, ReviewQueueEntry>;
+}> {
+  const learningState = getLearningStateApi();
+  if (!learningState) {
+    return {
+      summary: buildEmptyLearningSummary(),
+      items: [],
+      stats: {},
+      queue: {},
+    };
+  }
+
+  const payload = await readStorage<Record<string, unknown>>([
+    WORD_STATS_STORAGE_KEY,
+    LEARNING_WORD_STATS_STORAGE_KEY,
+    REVIEW_QUEUE_STORAGE_KEY,
+    LEARNING_SUMMARY_STORAGE_KEY,
+  ]);
+  let stats = normalizeLearningStats(payload[LEARNING_WORD_STATS_STORAGE_KEY], learningState);
+  if (!Object.keys(stats).length) {
+    stats = migrateLegacyLearningStats(payload[WORD_STATS_STORAGE_KEY], learningState);
+  }
+  const queue = normalizeReviewQueue(payload[REVIEW_QUEUE_STORAGE_KEY], learningState);
+  const summary =
+    payload[LEARNING_SUMMARY_STORAGE_KEY] &&
+    typeof payload[LEARNING_SUMMARY_STORAGE_KEY] === 'object'
+      ? normalizeLearningSummary(payload[LEARNING_SUMMARY_STORAGE_KEY])
+      : normalizeLearningSummary(
+          learningState.buildLearningSummary ? learningState.buildLearningSummary(stats, queue) : {}
+        );
+
+  return {
+    summary,
+    items: buildQuickReviewItems(stats, queue, limit),
+    stats,
+    queue,
+  };
+}
+
+export async function readQuickReviewDashboard(limit = 5): Promise<QuickReviewDashboard> {
+  const state = await readQuickReviewState(limit);
+  return {
+    summary: state.summary,
+    items: state.items,
+  };
+}
+
+function normalizeQuickReviewAction(action: QuickReviewAction): string {
+  const normalized = String(action || 'dontknow')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'know' || normalized === 'fuzzy') {
+    return normalized;
+  }
+  return 'dontknow';
+}
+
+async function persistQuickReviewAdaptiveFeedback(action: string, now: number): Promise<boolean> {
+  try {
+    const outcome = await sendRuntimeMessage<Record<string, unknown>>(
+      MESSAGE_TYPES.ADAPTIVE_PERSIST_FEEDBACK,
+      {
+        feedback: action,
+        options: { now },
+      }
+    );
+    return outcome.applied === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function submitQuickReviewFeedback(
+  word: string,
+  action: QuickReviewAction,
+  limit = 5
+): Promise<QuickReviewCommitResult> {
+  const learningState = getLearningStateApi();
+  const syncReviewQueue = learningState?.syncReviewQueue;
+  const applyLearningAction = learningState?.applyLearningAction;
+  const applyReviewFeedback = learningState?.applyReviewFeedback;
+  if (!learningState || !syncReviewQueue || (!applyLearningAction && !applyReviewFeedback)) {
+    throw new Error('LearningState unavailable');
+  }
+
+  return enqueueStorageMutation(async () => {
+    const current = await readQuickReviewState(limit);
+    const normalizedWord = String(word || '')
+      .trim()
+      .toLowerCase();
+    const record = current.stats[normalizedWord];
+    if (!record) {
+      throw new Error('Review word unavailable');
+    }
+
+    const normalizedAction = normalizeQuickReviewAction(action);
+    const now = Date.now();
+    const nextRecord = applyLearningAction
+      ? applyLearningAction(record, normalizedAction, now)
+      : applyReviewFeedback!(record, normalizedAction, now);
+    const nextStats = {
+      ...current.stats,
+      [normalizedWord]: nextRecord,
+    };
+    const nextQueue = syncReviewQueue(current.queue, nextRecord, now);
+    const nextSummary = normalizeLearningSummary(
+      learningState.buildLearningSummary
+        ? learningState.buildLearningSummary(nextStats, nextQueue)
+        : current.summary
+    );
+
+    await writeStorage({
+      [LEARNING_WORD_STATS_STORAGE_KEY]: nextStats,
+      [REVIEW_QUEUE_STORAGE_KEY]: nextQueue,
+      [LEARNING_SUMMARY_STORAGE_KEY]: nextSummary,
+    });
+
+    const adaptiveApplied = await persistQuickReviewAdaptiveFeedback(normalizedAction, now);
+    return {
+      word: String(nextRecord.word || normalizedWord).trim(),
+      summary: nextSummary,
+      items: buildQuickReviewItems(nextStats, nextQueue, limit),
+      adaptiveApplied,
+    };
+  });
+}
+
+function buildEncounteredWordFallback(
+  rawStats: unknown,
+  learningState: LearningStateApi | null
+): EncounteredWordRankingItem[] {
+  if (!learningState) {
+    return [];
+  }
+  return Object.values(normalizeLearningStats(rawStats, learningState))
+    .map((record) => normalizeEncounteredWord(record))
+    .filter((item): item is EncounteredWordRankingItem => Boolean(item && item.hitCount > 0));
+}
+
+export async function readEncounteredWordRanking(
+  sortMode: EncounteredWordSortMode = 'asc',
+  limit = 6
+): Promise<EncounteredWordRankingItem[]> {
+  const payload = await readStorage<Record<string, unknown>>([
+    WORD_STATS_STORAGE_KEY,
+    LEARNING_WORD_STATS_STORAGE_KEY,
+  ]);
+  let items = Object.values(
+    payload[WORD_STATS_STORAGE_KEY] && typeof payload[WORD_STATS_STORAGE_KEY] === 'object'
+      ? (payload[WORD_STATS_STORAGE_KEY] as Record<string, unknown>)
+      : {}
+  )
+    .map((entry) => normalizeEncounteredWord(entry))
+    .filter((item): item is EncounteredWordRankingItem => Boolean(item && item.hitCount > 0));
+
+  if (!items.length) {
+    items = buildEncounteredWordFallback(
+      payload[LEARNING_WORD_STATS_STORAGE_KEY],
+      getLearningStateApi()
+    );
+  }
+
+  const safeLimit = Math.max(1, Math.floor(Number(limit) || 6));
+  return sortEncounteredWords(items, sortMode).slice(0, safeLimit);
+}
+
 export async function getCurrentTabHostname(): Promise<string> {
   if (!hasChromeTabs()) {
     return '';
@@ -645,6 +1006,48 @@ export function subscribeLearningSummary(onUpdate: (summary: LearningSummary) =>
   return () => {
     chrome.storage.onChanged.removeListener(listener);
   };
+}
+
+function subscribeStorageKeys(keys: string[], onUpdate: () => void): () => void {
+  if (
+    typeof chrome === 'undefined' ||
+    !chrome.storage ||
+    !chrome.storage.onChanged ||
+    typeof chrome.storage.onChanged.addListener !== 'function'
+  ) {
+    return () => {};
+  }
+
+  const watchedKeys = new Set(keys);
+  const listener = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+    if (areaName !== 'local') {
+      return;
+    }
+    const changed = Object.keys(changes).some((key) => watchedKeys.has(key));
+    if (changed) {
+      onUpdate();
+    }
+  };
+  chrome.storage.onChanged.addListener(listener);
+  return () => {
+    chrome.storage.onChanged.removeListener(listener);
+  };
+}
+
+export function subscribeQuickReviewSource(onUpdate: () => void): () => void {
+  return subscribeStorageKeys(
+    [
+      WORD_STATS_STORAGE_KEY,
+      LEARNING_WORD_STATS_STORAGE_KEY,
+      REVIEW_QUEUE_STORAGE_KEY,
+      LEARNING_SUMMARY_STORAGE_KEY,
+    ],
+    onUpdate
+  );
+}
+
+export function subscribeEncounteredWordStats(onUpdate: () => void): () => void {
+  return subscribeStorageKeys([WORD_STATS_STORAGE_KEY, LEARNING_WORD_STATS_STORAGE_KEY], onUpdate);
 }
 
 export async function openOptionsPage(): Promise<void> {

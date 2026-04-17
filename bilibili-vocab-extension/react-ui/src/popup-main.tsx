@@ -14,6 +14,15 @@ import {
   setActiveProfileConfig,
 } from './settings-bridge';
 import { getSiteToggleUiState } from './site-toggle-state';
+import {
+  EncounteredWordRankingItem,
+  EncounteredWordSortMode,
+  QuickReviewAction,
+  buildQuickReviewCard,
+  formatReviewCountText,
+  getRankingSummaryText,
+  getRelativeSeenText,
+} from './learning-dashboard';
 import { ShortcutGuide } from './shortcut-guide';
 import { StudyPreview } from './study-preview';
 import {
@@ -21,22 +30,36 @@ import {
   ExperienceMetricsSnapshot,
   LearningStreak,
   LearningSummary,
+  QuickReviewDashboard,
   VocabularyExportFormat,
   readAdaptiveTuningState,
+  readEncounteredWordRanking,
   readExperienceMetricsSnapshot,
+  readQuickReviewDashboard,
   setAdaptiveTuningEnabled,
+  submitQuickReviewFeedback,
+  subscribeEncounteredWordStats,
   subscribeAdaptiveTuningState,
   subscribeExperienceMetricsSnapshot,
+  exportVocabularyBook,
   getCurrentTabHostname,
   openOptionsPage,
-  readLearningSummary,
-  subscribeLearningSummary,
-  exportVocabularyBook,
   readLearningStreak,
+  subscribeQuickReviewSource,
 } from './storage';
 import { useV3Settings } from './use-v3-settings';
 
 const HIGH_RISK_UNDO_WINDOW_MS = 6 * 1000;
+const EMPTY_SUMMARY: LearningSummary = {
+  todayCount: 0,
+  newCount: 0,
+  masteredCount: 0,
+  recentWords: [],
+};
+const EMPTY_REVIEW_DASHBOARD: QuickReviewDashboard = {
+  summary: EMPTY_SUMMARY,
+  items: [],
+};
 const EXPORT_META: Record<
   VocabularyExportFormat,
   { label: string; extension: string; mimeType: string }
@@ -87,12 +110,12 @@ function PopupApp() {
   } = useV3Settings({
     initialStatus: '正在读取配置...',
   });
-  const [summary, setSummary] = useState<LearningSummary>({
-    todayCount: 0,
-    newCount: 0,
-    masteredCount: 0,
-    recentWords: [],
-  });
+  const [summary, setSummary] = useState<LearningSummary>(EMPTY_SUMMARY);
+  const [quickReview, setQuickReview] = useState<QuickReviewDashboard>(EMPTY_REVIEW_DASHBOARD);
+  const [reviewCursor, setReviewCursor] = useState(0);
+  const [reviewSubmitting, setReviewSubmitting] = useState<QuickReviewAction | null>(null);
+  const [rankingSort, setRankingSort] = useState<EncounteredWordSortMode>('asc');
+  const [rankingItems, setRankingItems] = useState<EncounteredWordRankingItem[]>([]);
   const [, setStreak] = useState<LearningStreak>({
     currentStreak: 0,
     maxStreak: 0,
@@ -119,15 +142,16 @@ function PopupApp() {
     let cancelled = false;
     void (async () => {
       try {
-        const [summaryPayload, currentHostname, streakPayload] = await Promise.all([
-          readLearningSummary(),
+        const [dashboardPayload, currentHostname, streakPayload] = await Promise.all([
+          readQuickReviewDashboard(),
           getCurrentTabHostname(),
           readLearningStreak(),
         ]);
         if (cancelled) {
           return;
         }
-        setSummary(summaryPayload);
+        setSummary(dashboardPayload.summary);
+        setQuickReview(dashboardPayload);
         setHostname(normalizeHostname(currentHostname));
         setStreak(streakPayload);
         setStatus('已加载当前策略，可快速调整后手动保存。');
@@ -141,6 +165,30 @@ function PopupApp() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const unsubscribeQuickReview = subscribeQuickReviewSource(() => {
+      void readQuickReviewDashboard()
+        .then((next) => {
+          setQuickReview(next);
+          setSummary(next.summary);
+        })
+        .catch(() => {
+          setStatus('学习数据读取失败，请稍后重试。');
+        });
+    });
+    return () => {
+      unsubscribeQuickReview();
+    };
+  }, [setStatus]);
+
+  useEffect(() => {
+    if (!quickReview.items.length) {
+      setReviewCursor(0);
+      return;
+    }
+    setReviewCursor((current) => (current >= quickReview.items.length ? 0 : current));
+  }, [quickReview.items]);
 
   useEffect(() => {
     if (!pendingUndo) {
@@ -165,13 +213,30 @@ function PopupApp() {
   }, [pendingUndo]);
 
   useEffect(() => {
-    const unsubscribeSummary = subscribeLearningSummary((next) => {
-      setSummary(next);
+    let cancelled = false;
+    async function refreshRanking() {
+      try {
+        const next = await readEncounteredWordRanking(rankingSort);
+        if (!cancelled) {
+          setRankingItems(next);
+        }
+      } catch {
+        if (!cancelled) {
+          setStatus('生词排行读取失败，请稍后重试。');
+        }
+      }
+    }
+
+    void refreshRanking();
+    const unsubscribeRanking = subscribeEncounteredWordStats(() => {
+      void refreshRanking();
     });
+
     return () => {
-      unsubscribeSummary();
+      cancelled = true;
+      unsubscribeRanking();
     };
-  }, []);
+  }, [rankingSort, setStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -238,6 +303,14 @@ function PopupApp() {
         siteRuleEnabled,
       }),
     [activeProfile, hostname, siteRuleEnabled]
+  );
+  const quickReviewCard = useMemo(
+    () => buildQuickReviewCard(quickReview.items, reviewCursor),
+    [quickReview.items, reviewCursor]
+  );
+  const rankingSummary = useMemo(
+    () => getRankingSummaryText(rankingItems, rankingSort),
+    [rankingItems, rankingSort]
   );
 
   function setGlobalSettings(patch: Partial<NonNullable<typeof working>['globalControls']>) {
@@ -340,6 +413,51 @@ function PopupApp() {
     }
   }
 
+  async function refreshAdaptiveInsightsSilently() {
+    try {
+      const [nextAdaptive, nextMetrics] = await Promise.all([
+        readAdaptiveTuningState(),
+        readExperienceMetricsSnapshot(7),
+      ]);
+      applyAdaptiveSnapshot(nextAdaptive, nextMetrics);
+    } catch {
+      // Ignore secondary refresh failures to keep popup actions responsive.
+    }
+  }
+
+  function cycleQuickReviewCard() {
+    if (quickReview.items.length <= 1) {
+      return;
+    }
+    setReviewCursor((current) => (current + 1) % quickReview.items.length);
+  }
+
+  async function handleQuickReviewAction(action: QuickReviewAction) {
+    if (!quickReviewCard.currentItem || reviewSubmitting) {
+      return;
+    }
+
+    const currentWord = quickReviewCard.currentItem.word;
+    setReviewSubmitting(action);
+    try {
+      const result = await submitQuickReviewFeedback(currentWord, action);
+      setQuickReview({
+        summary: result.summary,
+        items: result.items,
+      });
+      setSummary(result.summary);
+      setReviewCursor(0);
+      void refreshAdaptiveInsightsSilently();
+      const actionText =
+        action === 'know' ? '已标记为认识' : action === 'fuzzy' ? '已标记为模糊' : '已标记为不认识';
+      setStatus(result.adaptiveApplied ? `${actionText}，并已触发自动调优。` : actionText);
+    } catch {
+      setStatus('快速复习保存失败，请重试。');
+    } finally {
+      setReviewSubmitting(null);
+    }
+  }
+
   async function handleExportVocabularyBook(format: VocabularyExportFormat) {
     try {
       const exportMeta = EXPORT_META[format];
@@ -433,6 +551,118 @@ function PopupApp() {
         />
       </section>
 
+      <section className="panel stack stagger-enter" data-index="2">
+        <div className="inline wrap">
+          <div>
+            <h3>快速复习</h3>
+            <p className="panel-subtitle">把刚积累的待复习词直接在真实 popup 里处理掉。</p>
+          </div>
+          <span className={`badge ${quickReviewCard.empty ? '' : 'good'}`}>
+            {formatReviewCountText(summary)}
+          </span>
+        </div>
+        <div className={`review-card${quickReviewCard.empty ? ' review-card--empty' : ''}`}>
+          <div className="review-card__head">
+            <strong>{quickReviewCard.title}</strong>
+            <span>
+              {quickReviewCard.total
+                ? `${quickReviewCard.currentIndex + 1} / ${quickReviewCard.total}`
+                : '等待新词'}
+            </span>
+          </div>
+          <p className="review-card__meta">{quickReviewCard.meta}</p>
+          <p className="review-card__description">{quickReviewCard.description}</p>
+        </div>
+        <div className="btn-row">
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={cycleQuickReviewCard}
+            disabled={quickReviewCard.empty || quickReview.items.length <= 1 || !!reviewSubmitting}
+          >
+            换一张
+          </button>
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => void handleQuickReviewAction('know')}
+            disabled={quickReviewCard.empty || !!reviewSubmitting}
+          >
+            {reviewSubmitting === 'know' ? '提交中...' : '认识'}
+          </button>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => void handleQuickReviewAction('fuzzy')}
+            disabled={quickReviewCard.empty || !!reviewSubmitting}
+          >
+            {reviewSubmitting === 'fuzzy' ? '提交中...' : '模糊'}
+          </button>
+          <button
+            type="button"
+            className="btn warn"
+            onClick={() => void handleQuickReviewAction('dontknow')}
+            disabled={quickReviewCard.empty || !!reviewSubmitting}
+          >
+            {reviewSubmitting === 'dontknow' ? '提交中...' : '不认识'}
+          </button>
+        </div>
+      </section>
+
+      <section className="panel stack stagger-enter" data-index="3">
+        <div className="inline wrap">
+          <div>
+            <h3>生词排行</h3>
+            <p className="panel-subtitle">切换查看当前最需要补强或命中最高频的词。</p>
+          </div>
+          <div className="btn-group">
+            <button
+              type="button"
+              className={`btn ${rankingSort === 'asc' ? 'secondary' : 'ghost'}`}
+              onClick={() => setRankingSort('asc')}
+            >
+              待巩固
+            </button>
+            <button
+              type="button"
+              className={`btn ${rankingSort === 'desc' ? 'secondary' : 'ghost'}`}
+              onClick={() => setRankingSort('desc')}
+            >
+              最高频
+            </button>
+          </div>
+        </div>
+        <div className="summary-item">
+          <strong>{rankingSummary}</strong>
+          <span>排序会跟随最近命中与复习结果实时更新。</span>
+        </div>
+        {rankingItems.length > 0 ? (
+          <div className="ranking-list">
+            {rankingItems.map((item) => (
+              <div
+                className="ranking-item"
+                key={`${rankingSort}-${item.word}-${item.lastSeen || 0}`}
+              >
+                <div className="ranking-item__main">
+                  <div className="ranking-item__head">
+                    <strong>{item.word}</strong>
+                    <span className="badge">{item.level || 'WORD'}</span>
+                  </div>
+                  <span className="ranking-item__translation">{item.translation || '-'}</span>
+                  <span className="ranking-item__meta">{getRelativeSeenText(item.lastSeen)}</span>
+                </div>
+                <span className="ranking-item__count">{item.hitCount}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="summary-item">
+            <strong>暂无排行数据</strong>
+            <span>继续观看带字幕的视频后，这里会出现高频命中词和待巩固词。</span>
+          </div>
+        )}
+      </section>
+
       {conflict && (
         <section className="panel stack">
           <h3>检测到并发修改</h3>
@@ -464,7 +694,7 @@ function PopupApp() {
         </section>
       )}
 
-      <section className="panel stack stagger-enter" data-index="2">
+      <section className="panel stack stagger-enter" data-index="4">
         <h3>全局开关</h3>
         <label className="switch-row">
           <span>
@@ -537,7 +767,7 @@ function PopupApp() {
         )}
       </section>
 
-      <section className="panel stack stagger-enter" data-index="3">
+      <section className="panel stack stagger-enter" data-index="5">
         <h3>快速调参</h3>
         <div className="field">
           <label htmlFor="popupRatio">

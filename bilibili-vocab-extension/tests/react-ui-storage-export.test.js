@@ -7,6 +7,35 @@ const ts = require('typescript');
 
 const STORAGE_SOURCE_PATH = path.join(__dirname, '..', 'react-ui', 'src', 'storage.ts');
 const STORAGE_SOURCE_DIR = path.dirname(STORAGE_SOURCE_PATH);
+const LEARNING_DASHBOARD_SOURCE_PATH = path.join(
+  __dirname,
+  '..',
+  'react-ui',
+  'src',
+  'learning-dashboard.ts'
+);
+
+function loadLearningDashboardModule() {
+  const source = fs.readFileSync(LEARNING_DASHBOARD_SOURCE_PATH, 'utf8');
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      esModuleInterop: true,
+    },
+  }).outputText;
+  const moduleRef = { exports: {} };
+  const sandbox = {
+    module: moduleRef,
+    exports: moduleRef.exports,
+    require,
+    Date,
+    console,
+  };
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(transpiled, sandbox, { filename: 'learning-dashboard.js' });
+  return moduleRef.exports;
+}
 
 function createStorageModule(storagePayload) {
   const source = fs.readFileSync(STORAGE_SOURCE_PATH, 'utf8');
@@ -30,10 +59,14 @@ function createStorageModule(storagePayload) {
           normalizeSettingsV3: (settings) => settings,
         };
       }
+      if (id === './learning-dashboard') {
+        return loadLearningDashboardModule();
+      }
       if (id === './runtime-messaging') {
         return {
           MESSAGE_TYPES: {
             SETTINGS_COMMIT: 'BILI_VOCAB_SETTINGS_COMMIT',
+            ADAPTIVE_PERSIST_FEEDBACK: 'BILI_VOCAB_ADAPTIVE_PERSIST_FEEDBACK',
             ADAPTIVE_SET_ENABLED: 'BILI_VOCAB_ADAPTIVE_SET_ENABLED',
           },
           sendRuntimeMessage() {

@@ -38,6 +38,8 @@ test('popup layout: should assert the shipped react popup entry instead of legac
   assert.match(popupHtml, /src="\/src\/popup-main\.tsx"/);
   assert.match(popupSource, /学习策略快控台/);
   assert.match(popupSource, /当前配置档/);
+  assert.match(popupSource, /快速复习/);
+  assert.match(popupSource, /生词排行/);
   assert.match(popupSource, /启用自动调优/);
   assert.match(popupSource, /打开完整配置页/);
   assert.match(popupSource, /导出JSON/);

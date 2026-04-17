@@ -7,6 +7,13 @@ const ts = require('typescript');
 
 const STORAGE_SOURCE_PATH = path.join(__dirname, '..', 'react-ui', 'src', 'storage.ts');
 const STORAGE_SOURCE_DIR = path.dirname(STORAGE_SOURCE_PATH);
+const LEARNING_DASHBOARD_SOURCE_PATH = path.join(
+  __dirname,
+  '..',
+  'react-ui',
+  'src',
+  'learning-dashboard.ts'
+);
 const SETTINGS_STORAGE_KEY_V3 = 'bili_vocab_settings_v3';
 const ADAPTIVE_TUNING_STORAGE_KEY = 'bili_vocab_adaptive_tuning_v1';
 const EXPERIENCE_METRICS_STORAGE_KEY = 'bili_vocab_experience_metrics_v1';
@@ -43,6 +50,29 @@ function pickPayload(state, keys) {
     accumulator[key] = cloneValue(state[key]);
     return accumulator;
   }, {});
+}
+
+function loadLearningDashboardModule(now) {
+  const source = fs.readFileSync(LEARNING_DASHBOARD_SOURCE_PATH, 'utf8');
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      esModuleInterop: true,
+    },
+  }).outputText;
+  const moduleRef = { exports: {} };
+  const MockDate = createMockDate(now);
+  const sandbox = {
+    module: moduleRef,
+    exports: moduleRef.exports,
+    require,
+    Date: MockDate,
+    console,
+  };
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(transpiled, sandbox, { filename: 'learning-dashboard.js' });
+  return moduleRef.exports;
 }
 
 function createStorageModule(options = {}) {
@@ -123,10 +153,14 @@ function createStorageModule(options = {}) {
           },
         };
       }
+      if (id === './learning-dashboard') {
+        return loadLearningDashboardModule(options.now || 1700000000000);
+      }
       if (id === './runtime-messaging') {
         return {
           MESSAGE_TYPES: {
             SETTINGS_COMMIT: 'BILI_VOCAB_SETTINGS_COMMIT',
+            ADAPTIVE_PERSIST_FEEDBACK: 'BILI_VOCAB_ADAPTIVE_PERSIST_FEEDBACK',
             ADAPTIVE_SET_ENABLED: 'BILI_VOCAB_ADAPTIVE_SET_ENABLED',
           },
           hasRuntimeMessaging() {
