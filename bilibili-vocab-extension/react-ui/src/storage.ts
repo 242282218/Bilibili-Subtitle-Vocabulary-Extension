@@ -891,6 +891,51 @@ export async function exportVocabularyBook(
   return JSON.stringify(savedWords, null, 2);
 }
 
+export async function clearVocabularyBook(): Promise<number> {
+  return enqueueStorageMutation(async () => {
+    const payload = await readStorage<Record<string, unknown>>([VOCABULARY_BOOK_STORAGE_KEY]);
+    const sourceWordStats =
+      payload[VOCABULARY_BOOK_STORAGE_KEY] &&
+      typeof payload[VOCABULARY_BOOK_STORAGE_KEY] === 'object'
+        ? (payload[VOCABULARY_BOOK_STORAGE_KEY] as Record<string, unknown>)
+        : {};
+
+    const nextWordStats = { ...sourceWordStats };
+    let clearedCount = 0;
+
+    Object.keys(nextWordStats).forEach((wordKey) => {
+      const record = nextWordStats[wordKey];
+      const status =
+        record && typeof record === 'object'
+          ? String((record as Record<string, unknown>).status || '')
+              .trim()
+              .toLowerCase()
+          : '';
+      if (!record || typeof record !== 'object' || status !== 'saved') {
+        return;
+      }
+
+      const nextRecord: Record<string, unknown> = {
+        ...(record as Record<string, unknown>),
+        status: 'seen',
+      };
+      delete nextRecord.savedAt;
+      nextWordStats[wordKey] = nextRecord;
+      clearedCount += 1;
+    });
+
+    if (clearedCount === 0) {
+      return 0;
+    }
+
+    await writeStorage({
+      [VOCABULARY_BOOK_STORAGE_KEY]: nextWordStats,
+    });
+
+    return clearedCount;
+  });
+}
+
 function normalizeLearningStreak(input: unknown): LearningStreak {
   const source = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
   const activeDays = Array.isArray(source.activeDays)

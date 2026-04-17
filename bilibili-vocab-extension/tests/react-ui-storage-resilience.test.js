@@ -352,3 +352,64 @@ test('react ui storage resilience: setAdaptiveTuningEnabled should delegate to r
   assert.equal(nextState.enabled, true);
   assert.equal(nextState.manualOverrideActive, true);
 });
+
+test('react ui storage resilience: clearVocabularyBook should only downgrade saved words', async () => {
+  const { module: storageModule, storageState } = createStorageModule({
+    initialState: {
+      bili_vocab_word_stats_v2: {
+        savedWord: {
+          word: 'alpha',
+          status: 'saved',
+          savedAt: 1700000000000,
+          exposures: 3,
+          details: { meaning: 'A' },
+        },
+        seenWord: {
+          word: 'beta',
+          status: 'seen',
+          exposures: 1,
+        },
+        malformedSaved: {
+          status: 'saved',
+          note: 'missing-word',
+        },
+        malformed: 'bad-record',
+      },
+    },
+  });
+
+  const clearedCount = await storageModule.clearVocabularyBook();
+
+  assert.equal(clearedCount, 2);
+  assert.equal(storageState.bili_vocab_word_stats_v2.savedWord.status, 'seen');
+  assert.equal('savedAt' in storageState.bili_vocab_word_stats_v2.savedWord, false);
+  assert.equal(storageState.bili_vocab_word_stats_v2.savedWord.exposures, 3);
+  assert.equal(storageState.bili_vocab_word_stats_v2.seenWord.status, 'seen');
+  assert.equal(storageState.bili_vocab_word_stats_v2.malformedSaved.status, 'seen');
+  assert.equal(storageState.bili_vocab_word_stats_v2.malformed, 'bad-record');
+});
+
+test('react ui storage resilience: clearVocabularyBook should keep storage unchanged when write fails', async () => {
+  const initialState = {
+    bili_vocab_word_stats_v2: {
+      savedWord: {
+        word: 'alpha',
+        status: 'saved',
+        savedAt: 1700000000000,
+      },
+    },
+  };
+  const { module: storageModule, storageState } = createStorageModule({
+    initialState,
+    setImpl({ callback, runtime }) {
+      runtime.lastError = { message: 'storage write failed' };
+      if (typeof callback === 'function') {
+        callback();
+      }
+      runtime.lastError = null;
+    },
+  });
+
+  await assert.rejects(storageModule.clearVocabularyBook(), /storage write failed/);
+  assert.deepEqual(storageState, initialState);
+});

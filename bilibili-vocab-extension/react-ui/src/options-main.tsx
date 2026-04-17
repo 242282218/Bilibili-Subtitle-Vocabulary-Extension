@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './ui.css';
 import {
   AdaptiveTuningState,
   ExperienceMetricsSnapshot,
+  clearVocabularyBook,
   readExperienceMetricsSnapshot,
   readAdaptiveTuningState,
   setAdaptiveTuningEnabled,
@@ -16,10 +17,12 @@ import {
   SCENE_PRESETS,
   ScenePresetKey,
   cloneSettingsV3,
+  getDefaultSettingsV3,
   getPresetKeyFromSettings,
   getReviewDanmakuSpeedLabel,
   LEVELS,
   MAX_CUSTOM_PROFILES,
+  migrateToV3,
   PROFILE_META,
   REVIEW_SPEEDS,
   SettingsV3,
@@ -38,6 +41,7 @@ import { StudyPreview } from './study-preview';
 import { useV3Settings } from './use-v3-settings';
 
 type SectionKey = 'profiles' | 'learning' | 'siteRules' | 'overlay';
+type MaintenanceAction = 'import' | 'reset' | 'clear';
 
 const SECTION_META: Array<{ id: SectionKey; name: string }> = [
   { id: 'profiles', name: '配置档' },
@@ -102,6 +106,18 @@ function formatPercent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
+function downloadTextFile(content: string, filename: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 function ToggleRow({
   title,
   description,
@@ -154,6 +170,8 @@ function OptionsApp() {
     null
   );
   const [pendingUndo, setPendingUndo] = useState<PendingUndoAction | null>(null);
+  const [maintenanceBusy, setMaintenanceBusy] = useState<MaintenanceAction | null>(null);
+  const importSettingsInputRef = useRef<HTMLInputElement | null>(null);
 
   function applyAdaptiveSnapshot(
     nextAdaptive: AdaptiveTuningState,
@@ -448,6 +466,101 @@ function OptionsApp() {
     setPendingUndo(null);
   }
 
+  function onExportSettings() {
+    if (!working) {
+      setStatus('当前配置尚未加载完成，暂时无法导出。');
+      return;
+    }
+
+    try {
+      downloadTextFile(
+        `${JSON.stringify(cloneSettingsV3(working), null, 2)}\n`,
+        `bilibili-vocab-settings-${new Date().toISOString().slice(0, 10)}.json`,
+        'application/json'
+      );
+      setStatus('当前配置已导出。');
+    } catch {
+      setStatus('导出配置失败，请重试。');
+    }
+  }
+
+  function onTriggerImportSettings() {
+    if (saving || maintenanceBusy) {
+      return;
+    }
+    importSettingsInputRef.current?.click();
+  }
+
+  async function onImportSettingsFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.target;
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) {
+      return;
+    }
+
+    setMaintenanceBusy('import');
+    try {
+      const importedRaw = JSON.parse(await file.text());
+      const importedSettings = migrateToV3(importedRaw);
+      setWorkingDirect(importedSettings);
+      const saveResult = await save('设置导入并应用到扩展。');
+      if (!saveResult) {
+        setStatus('配置已导入当前编辑稿，但保存失败，请重试。');
+      }
+      setPendingUndo(null);
+    } catch {
+      setStatus('导入失败，请检查 JSON 格式或配置内容。');
+    } finally {
+      setMaintenanceBusy(null);
+    }
+  }
+
+  async function onResetToDefaults() {
+    if (saving || maintenanceBusy) {
+      return;
+    }
+    if (!window.confirm('确定要恢复默认设置吗？所有自定义配置将会丢失。')) {
+      return;
+    }
+
+    setMaintenanceBusy('reset');
+    try {
+      const defaults = getDefaultSettingsV3();
+      setWorkingDirect(defaults);
+      const saveResult = await save('已恢复默认设置。');
+      if (!saveResult) {
+        setStatus('默认配置已应用到当前编辑稿，但保存失败，请重试。');
+      }
+      setPendingUndo(null);
+    } finally {
+      setMaintenanceBusy(null);
+    }
+  }
+
+  async function onClearVocabularyBook() {
+    if (saving || maintenanceBusy) {
+      return;
+    }
+    if (!window.confirm('确定要清空所有已收藏的单词吗？此操作不可恢复。')) {
+      return;
+    }
+
+    setMaintenanceBusy('clear');
+    try {
+      const clearedCount = await clearVocabularyBook();
+      setStatus(
+        clearedCount > 0
+          ? `已清空 ${clearedCount} 个已收藏单词。`
+          : '当前没有已收藏单词，无需清空。'
+      );
+    } catch {
+      setStatus('清空已收藏生词失败，请重试。');
+    } finally {
+      setMaintenanceBusy(null);
+    }
+  }
+
   if (!working || !activeProfile) {
     return (
       <main className="studio-shell">
@@ -670,6 +783,66 @@ function OptionsApp() {
               )}
               <ShortcutGuide />
             </aside>
+            <article className="panel stack stagger-enter" data-index="4">
+              <div>
+                <h3>设置备份与词库维护</h3>
+                <p className="panel-subtitle">
+                  把真实入口常用的备份、迁移、回滚和词库清理动作收口到这里。
+                </p>
+              </div>
+              <input
+                ref={importSettingsInputRef}
+                type="file"
+                accept=".json,application/json"
+                hidden
+                onChange={onImportSettingsFileChange}
+              />
+              <div className="summary-list">
+                <div className="summary-item">
+                  <strong>导出当前编辑稿</strong>
+                  <span>会导出当前 React 选项页里的工作副本，未保存修改也会被包含。</span>
+                </div>
+                <div className="summary-item">
+                  <strong>导入或恢复默认</strong>
+                  <span>导入 legacy / v3 配置后会自动迁移到 v3，并立即走真实保存链路。</span>
+                </div>
+                <div className="summary-item">
+                  <strong>清空已收藏生词</strong>
+                  <span>仅撤销“已收藏”状态，不删除学习队列、命中统计和复习历史。</span>
+                </div>
+              </div>
+              <div className="btn-row">
+                <button type="button" className="btn secondary" onClick={onExportSettings}>
+                  导出当前配置
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={onTriggerImportSettings}
+                  disabled={saving || maintenanceBusy !== null}
+                >
+                  {maintenanceBusy === 'import' ? '导入中...' : '导入配置'}
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost warn"
+                  onClick={onResetToDefaults}
+                  disabled={saving || maintenanceBusy !== null}
+                >
+                  {maintenanceBusy === 'reset' ? '恢复中...' : '恢复默认设置'}
+                </button>
+              </div>
+              <div className="btn-row">
+                <button
+                  type="button"
+                  className="btn warn"
+                  onClick={onClearVocabularyBook}
+                  disabled={saving || maintenanceBusy !== null}
+                >
+                  {maintenanceBusy === 'clear' ? '清空中...' : '清空已收藏生词'}
+                </button>
+              </div>
+            </article>
           </>
         )}
 

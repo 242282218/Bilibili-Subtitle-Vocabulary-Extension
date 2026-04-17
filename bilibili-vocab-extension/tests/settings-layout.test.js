@@ -27,6 +27,11 @@ test('options layout: should assert the shipped react options entry instead of l
   assert.match(optionsSource, /站点规则/);
   assert.match(optionsSource, /启用自动调优/);
   assert.match(optionsSource, /近 7 天验收指标/);
+  assert.match(optionsSource, /设置备份与词库维护/);
+  assert.match(optionsSource, /导出当前配置/);
+  assert.match(optionsSource, /导入配置/);
+  assert.match(optionsSource, /恢复默认设置/);
+  assert.match(optionsSource, /清空已收藏生词/);
 });
 
 test('popup layout: should assert the shipped react popup entry instead of legacy popup shell', () => {
