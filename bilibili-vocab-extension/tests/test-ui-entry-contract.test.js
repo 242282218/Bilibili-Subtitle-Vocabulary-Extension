@@ -33,6 +33,12 @@ test('test ui entry contract: test:ui should explicitly target ui-related scope'
   assert.match(testUiScript, /^node scripts\/run-ui-tests\.js$/);
 });
 
+test('test ui entry contract: workspace should not keep legacy-only settings redesign contract', () => {
+  const legacyContractPath = path.join(__dirname, 'settings-redesign.test.js');
+
+  assert.equal(fs.existsSync(legacyContractPath), false);
+});
+
 test('test ui entry contract: run-ui-tests should select only ui contract files', () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'run-ui-tests-'));
   const testsDir = path.join(workspace, 'tests');
