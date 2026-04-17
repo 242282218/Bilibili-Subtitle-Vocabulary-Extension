@@ -63,6 +63,11 @@ interface SharedSettingsApi {
   DEFAULT_SETTINGS?: Partial<ProfileConfig>;
   normalizeProfileConfig?: (value: unknown) => ProfileConfig;
   normalizeDomainRules?: (value: unknown) => Record<string, DomainRule>;
+  setExactDomainRuleEnabled?: (
+    domainRules: Record<string, DomainRule>,
+    hostname: string,
+    enabled: boolean
+  ) => Record<string, DomainRule>;
   normalizeHostname?: (hostname: string) => string;
   normalizeSettingsV3?: (value: unknown) => SettingsV3;
   getDefaultSettingsV3?: () => SettingsV3;
@@ -150,6 +155,11 @@ function clamp(value: unknown, min: number, max: number, fallback: number): numb
   return Math.max(min, Math.min(max, Math.round(numeric)));
 }
 
+function parseFiniteNumber(value: unknown, fallback: number): number {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
 function normalizeSpeed(value: unknown): ReviewDanmakuSpeed {
   const normalized = String(value || FALLBACK_PROFILE.reviewDanmakuSpeed)
     .trim()
@@ -205,11 +215,14 @@ function normalizeProfileConfigFallback(value: unknown): ProfileConfig {
     enabled: source.enabled !== false,
     replaceRatio: Math.max(
       0.1,
-      Math.min(0.3, Number(source.replaceRatio) || FALLBACK_PROFILE.replaceRatio)
+      Math.min(0.3, parseFiniteNumber(source.replaceRatio, FALLBACK_PROFILE.replaceRatio))
     ),
     maxReplaceCount: Math.max(
       1,
-      Math.min(5, Math.floor(Number(source.maxReplaceCount) || FALLBACK_PROFILE.maxReplaceCount))
+      Math.min(
+        5,
+        Math.floor(parseFiniteNumber(source.maxReplaceCount, FALLBACK_PROFILE.maxReplaceCount))
+      )
     ),
     targetCefr: normalizeCefr(source.targetCefr),
     activeLevels: normalizeLevels(source.activeLevels),
@@ -262,6 +275,23 @@ function normalizeDomainRulesFallback(value: unknown): Record<string, DomainRule
     output[normalized] = nextRule;
   });
   return output;
+}
+
+function setExactDomainRuleEnabledFallback(
+  domainRules: Record<string, DomainRule>,
+  hostname: string,
+  enabled: boolean
+): Record<string, DomainRule> {
+  const normalizedHostname = normalizeHostnameFallback(hostname);
+  const normalizedRules = normalizeDomainRulesFallback(domainRules);
+  if (!normalizedHostname) {
+    return normalizedRules;
+  }
+
+  normalizedRules[normalizedHostname] = {
+    enabled: enabled !== false,
+  };
+  return normalizedRules;
 }
 
 function normalizeOverlayStateFallback(value: unknown): OverlayState {
@@ -546,6 +576,17 @@ export function normalizeDomainRules(value: unknown): Record<string, DomainRule>
     return shared.normalizeDomainRules(value);
   }
   return normalizeDomainRulesFallback(value);
+}
+
+export function setExactDomainRuleEnabled(
+  domainRules: Record<string, DomainRule>,
+  hostname: string,
+  enabled: boolean
+): Record<string, DomainRule> {
+  if (typeof shared.setExactDomainRuleEnabled === 'function') {
+    return shared.setExactDomainRuleEnabled(domainRules, hostname, enabled);
+  }
+  return setExactDomainRuleEnabledFallback(domainRules, hostname, enabled);
 }
 
 export function isDomainEnabled(hostname: string, runtime: unknown): boolean {

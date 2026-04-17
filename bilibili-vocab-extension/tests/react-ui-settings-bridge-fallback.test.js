@@ -1,20 +1,20 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
-const ts = require("typescript");
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const ts = require('typescript');
 
 const SETTINGS_BRIDGE_SOURCE_PATH = path.join(
   __dirname,
-  "..",
-  "react-ui",
-  "src",
-  "settings-bridge.ts"
+  '..',
+  'react-ui',
+  'src',
+  'settings-bridge.ts'
 );
 
 function createSettingsBridgeModule() {
-  const source = fs.readFileSync(SETTINGS_BRIDGE_SOURCE_PATH, "utf8");
+  const source = fs.readFileSync(SETTINGS_BRIDGE_SOURCE_PATH, 'utf8');
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
@@ -39,11 +39,11 @@ function createSettingsBridgeModule() {
   sandbox.globalThis = sandbox;
   sandbox.window = sandbox.window;
 
-  vm.runInNewContext(transpiled, sandbox, { filename: "settings-bridge.js" });
+  vm.runInNewContext(transpiled, sandbox, { filename: 'settings-bridge.js' });
   return moduleRef.exports;
 }
 
-test("react ui settings bridge fallback: should migrate legacy flat settings into v3", () => {
+test('react ui settings bridge fallback: should migrate legacy flat settings into v3', () => {
   const settingsBridge = createSettingsBridgeModule();
 
   const migrated = settingsBridge.migrateToV3({
@@ -51,15 +51,15 @@ test("react ui settings bridge fallback: should migrate legacy flat settings int
     reviewDanmakuEnabled: true,
     webPageEnabled: false,
     domainRules: {
-      "docs.example.com": { enabled: false },
+      'docs.example.com': { enabled: false },
     },
-    activeLevels: ["IELTS"],
+    activeLevels: ['IELTS'],
     replaceRatio: 0.3,
     maxReplaceCount: 4,
-    targetCefr: "C1",
-    reviewDanmakuSpeed: "fast",
-    vocabularyMode: "full",
-    examPreference: "exam-first",
+    targetCefr: 'C1',
+    reviewDanmakuSpeed: 'fast',
+    vocabularyMode: 'full',
+    examPreference: 'exam-first',
     overlayPanelHidden: true,
     overlayPanelCollapsed: true,
     overlayPanelWidth: 500,
@@ -69,16 +69,16 @@ test("react ui settings bridge fallback: should migrate legacy flat settings int
   });
 
   assert.equal(migrated.schemaVersion, 3);
-  assert.equal(migrated.activeProfileId, "legacy-imported");
+  assert.equal(migrated.activeProfileId, 'legacy-imported');
   assert.equal(migrated.profilesCustom.length, 1);
-  assert.equal(migrated.profilesCustom[0].id, "legacy-imported");
+  assert.equal(migrated.profilesCustom[0].id, 'legacy-imported');
   assert.equal(migrated.profilesCustom[0].config.enabled, false);
   assert.equal(migrated.profilesCustom[0].config.replaceRatio, 0.3);
   assert.equal(migrated.profilesCustom[0].config.maxReplaceCount, 4);
-  assert.deepEqual(Array.from(migrated.profilesCustom[0].config.activeLevels), ["IELTS"]);
+  assert.deepEqual(Array.from(migrated.profilesCustom[0].config.activeLevels), ['IELTS']);
   assert.equal(migrated.globalControls.reviewDanmakuEnabled, true);
   assert.equal(migrated.globalControls.webPageEnabled, false);
-  assert.equal(migrated.globalControls.siteRules["docs.example.com"].enabled, false);
+  assert.equal(migrated.globalControls.siteRules['docs.example.com'].enabled, false);
   assert.equal(migrated.globalControls.overlayState.hidden, true);
   assert.equal(migrated.globalControls.overlayState.collapsed, true);
   assert.equal(migrated.globalControls.overlayState.width, 500);
@@ -87,11 +87,11 @@ test("react ui settings bridge fallback: should migrate legacy flat settings int
   assert.equal(migrated.globalControls.overlayState.offsetBottom, 120);
 });
 
-test("react ui settings bridge fallback: should honor parent-domain rules, pauses, and disabled runtime", () => {
+test('react ui settings bridge fallback: should honor parent-domain rules, pauses, and disabled runtime', () => {
   const settingsBridge = createSettingsBridgeModule();
   const pausedUntil = Date.now() + 60 * 1000;
   const settings = settingsBridge.normalizeSettingsV3({
-    activeProfileId: "balanced",
+    activeProfileId: 'balanced',
     profilesBuiltin: {
       balanced: {
         enabled: true,
@@ -99,27 +99,66 @@ test("react ui settings bridge fallback: should honor parent-domain rules, pause
     },
     globalControls: {
       siteRules: {
-        "example.com": { enabled: false },
-        "paused.dev": { enabled: true, pausedUntil },
+        'example.com': { enabled: false },
+        'paused.dev': { enabled: true, pausedUntil },
       },
     },
   });
 
-  const runtime = settingsBridge.resolveEffectiveRuntime(settings, "video.example.com");
+  const runtime = settingsBridge.resolveEffectiveRuntime(settings, 'video.example.com');
 
   assert.equal(runtime.siteEnabled, false);
   assert.equal(
-    settingsBridge.isDomainEnabled("nested.paused.dev", {
+    settingsBridge.isDomainEnabled('nested.paused.dev', {
       enabled: true,
       domainRules: settings.globalControls.siteRules,
     }),
     false
   );
   assert.equal(
-    settingsBridge.isDomainEnabled("video.example.com", {
+    settingsBridge.isDomainEnabled('video.example.com', {
       enabled: false,
       domainRules: {},
     }),
     false
   );
+});
+
+test('react ui settings bridge fallback: should set exact host override and clear pause when enabling site', () => {
+  const settingsBridge = createSettingsBridgeModule();
+  const pausedUntil = Date.now() + 60 * 1000;
+  const domainRules = settingsBridge.setExactDomainRuleEnabled(
+    {
+      'example.com': { enabled: false },
+      'video.example.com': { enabled: true, pausedUntil },
+    },
+    'video.example.com',
+    true
+  );
+
+  assert.equal(domainRules['video.example.com'].enabled, true);
+  assert.equal('pausedUntil' in domainRules['video.example.com'], false);
+  assert.equal(
+    settingsBridge.isDomainEnabled('video.example.com', {
+      enabled: true,
+      domainRules,
+    }),
+    true
+  );
+});
+
+test('react ui settings bridge fallback: should clamp zero ratio and count instead of swallowing them', () => {
+  const settingsBridge = createSettingsBridgeModule();
+  const normalized = settingsBridge.normalizeSettingsV3({
+    activeProfileId: 'balanced',
+    profilesBuiltin: {
+      balanced: {
+        replaceRatio: 0,
+        maxReplaceCount: 0,
+      },
+    },
+  });
+
+  assert.equal(normalized.profilesBuiltin.balanced.replaceRatio, 0.1);
+  assert.equal(normalized.profilesBuiltin.balanced.maxReplaceCount, 1);
 });
