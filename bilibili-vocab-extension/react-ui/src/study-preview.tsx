@@ -1,6 +1,7 @@
 import {
   ProfileConfig,
   buildSettingsPreview,
+  getBilingualModeLabel,
   getLearningProfile,
   getMockPreviewData,
   getReviewDanmakuSpeedLabel,
@@ -14,36 +15,59 @@ interface StudyPreviewProps {
   compact?: boolean;
 }
 
-function renderPreviewSentence(words: string[], variant: StudyPreviewProps['sentenceVariant']) {
-  const [firstWord = 'establish', secondWord = 'vocabulary', thirdWord = 'context'] = words;
+interface PreviewToken {
+  word: string;
+  sourceText: string;
+}
+
+function getPreviewTokens(
+  words: string[],
+  variant: StudyPreviewProps['sentenceVariant']
+): PreviewToken[] {
+  const sourceWords =
+    variant === 'popup' ? ['系统', '听力', '词汇反应速度'] : ['建立', '词汇', '输入节奏'];
+
+  return words.map((word, index) => ({
+    word,
+    sourceText: sourceWords[index] || '原词',
+  }));
+}
+
+function renderPreviewWord(token: PreviewToken, showSourceText: boolean) {
+  return (
+    <span className="preview-word">
+      {token.word}
+      {showSourceText ? `（${token.sourceText}）` : ''}
+    </span>
+  );
+}
+
+function renderPreviewSentence(
+  tokens: PreviewToken[],
+  variant: StudyPreviewProps['sentenceVariant'],
+  bilingualMode: ProfileConfig['bilingualMode']
+) {
+  const showSourceText = bilingualMode === 'default';
+  const [firstToken, secondToken, thirdToken] = tokens;
+  const firstWord = firstToken || { word: 'establish', sourceText: '建立' };
+  const secondWord = secondToken || { word: 'vocabulary', sourceText: '词汇' };
+  const thirdWord = thirdToken || { word: 'context', sourceText: '输入节奏' };
 
   if (variant === 'popup') {
     return (
       <>
-        预览：我今天想 <span className="preview-word">{firstWord}</span> 提升英语{' '}
-        <span className="preview-word">{secondWord}</span>
-        {words[2] ? (
-          <>
-            {' '}
-            和 <span className="preview-word">{thirdWord}</span>
-          </>
-        ) : null}
-        。
+        预览：我今天想 {renderPreviewWord(firstWord, showSourceText)} 提升英语{' '}
+        {renderPreviewWord(secondWord, showSourceText)}
+        {thirdToken ? <>，并强化 {renderPreviewWord(thirdWord, showSourceText)}</> : null}。
       </>
     );
   }
 
   return (
     <>
-      预览：这段视频会帮你 <span className="preview-word">{firstWord}</span> 稳定的{' '}
-      <span className="preview-word">{secondWord}</span>
-      {words[2] ? (
-        <>
-          {' '}
-          与 <span className="preview-word">{thirdWord}</span>
-        </>
-      ) : null}{' '}
-      输入节奏。
+      预览：这段视频会帮你 {renderPreviewWord(firstWord, showSourceText)} 稳定的{' '}
+      {renderPreviewWord(secondWord, showSourceText)} 输入
+      {thirdToken ? <>，并保持 {renderPreviewWord(thirdWord, showSourceText)}</> : null}。
     </>
   );
 }
@@ -56,12 +80,15 @@ export function StudyPreview({
   compact = false,
 }: StudyPreviewProps) {
   const learningProfile = getLearningProfile(profile);
-  const previewWords = getMockPreviewData(
-    profile.targetCefr,
-    profile.replaceRatio,
-    profile.maxReplaceCount
+  const previewTokens = getPreviewTokens(
+    getMockPreviewData(profile.targetCefr, profile.replaceRatio, profile.maxReplaceCount),
+    sentenceVariant
   );
   const summary = buildSettingsPreview(profile);
+  const originalSentence =
+    sentenceVariant === 'popup'
+      ? '我今天想系统提升英语听力和词汇反应速度。'
+      : '这段视频会帮你建立稳定的词汇输入节奏。';
 
   return (
     <div className={`study-preview stack${compact ? ' study-preview--compact' : ''}`}>
@@ -103,10 +130,14 @@ export function StudyPreview({
           </span>
         </div>
         <p className="preview-card__sentence">
-          {renderPreviewSentence(previewWords, sentenceVariant)}
+          {renderPreviewSentence(previewTokens, sentenceVariant, profile.bilingualMode)}
         </p>
+        {profile.bilingualMode === 'bilingual' && (
+          <p className="preview-card__translation">原句：{originalSentence}</p>
+        )}
         <p className="preview-card__caption">
-          {learningProfile.summary} 当前目标难度：{profile.targetCefr}。
+          {learningProfile.summary} 当前目标难度：{profile.targetCefr} · 显示模式：
+          {getBilingualModeLabel(profile.bilingualMode)}。
         </p>
       </div>
     </div>

@@ -1,6 +1,7 @@
 type ReviewDanmakuSpeed = 'slow' | 'normal' | 'fast';
 type VocabularyMode = 'core' | 'full';
 type ExamPreference = 'balanced' | 'exam-first';
+export type BilingualMode = 'default' | 'bilingual' | 'english-only';
 export type BuiltinProfileId = 'gentle' | 'balanced' | 'intensive';
 export type ProfileId = BuiltinProfileId | string;
 export type ScenePresetKey = 'light' | 'balanced' | 'intensive';
@@ -14,6 +15,7 @@ export interface ProfileConfig {
   reviewDanmakuSpeed: ReviewDanmakuSpeed;
   vocabularyMode: VocabularyMode;
   examPreference: ExamPreference;
+  bilingualMode: BilingualMode;
 }
 
 export interface DomainRule {
@@ -137,6 +139,7 @@ const FALLBACK_PROFILE: ProfileConfig = {
   reviewDanmakuSpeed: 'normal',
   vocabularyMode: 'core',
   examPreference: 'balanced',
+  bilingualMode: 'default',
 };
 
 const FALLBACK_SCENE_PRESETS: Record<ScenePresetKey, ScenePreset> = {
@@ -223,6 +226,16 @@ function normalizePreference(value: unknown): ExamPreference {
     : 'balanced';
 }
 
+function normalizeBilingualMode(value: unknown): BilingualMode {
+  const normalized = String(value || FALLBACK_PROFILE.bilingualMode)
+    .trim()
+    .toLowerCase();
+  if (normalized === 'bilingual' || normalized === 'english-only') {
+    return normalized;
+  }
+  return 'default';
+}
+
 function normalizeCefr(value: unknown): string {
   const normalized = String(value || FALLBACK_PROFILE.targetCefr)
     .trim()
@@ -266,6 +279,7 @@ function normalizeProfileConfigFallback(value: unknown): ProfileConfig {
     reviewDanmakuSpeed: normalizeSpeed(source.reviewDanmakuSpeed),
     vocabularyMode: normalizeMode(source.vocabularyMode),
     examPreference: normalizePreference(source.examPreference),
+    bilingualMode: normalizeBilingualMode(source.bilingualMode),
   };
 }
 
@@ -475,6 +489,17 @@ function getReviewDanmakuSpeedLabelFallback(speed: unknown): string {
   return '标准';
 }
 
+function getBilingualModeLabelFallback(mode: unknown): string {
+  const normalized = normalizeBilingualMode(mode);
+  if (normalized === 'bilingual') {
+    return '双语对照';
+  }
+  if (normalized === 'english-only') {
+    return '纯英文';
+  }
+  return '括号释义';
+}
+
 function getMockPreviewDataFallback(
   targetCefr: unknown,
   ratio: unknown,
@@ -548,7 +573,7 @@ function buildSettingsPreviewFallback(settings: unknown): string {
 
   const modeLabel = normalized.vocabularyMode === 'core' ? '核心高频' : '全量扩展';
   const preferenceLabel = normalized.examPreference === 'exam-first' ? '考试优先' : '均衡筛选';
-  return `当前会在每句字幕中替换约 ${Math.round(normalized.replaceRatio * 100)}% 的词汇，单句最多 ${normalized.maxReplaceCount} 个词，帮助你以 ${normalized.targetCefr} 难度并结合 ${normalized.activeLevels.length} 个词库持续曝光；词库模式为${modeLabel}，筛选策略为${preferenceLabel}，复习节奏为${getReviewDanmakuSpeedLabelFallback(normalized.reviewDanmakuSpeed)}。`;
+  return `当前会在每句字幕中替换约 ${Math.round(normalized.replaceRatio * 100)}% 的词汇，单句最多 ${normalized.maxReplaceCount} 个词，帮助你以 ${normalized.targetCefr} 难度并结合 ${normalized.activeLevels.length} 个词库持续曝光；词库模式为${modeLabel}，筛选策略为${preferenceLabel}，显示模式为${getBilingualModeLabelFallback(normalized.bilingualMode)}，复习节奏为${getReviewDanmakuSpeedLabelFallback(normalized.reviewDanmakuSpeed)}。`;
 }
 
 function getPresetKeyFromSettingsFallback(settings: unknown): ScenePresetKey {
@@ -793,6 +818,10 @@ export function getReviewDanmakuSpeedLabel(speed: unknown): string {
     return shared.getReviewDanmakuSpeedLabel(speed);
   }
   return getReviewDanmakuSpeedLabelFallback(speed);
+}
+
+export function getBilingualModeLabel(mode: unknown): string {
+  return getBilingualModeLabelFallback(mode);
 }
 
 export function getMockPreviewData(

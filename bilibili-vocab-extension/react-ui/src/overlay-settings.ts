@@ -40,6 +40,7 @@ const FALLBACK_PROFILE: ProfileConfig = {
   reviewDanmakuSpeed: 'normal',
   vocabularyMode: 'core',
   examPreference: 'balanced',
+  bilingualMode: 'default',
 };
 
 const FALLBACK_OVERLAY: OverlayState = {
@@ -135,6 +136,16 @@ function normalizeExamPreference(value: unknown): ProfileConfig['examPreference'
     : 'balanced';
 }
 
+function normalizeBilingualMode(value: unknown): ProfileConfig['bilingualMode'] {
+  const normalized = String(value || FALLBACK_PROFILE.bilingualMode)
+    .trim()
+    .toLowerCase();
+  if (normalized === 'bilingual' || normalized === 'english-only') {
+    return normalized;
+  }
+  return 'default';
+}
+
 function normalizeLevels(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return FALLBACK_PROFILE.activeLevels.slice();
@@ -166,6 +177,7 @@ function normalizeProfileConfigFallback(value: unknown): ProfileConfig {
     reviewDanmakuSpeed: normalizeSpeed(source.reviewDanmakuSpeed),
     vocabularyMode: normalizeVocabularyMode(source.vocabularyMode),
     examPreference: normalizeExamPreference(source.examPreference),
+    bilingualMode: normalizeBilingualMode(source.bilingualMode),
   };
 }
 

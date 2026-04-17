@@ -60,6 +60,7 @@ test('react ui settings bridge fallback: should migrate legacy flat settings int
     reviewDanmakuSpeed: 'fast',
     vocabularyMode: 'full',
     examPreference: 'exam-first',
+    bilingualMode: 'bilingual',
     overlayPanelHidden: true,
     overlayPanelCollapsed: true,
     overlayPanelWidth: 500,
@@ -75,6 +76,7 @@ test('react ui settings bridge fallback: should migrate legacy flat settings int
   assert.equal(migrated.profilesCustom[0].config.enabled, false);
   assert.equal(migrated.profilesCustom[0].config.replaceRatio, 0.3);
   assert.equal(migrated.profilesCustom[0].config.maxReplaceCount, 4);
+  assert.equal(migrated.profilesCustom[0].config.bilingualMode, 'bilingual');
   assert.deepEqual(Array.from(migrated.profilesCustom[0].config.activeLevels), ['IELTS']);
   assert.equal(migrated.globalControls.reviewDanmakuEnabled, true);
   assert.equal(migrated.globalControls.webPageEnabled, false);
@@ -108,6 +110,7 @@ test('react ui settings bridge fallback: should honor parent-domain rules, pause
   const runtime = settingsBridge.resolveEffectiveRuntime(settings, 'video.example.com');
 
   assert.equal(runtime.siteEnabled, false);
+  assert.equal(runtime.bilingualMode, 'default');
   assert.equal(
     settingsBridge.isDomainEnabled('nested.paused.dev', {
       enabled: true,

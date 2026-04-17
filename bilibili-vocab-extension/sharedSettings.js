@@ -319,6 +319,7 @@
       reviewDanmakuSpeed: normalized.reviewDanmakuSpeed,
       vocabularyMode: normalized.vocabularyMode,
       examPreference: normalized.examPreference,
+      bilingualMode: normalized.bilingualMode,
     };
   }
 
@@ -636,6 +637,17 @@
     return '标准';
   }
 
+  function getBilingualModeLabel(mode) {
+    const normalized = normalizeBilingualMode(mode);
+    if (normalized === 'bilingual') {
+      return '双语对照';
+    }
+    if (normalized === 'english-only') {
+      return '纯英文';
+    }
+    return '括号释义';
+  }
+
   function getHeroMetricMeta(type, value) {
     if (type === 'ratio') {
       const ratio = Math.min(
@@ -747,7 +759,7 @@
 
     const modeLabel = normalized.vocabularyMode === 'core' ? '核心高频' : '全量扩展';
     const preferenceLabel = normalized.examPreference === 'exam-first' ? '考试优先' : '均衡筛选';
-    return `当前会在每句字幕中替换约 ${Math.round(normalized.replaceRatio * 100)}% 的词汇，单句最多 ${normalized.maxReplaceCount} 个词，帮助你以 ${normalized.targetCefr} 难度并结合 ${normalized.activeLevels.length} 个词库持续曝光；词库模式为${modeLabel}，筛选策略为${preferenceLabel}，复习节奏为${getReviewDanmakuSpeedLabel(normalized.reviewDanmakuSpeed)}。`;
+    return `当前会在每句字幕中替换约 ${Math.round(normalized.replaceRatio * 100)}% 的词汇，单句最多 ${normalized.maxReplaceCount} 个词，帮助你以 ${normalized.targetCefr} 难度并结合 ${normalized.activeLevels.length} 个词库持续曝光；词库模式为${modeLabel}，筛选策略为${preferenceLabel}，显示模式为${getBilingualModeLabel(normalized.bilingualMode)}，复习节奏为${getReviewDanmakuSpeedLabel(normalized.reviewDanmakuSpeed)}。`;
   }
 
   function getPresetKeyFromSettings(settings) {

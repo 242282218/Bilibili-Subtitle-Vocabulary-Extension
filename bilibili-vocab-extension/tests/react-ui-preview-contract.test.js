@@ -74,8 +74,9 @@ test('react ui preview contract: settings bridge should expose shared preset and
       reviewDanmakuSpeed: 'normal',
       vocabularyMode: 'core',
       examPreference: 'balanced',
+      bilingualMode: 'bilingual',
     }),
-    /20%/
+    /双语对照/
   );
 });
 
@@ -87,6 +88,8 @@ test('react ui preview contract: options should render scene presets and shipped
   assert.match(source, /scene-preset-card/);
   assert.match(source, /实时策略预览/);
   assert.match(source, /<StudyPreview/);
+  assert.match(source, /双语显示模式/);
+  assert.match(source, /bilingualMode/);
 });
 
 test('react ui preview contract: popup should render shipped study preview instead of only legacy mockups', () => {
@@ -95,4 +98,6 @@ test('react ui preview contract: popup should render shipped study preview inste
   assert.match(source, /StudyPreview/);
   assert.match(source, /实时学习预览/);
   assert.match(source, /sentenceVariant="popup"/);
+  assert.match(source, /显示模式/);
+  assert.match(source, /popupBilingualMode/);
 });

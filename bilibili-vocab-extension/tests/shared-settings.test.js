@@ -237,6 +237,7 @@ test('shared settings v3: should migrate legacy flat settings into v3 payload', 
     maxReplaceCount: 4,
     targetCefr: 'c1',
     activeLevels: ['ielts', 'toefl'],
+    bilingualMode: 'bilingual',
     reviewDanmakuEnabled: true,
     webPageEnabled: false,
     domainRules: {
@@ -257,6 +258,7 @@ test('shared settings v3: should migrate legacy flat settings into v3 payload', 
   assert.equal(migrated.activeProfileId, 'legacy-imported');
   assert.equal(Array.isArray(migrated.profilesCustom), true);
   assert.equal(migrated.profilesCustom.length, 1);
+  assert.equal(migrated.profilesCustom[0].config.bilingualMode, 'bilingual');
 });
 
 test('shared settings v3: should resolve effective runtime by active profile and global controls', () => {
@@ -285,6 +287,7 @@ test('shared settings v3: should resolve effective runtime by active profile and
   });
   assert.equal(runtimeBlocked.reviewDanmakuEnabled, true);
   assert.equal(runtimeBlocked.maxReplaceCount, 4);
+  assert.equal(runtimeBlocked.bilingualMode, 'default');
   assert.equal(runtimeBlocked.siteEnabled, false);
   assert.equal(runtimeAllowed.siteEnabled, true);
 });

@@ -803,6 +803,25 @@ function OptionsApp() {
                     <option value="exam-first">exam-first</option>
                   </select>
                 </div>
+                <div className="field">
+                  <label htmlFor="bilingualMode">双语显示模式</label>
+                  <select
+                    id="bilingualMode"
+                    value={activeProfile.bilingualMode}
+                    onChange={(event) =>
+                      patchActiveProfile({
+                        bilingualMode: event.target.value as
+                          | 'default'
+                          | 'bilingual'
+                          | 'english-only',
+                      })
+                    }
+                  >
+                    <option value="default">默认模式（词汇 + 括号释义）</option>
+                    <option value="bilingual">双语模式（整句对照）</option>
+                    <option value="english-only">纯英文模式（不显示括号）</option>
+                  </select>
+                </div>
               </div>
               <div className="field">
                 <label>词库范围</label>

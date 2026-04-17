@@ -23,6 +23,7 @@ test('options layout: should assert the shipped react options entry instead of l
   assert.match(optionsSource, /字幕学习配置中心/);
   assert.match(optionsSource, /学习配置档/);
   assert.match(optionsSource, /学习参数/);
+  assert.match(optionsSource, /双语显示模式/);
   assert.match(optionsSource, /站点规则/);
   assert.match(optionsSource, /启用自动调优/);
   assert.match(optionsSource, /近 7 天验收指标/);
@@ -40,6 +41,7 @@ test('popup layout: should assert the shipped react popup entry instead of legac
   assert.match(popupSource, /当前配置档/);
   assert.match(popupSource, /快速复习/);
   assert.match(popupSource, /生词排行/);
+  assert.match(popupSource, /显示模式/);
   assert.match(popupSource, /启用自动调优/);
   assert.match(popupSource, /打开完整配置页/);
   assert.match(popupSource, /导出JSON/);

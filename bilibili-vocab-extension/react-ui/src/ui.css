@@ -302,13 +302,19 @@ body.v3-page {
 }
 
 .preview-card__sentence,
+.preview-card__translation,
 .preview-card__caption {
   margin: 0;
 }
 
-.preview-card__sentence {
+.preview-card__sentence,
+.preview-card__translation {
   font-size: 0.88rem;
   line-height: 1.6;
+}
+
+.preview-card__translation {
+  color: var(--ui-text-muted);
 }
 
 .preview-card__caption {
