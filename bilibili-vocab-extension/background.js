@@ -666,6 +666,74 @@
     });
   }
 
+  function applyCommandSettingsMutation(settings, command) {
+    if (!isSettingsV3Shape(settings)) {
+      return null;
+    }
+
+    switch (command) {
+      case 'toggle-enabled':
+        return patchActiveProfileConfig(settings, (config) => ({
+          ...config,
+          enabled: config.enabled !== true,
+        }));
+
+      case 'toggle-overlay': {
+        const currentHidden =
+          settings.globalControls.overlayState &&
+          settings.globalControls.overlayState.hidden === true;
+        return sharedSettings && typeof sharedSettings.normalizeSettingsV3 === 'function'
+          ? sharedSettings.normalizeSettingsV3({
+              ...settings,
+              globalControls: {
+                ...settings.globalControls,
+                overlayState: {
+                  ...settings.globalControls.overlayState,
+                  hidden: !currentHidden,
+                },
+              },
+            })
+          : settings;
+      }
+
+      case 'increase-ratio':
+        return patchActiveProfileConfig(settings, (config) => ({
+          ...config,
+          replaceRatio: clampRatio(
+            (Number(config.replaceRatio) || DEFAULT_SETTINGS.replaceRatio) + 0.05
+          ),
+        }));
+
+      case 'decrease-ratio':
+        return patchActiveProfileConfig(settings, (config) => ({
+          ...config,
+          replaceRatio: clampRatio(
+            (Number(config.replaceRatio) || DEFAULT_SETTINGS.replaceRatio) - 0.05
+          ),
+        }));
+
+      default:
+        return null;
+    }
+  }
+
+  function commitCommandSettings(command) {
+    return enqueueSharedStateMutation(async () => {
+      const storage = await getStoragePayload(null);
+      const currentSettings = normalizeCommandSettings(storage);
+      const nextSettings = applyCommandSettingsMutation(currentSettings, command);
+      if (!nextSettings) {
+        return null;
+      }
+
+      return commitSettingsPayload({
+        settings: nextSettings,
+        markManualOverride: true,
+        now: Date.now(),
+      });
+    });
+  }
+
   if (typeof chrome !== 'undefined' && chrome.runtime) {
     chrome.runtime.onInstalled.addListener(() => {
       ensureDefaultSettings();
@@ -685,99 +753,30 @@
     if (chrome.commands && typeof chrome.commands.onCommand.addListener === 'function') {
       chrome.commands.onCommand.addListener(async (command) => {
         if (!chrome.storage || !chrome.storage.local) return;
-
-        // 读取当前设置
-        const storage = await new Promise((resolve) => {
-          chrome.storage.local.get(null, (payload) => resolve(payload));
-        });
-
-        let settings = normalizeCommandSettings(storage);
-        const isV3 = isSettingsV3Shape(settings);
-        let updated = false;
-
-        switch (command) {
-          case 'toggle-enabled':
-            if (isV3) {
-              settings = patchActiveProfileConfig(settings, (config) => ({
-                ...config,
-                enabled: config.enabled !== true,
-              }));
-              updated = true;
-            }
-            break;
-
-          case 'toggle-overlay':
-            if (isV3) {
-              const currentHidden =
-                settings.globalControls.overlayState &&
-                settings.globalControls.overlayState.hidden === true;
-              settings =
-                sharedSettings && typeof sharedSettings.normalizeSettingsV3 === 'function'
-                  ? sharedSettings.normalizeSettingsV3({
-                      ...settings,
-                      globalControls: {
-                        ...settings.globalControls,
-                        overlayState: {
-                          ...settings.globalControls.overlayState,
-                          hidden: !currentHidden,
-                        },
-                      },
-                    })
-                  : settings;
-              updated = true;
-            }
-            break;
-
-          case 'increase-ratio':
-            if (isV3) {
-              settings = patchActiveProfileConfig(settings, (config) => ({
-                ...config,
-                replaceRatio: clampRatio(
-                  (Number(config.replaceRatio) || DEFAULT_SETTINGS.replaceRatio) + 0.05
-                ),
-              }));
-              updated = true;
-            }
-            break;
-
-          case 'decrease-ratio':
-            if (isV3) {
-              settings = patchActiveProfileConfig(settings, (config) => ({
-                ...config,
-                replaceRatio: clampRatio(
-                  (Number(config.replaceRatio) || DEFAULT_SETTINGS.replaceRatio) - 0.05
-                ),
-              }));
-              updated = true;
-            }
-            break;
+        let settings = null;
+        try {
+          settings = await commitCommandSettings(command);
+        } catch (error) {
+          logBackgroundError('Failed to persist command settings', error);
+          return;
         }
 
-        if (updated) {
-          try {
-            await setStoragePayload({ [SETTINGS_STORAGE_KEY_V3]: settings });
-          } catch (error) {
-            logBackgroundError('Failed to persist command settings', error);
-            return;
-          }
+        if (!settings || !chrome.tabs || typeof chrome.tabs.query !== 'function') {
+          return;
+        }
 
-          if (!chrome.tabs || typeof chrome.tabs.query !== 'function') {
-            return;
-          }
-
-          // 通知所有标签页设置已更新
-          chrome.tabs.query({}, (tabs) => {
-            tabs.forEach((tab) => {
-              if (
-                tab.id &&
-                tab.url &&
-                (tab.url.startsWith('http://') || tab.url.startsWith('https://'))
-              ) {
-                safeSendSettingsUpdated(tab.id, settings);
-              }
-            });
+        // 通知所有标签页设置已更新
+        chrome.tabs.query({}, (tabs) => {
+          tabs.forEach((tab) => {
+            if (
+              tab.id &&
+              tab.url &&
+              (tab.url.startsWith('http://') || tab.url.startsWith('https://'))
+            ) {
+              safeSendSettingsUpdated(tab.id, settings);
+            }
           });
-        }
+        });
       });
     }
   }

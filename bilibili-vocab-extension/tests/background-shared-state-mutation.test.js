@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
+const sharedSettings = require('../sharedSettings.js');
 
 const backgroundPath = path.join(__dirname, '..', 'background.js');
 const experienceMetricsPath = path.join(__dirname, '..', 'experienceMetrics.js');
@@ -197,7 +198,7 @@ async function withBackground(storageState, run) {
     require(backgroundPath);
     const storageModule = loadStorageModule(stub.chrome);
     const experienceMetrics = require(experienceMetricsPath);
-    await run({ storageModule, experienceMetrics, storageState });
+    await run({ storageModule, experienceMetrics, storageState, listeners: stub.listeners });
   } finally {
     delete require.cache[require.resolve(backgroundPath)];
     delete require.cache[require.resolve(experienceMetricsPath)];
@@ -280,4 +281,95 @@ test('background shared state mutation: react save and runtime metrics should no
       );
     }
   );
+});
+
+test('background shared state mutation: keyboard command should serialize with metrics and mark manual override', async () => {
+  const storageState = {
+    [SETTINGS_STORAGE_KEY_V3]: sharedSettings.getDefaultSettingsV3(),
+    [ADAPTIVE_TUNING_STORAGE_KEY]: {
+      enabled: true,
+    },
+    [EXPERIENCE_METRICS_STORAGE_KEY]: {
+      schemaVersion: 1,
+      updatedAt: null,
+      counters: {},
+      daily: {},
+      events: [],
+    },
+  };
+
+  await withBackground(
+    storageState,
+    async ({ listeners, experienceMetrics, storageState: nextStorageState }) => {
+      const baselineRatio =
+        nextStorageState[SETTINGS_STORAGE_KEY_V3].profilesBuiltin.balanced.replaceRatio;
+
+      await Promise.all([
+        listeners.command('increase-ratio'),
+        experienceMetrics.recordEvent('context-misreplace', {
+          severity: 'high',
+          now: 1700000005000,
+        }),
+      ]);
+
+      assert.equal(
+        nextStorageState[SETTINGS_STORAGE_KEY_V3].profilesBuiltin.balanced.replaceRatio,
+        baselineRatio + 0.05
+      );
+      assert.equal(
+        nextStorageState[EXPERIENCE_METRICS_STORAGE_KEY].counters.adaptiveManualOverride,
+        1
+      );
+      assert.equal(
+        nextStorageState[EXPERIENCE_METRICS_STORAGE_KEY].counters.contextMisreplaceReported,
+        1
+      );
+      assert.equal(
+        nextStorageState[EXPERIENCE_METRICS_STORAGE_KEY].counters.contextMisreplaceHigh,
+        1
+      );
+      assert.deepEqual(
+        nextStorageState[EXPERIENCE_METRICS_STORAGE_KEY].events.map((item) => item.type).sort(),
+        ['adaptive-manual-override', 'context-misreplace']
+      );
+    }
+  );
+});
+
+test('background shared state mutation: concurrent keyboard commands should build on latest settings', async () => {
+  const storageState = {
+    [SETTINGS_STORAGE_KEY_V3]: sharedSettings.getDefaultSettingsV3(),
+    [ADAPTIVE_TUNING_STORAGE_KEY]: {
+      enabled: true,
+    },
+    [EXPERIENCE_METRICS_STORAGE_KEY]: {
+      schemaVersion: 1,
+      updatedAt: null,
+      counters: {},
+      daily: {},
+      events: [],
+    },
+  };
+
+  await withBackground(storageState, async ({ listeners, storageState: nextStorageState }) => {
+    const baselineRatio =
+      nextStorageState[SETTINGS_STORAGE_KEY_V3].profilesBuiltin.balanced.replaceRatio;
+
+    await Promise.all([listeners.command('increase-ratio'), listeners.command('increase-ratio')]);
+
+    assert.equal(
+      nextStorageState[SETTINGS_STORAGE_KEY_V3].profilesBuiltin.balanced.replaceRatio,
+      Number((baselineRatio + 0.1).toFixed(2))
+    );
+    assert.equal(
+      nextStorageState[EXPERIENCE_METRICS_STORAGE_KEY].counters.adaptiveManualOverride,
+      2
+    );
+    assert.equal(
+      nextStorageState[EXPERIENCE_METRICS_STORAGE_KEY].events.filter(
+        (item) => item.type === 'adaptive-manual-override'
+      ).length,
+      2
+    );
+  });
 });
