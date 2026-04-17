@@ -6,12 +6,14 @@ import {
   REVIEW_SPEEDS,
   cloneSettingsV3,
   getProfileConfigById,
+  isDomainEnabled,
   listProfileOptions,
   normalizeHostname,
   resolveEffectiveRuntime,
   setExactDomainRuleEnabled,
   setActiveProfileConfig,
 } from './settings-bridge';
+import { getSiteToggleUiState } from './site-toggle-state';
 import {
   AdaptiveTuningState,
   ExperienceMetricsSnapshot,
@@ -195,6 +197,26 @@ function PopupApp() {
     return resolveEffectiveRuntime(working, hostname);
   }, [working, hostname]);
 
+  const siteRuleEnabled = useMemo(() => {
+    if (!working || !hostname) {
+      return true;
+    }
+    return isDomainEnabled(hostname, {
+      enabled: true,
+      domainRules: working.globalControls.siteRules,
+    });
+  }, [working, hostname]);
+
+  const siteToggleState = useMemo(
+    () =>
+      getSiteToggleUiState({
+        hostname,
+        profileEnabled: activeProfile ? activeProfile.enabled : true,
+        siteRuleEnabled,
+      }),
+    [activeProfile, hostname, siteRuleEnabled]
+  );
+
   function setGlobalSettings(patch: Partial<NonNullable<typeof working>['globalControls']>) {
     mutateWorking((draft) => {
       draft.globalControls = {
@@ -234,16 +256,22 @@ function PopupApp() {
   }
 
   function toggleCurrentSite() {
-    if (!working || !hostname) {
-      setStatus('当前页面无法识别域名。');
+    if (!working || siteToggleState.buttonDisabled) {
+      setStatus(siteToggleState.hint);
       return;
     }
     const before = cloneSettingsV3(working);
-    const enabled = runtime ? runtime.siteEnabled : true;
     setGlobalSettings({
-      siteRules: setExactDomainRuleEnabled(working.globalControls.siteRules, hostname, !enabled),
+      siteRules: setExactDomainRuleEnabled(
+        working.globalControls.siteRules,
+        hostname,
+        !siteRuleEnabled
+      ),
     });
-    registerHighRiskUndo(before, enabled ? `已暂停站点 ${hostname}` : `已恢复站点 ${hostname}`);
+    registerHighRiskUndo(
+      before,
+      siteRuleEnabled ? `已暂停站点 ${hostname}` : `已恢复站点 ${hostname}`
+    );
   }
 
   async function onSave() {
@@ -331,7 +359,8 @@ function PopupApp() {
         <span className="studio-eyebrow">Quick Control</span>
         <h1 className="studio-title">学习策略快控台</h1>
         <p className="studio-subtitle">
-          当前站点：{hostname || '无法识别'} · {runtime.siteEnabled ? '已启用' : '已暂停'}
+          当前站点：{hostname || '无法识别'} ·{' '}
+          {!activeProfile.enabled ? '总开关关闭中' : runtime.siteEnabled ? '已启用' : '已暂停'}
         </p>
       </section>
 
@@ -554,9 +583,11 @@ function PopupApp() {
               type="button"
               className="btn"
               onClick={toggleCurrentSite}
+              disabled={siteToggleState.buttonDisabled}
             >
-              {runtime.siteEnabled ? '暂停当前站点' : '恢复当前站点'}
+              {siteToggleState.buttonLabel}
             </button>
+            <span className="hint">{siteToggleState.hint}</span>
           </div>
         </div>
         <div className="btn-row">
