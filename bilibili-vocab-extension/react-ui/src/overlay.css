@@ -172,6 +172,50 @@
   color: var(--rv-text-muted);
 }
 
+.rv-recent-words {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rv-border-soft);
+  display: grid;
+  gap: 8px;
+}
+
+.rv-recent-words__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rv-recent-words__head strong {
+  font-size: 12px;
+}
+
+.rv-recent-words__head span,
+.rv-recent-words__empty,
+.rv-recent-word span {
+  font-size: 11px;
+  color: var(--rv-text-muted);
+}
+
+.rv-recent-words__list {
+  display: grid;
+  gap: 6px;
+}
+
+.rv-recent-word {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--rv-border-soft);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.rv-recent-word strong {
+  font-size: 12px;
+}
+
 .rv-card h4 {
   margin: 0 0 7px;
   font-size: 12px;

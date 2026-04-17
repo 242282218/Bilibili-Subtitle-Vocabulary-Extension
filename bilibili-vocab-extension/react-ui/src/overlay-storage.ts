@@ -142,6 +142,27 @@ export async function readLearningSummary(): Promise<LearningSummary> {
   return normalizeLearningSummary(payload[LEARNING_SUMMARY_STORAGE_KEY]);
 }
 
+export function subscribeLearningSummary(onUpdate: (summary: LearningSummary) => void): () => void {
+  if (
+    typeof chrome === 'undefined' ||
+    !chrome.storage ||
+    !chrome.storage.onChanged ||
+    typeof chrome.storage.onChanged.addListener !== 'function'
+  ) {
+    return () => {};
+  }
+  const listener = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+    if (areaName !== 'local' || !changes[LEARNING_SUMMARY_STORAGE_KEY]) {
+      return;
+    }
+    onUpdate(normalizeLearningSummary(changes[LEARNING_SUMMARY_STORAGE_KEY].newValue));
+  };
+  chrome.storage.onChanged.addListener(listener);
+  return () => {
+    chrome.storage.onChanged.removeListener(listener);
+  };
+}
+
 export function subscribeOverlaySettingsChanges(
   onUpdate: (settings: SettingsV3) => void
 ): () => void {

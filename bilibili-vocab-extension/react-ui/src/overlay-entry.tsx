@@ -11,7 +11,12 @@ import {
   normalizeSettingsV3,
   setActiveProfileConfig,
 } from './overlay-settings';
-import { saveOverlaySettingsV3, readLearningSummary, LearningSummary } from './overlay-storage';
+import {
+  saveOverlaySettingsV3,
+  readLearningSummary,
+  LearningSummary,
+  subscribeLearningSummary,
+} from './overlay-storage';
 import { getThemeModeLabel, THEME_MODE_OPTIONS, useResolvedTheme } from './ui-theme';
 import { useOverlaySettings } from './use-overlay-settings';
 
@@ -25,6 +30,11 @@ function asNumber(value: string, fallback: number): number {
 
 function clampOffset(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function getRecentWordMeta(item: LearningSummary['recentWords'][number]): string {
+  const parts = [item.translation, item.status].filter(Boolean);
+  return parts.length ? parts.join(' · ') : '继续观看后会补齐释义和状态';
 }
 
 function OverlayApp() {
@@ -61,8 +71,12 @@ function OverlayApp() {
         }
       }
     })();
+    const unsubscribeSummary = subscribeLearningSummary((next) => {
+      setSummary(next);
+    });
     return () => {
       cancelled = true;
+      unsubscribeSummary();
     };
   }, []);
 
@@ -205,6 +219,29 @@ function OverlayApp() {
                   <span className="rv-stat-value">{summary.masteredCount}</span>
                   <span className="rv-stat-label">已掌握</span>
                 </div>
+              </div>
+              <div className="rv-recent-words">
+                <div className="rv-recent-words__head">
+                  <strong>最近词汇</strong>
+                  <span>跟随学习状态实时刷新</span>
+                </div>
+                {summary.recentWords.length > 0 ? (
+                  <div className="rv-recent-words__list">
+                    {summary.recentWords.slice(0, 3).map((item) => (
+                      <div
+                        className="rv-recent-word"
+                        key={`${item.word}-${item.translation || ''}`}
+                      >
+                        <strong>{item.word}</strong>
+                        <span>{getRecentWordMeta(item)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rv-recent-words__empty">
+                    继续观看带字幕的视频后，这里会显示最近命中的词。
+                  </div>
+                )}
               </div>
             </section>
 

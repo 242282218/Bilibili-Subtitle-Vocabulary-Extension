@@ -77,6 +77,7 @@ function createOverlayStorageModule(options = {}) {
   };
   const moduleRef = { exports: {} };
   const MockDate = createMockDate(options.now || 1700000000000);
+  const changeListeners = new Set();
   const chrome = {
     storage: {
       local: {
@@ -99,8 +100,12 @@ function createOverlayStorageModule(options = {}) {
         },
       },
       onChanged: {
-        addListener() {},
-        removeListener() {},
+        addListener(listener) {
+          changeListeners.add(listener);
+        },
+        removeListener(listener) {
+          changeListeners.delete(listener);
+        },
       },
     },
     runtime,
@@ -163,6 +168,11 @@ function createOverlayStorageModule(options = {}) {
   return {
     module: moduleRef.exports,
     storageState,
+    fireOnChanged(changes, areaName = 'local') {
+      changeListeners.forEach((listener) => {
+        listener(changes, areaName);
+      });
+    },
   };
 }
 
@@ -274,5 +284,58 @@ test('react overlay storage resilience: saveOverlaySettingsV3 should delegate wi
   assert.equal(storageState[EXPERIENCE_METRICS_STORAGE_KEY].counters.adaptiveManualOverride, 2);
   assert.deepEqual(storageState[EXPERIENCE_METRICS_STORAGE_KEY].events, [
     { type: 'adaptive-toggle', at: 1700000000000, enabled: true },
+  ]);
+});
+
+test('react overlay storage resilience: subscribeLearningSummary should normalize changed summary payload', () => {
+  const updates = [];
+  const { module: overlayStorage, fireOnChanged } = createOverlayStorageModule();
+
+  const unsubscribe = overlayStorage.subscribeLearningSummary((summary) => {
+    updates.push(cloneValue(summary));
+  });
+
+  fireOnChanged({
+    bili_vocab_learning_summary_v1: {
+      newValue: {
+        todayCount: '3',
+        newCount: -1,
+        masteredCount: 2.8,
+        recentWords: [
+          {
+            word: ' lexicon ',
+            translation: ' 词汇 ',
+            status: ' saved ',
+          },
+          {
+            word: '',
+            translation: 'ignored',
+          },
+        ],
+      },
+    },
+  });
+  unsubscribe();
+  fireOnChanged({
+    bili_vocab_learning_summary_v1: {
+      newValue: {
+        todayCount: 99,
+      },
+    },
+  });
+
+  assert.deepEqual(updates, [
+    {
+      todayCount: 3,
+      newCount: 0,
+      masteredCount: 2,
+      recentWords: [
+        {
+          word: 'lexicon',
+          translation: '词汇',
+          status: 'saved',
+        },
+      ],
+    },
   ]);
 });

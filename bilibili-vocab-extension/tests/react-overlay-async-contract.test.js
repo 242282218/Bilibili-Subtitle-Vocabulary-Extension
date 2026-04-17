@@ -11,6 +11,9 @@ test('react overlay async contract: overlay entry should guard summary load fail
   const source = readProjectFile('react-ui/src/overlay-entry.tsx');
 
   assert.match(source, /学习概览读取失败，请稍后重试。/);
+  assert.match(source, /subscribeLearningSummary/);
+  assert.match(source, /最近词汇/);
+  assert.match(source, /跟随学习状态实时刷新/);
 });
 
 test('react overlay async contract: persistImmediate should persist before committing UI state', () => {
