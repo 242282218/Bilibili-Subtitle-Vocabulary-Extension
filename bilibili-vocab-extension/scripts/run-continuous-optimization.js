@@ -15,6 +15,7 @@ const DEFAULT_REPORT_DIR = path.join(
 );
 const DEFAULT_MAX_LOG_CHARS = 4000;
 const LEGACY_DEFERRED_TEST_PATTERNS = [/^options-.*\.test\.js$/, /^popup(?:-.*)?\.test\.js$/];
+const OUT_OF_BAND_BROWSER_SMOKE_TESTS = ['browser-extension-smoke.test.js'];
 const LEGACY_COMPAT_TESTS_IN_OPTIMIZE_LANE = [
   'shared-settings-integration.test.js',
   'standalone-init.test.js',
@@ -25,18 +26,13 @@ const LEGACY_DEFERRED_REASON = `manifest / pack 真实交付入口是 dist/popup
 
 const STATIC_OPTIMIZATION_GAPS = [
   {
-    id: 'browser-e2e-smoke',
+    id: 'extension-browser-smoke-lane',
     priority: 0,
-    title: '补最小浏览器级 E2E 冒烟',
+    title: '把 extension browser smoke 接进自动门禁',
     rationale:
-      '当前测试以 Node 契约和纯逻辑为主，仍缺 popup/options/overlay/content script 的真实扩展运行时回归。',
-    files: [
-      'react-ui/src/popup-main.tsx',
-      'react-ui/src/options-main.tsx',
-      'react-ui/src/overlay-entry.tsx',
-      'contentScript.js',
-    ],
-    suggestedCommands: ['pnpm run test:ui', 'pnpm run build:extension'],
+      '仓库已具备本地 `test:extension-smoke`，但默认 continuous optimization / CI 仍以 Node 合同为主，真实扩展运行时 smoke 尚未进入自动门禁。',
+    files: ['package.json', 'tests/browser-extension-smoke.test.js', '.github/workflows/ci.yml'],
+    suggestedCommands: ['pnpm run test:extension-smoke'],
   },
   {
     id: 'runtime-bridge-coverage',
@@ -184,6 +180,10 @@ function formatDuplicateShardAssignments(duplicateAssignments = []) {
 
 function isLegacyDeferredTest(testFileName) {
   return LEGACY_DEFERRED_TEST_PATTERNS.some((pattern) => pattern.test(String(testFileName || '')));
+}
+
+function isOutOfBandBrowserSmokeTest(testFileName) {
+  return OUT_OF_BAND_BROWSER_SMOKE_TESTS.includes(String(testFileName || ''));
 }
 
 function buildNodeTestCommand(testFiles = []) {
@@ -493,6 +493,19 @@ function renderMarkdownReport(summary) {
     }
   }
 
+  lines.push('', '## Out-of-Band Browser Smoke Tests', '');
+
+  if (summary.outOfBandSmokeTests.length === 0) {
+    lines.push('- None');
+  } else {
+    lines.push(
+      '- 说明: 以下测试通过 `pnpm run test:extension-smoke` 单独执行，当前不纳入默认 continuous optimization shard；剩余缺口是把这条真实扩展运行时 smoke 接进自动门禁。'
+    );
+    for (const testFile of summary.outOfBandSmokeTests) {
+      lines.push(`- ${testFile}`);
+    }
+  }
+
   lines.push('', '## Known Blind Spots', '');
 
   for (const item of STATIC_OPTIMIZATION_GAPS) {
@@ -670,6 +683,7 @@ async function runContinuousOptimization(options = {}) {
     shards: shardResults,
     unassignedTests: [],
     deferredLegacyTests: [],
+    outOfBandSmokeTests: [],
     knownBlindSpots: STATIC_OPTIMIZATION_GAPS.map((item) => ({
       id: item.id,
       title: item.title,
@@ -679,9 +693,12 @@ async function runContinuousOptimization(options = {}) {
   };
 
   const rawUnassignedTests = collectUnassignedTests(plan.testsDir, plan.shards);
-  summary.deferredLegacyTests = rawUnassignedTests.filter(isLegacyDeferredTest);
+  summary.outOfBandSmokeTests = rawUnassignedTests.filter(isOutOfBandBrowserSmokeTest);
+  summary.deferredLegacyTests = rawUnassignedTests.filter(
+    (testFile) => !isOutOfBandBrowserSmokeTest(testFile) && isLegacyDeferredTest(testFile)
+  );
   summary.unassignedTests = rawUnassignedTests.filter(
-    (testFile) => !isLegacyDeferredTest(testFile)
+    (testFile) => !isOutOfBandBrowserSmokeTest(testFile) && !isLegacyDeferredTest(testFile)
   );
 
   summary.nextFocusCandidates = selectOptimizationCandidates(summary);

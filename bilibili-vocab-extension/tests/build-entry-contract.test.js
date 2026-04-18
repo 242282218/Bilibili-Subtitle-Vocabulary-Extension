@@ -41,3 +41,14 @@ test('build entry contract: pack should use node pack script', () => {
   assert.notEqual(packScript, '');
   assert.match(packScript, /^node scripts\/pack-extension\.js$/);
 });
+
+test('build entry contract: extension smoke should build first and then run node browser test', () => {
+  const scripts = readPackageScripts();
+  const smokeScript = normalizeScript(scripts['test:extension-smoke']);
+
+  assert.notEqual(smokeScript, '');
+  assert.match(
+    smokeScript,
+    /^pnpm run build:extension && node --test tests\/browser-extension-smoke\.test\.js$/
+  );
+});
