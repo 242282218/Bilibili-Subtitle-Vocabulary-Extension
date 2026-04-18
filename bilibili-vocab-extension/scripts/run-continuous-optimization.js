@@ -72,7 +72,9 @@ const TEST_SHARD_DEFINITIONS = [
     title: 'Runtime / state',
     patterns: [
       /^adaptive-tuning\.test\.js$/,
-      /^background.*\.test\.js$/,
+      /^background\.test\.js$/,
+      /^background-shared-state-mutation\.test\.js$/,
+      /^background-storage-write-error-guard\.test\.js$/,
       /^config\.test\.js$/,
       /^experience-metrics\.test\.js$/,
       /^learning-.*\.test\.js$/,
@@ -153,6 +155,31 @@ function collectUnassignedTests(targetTestsDir = DEFAULT_TESTS_DIR, shards = [])
   );
 
   return listTestFiles(targetTestsDir).filter((name) => !assigned.has(name));
+}
+
+function collectDuplicateShardAssignments(shards = []) {
+  const ownership = new Map();
+
+  for (const shard of shards) {
+    for (const testFile of shard.testFiles || []) {
+      const assignedShards = ownership.get(testFile) || [];
+      assignedShards.push(shard.name);
+      ownership.set(testFile, assignedShards);
+    }
+  }
+
+  return [...ownership.entries()]
+    .filter(([, assignedShards]) => assignedShards.length > 1)
+    .map(([testFile, assignedShards]) => ({
+      testFile,
+      assignedShards,
+    }));
+}
+
+function formatDuplicateShardAssignments(duplicateAssignments = []) {
+  return duplicateAssignments
+    .map(({ testFile, assignedShards }) => `${testFile} -> ${assignedShards.join(', ')}`)
+    .join('; ');
 }
 
 function isLegacyDeferredTest(testFileName) {
@@ -274,6 +301,15 @@ function createExecutionPlan(options = {}) {
       commandLine: formatCommand(command, args),
     };
   });
+
+  const duplicateAssignments = collectDuplicateShardAssignments(shards);
+  if (duplicateAssignments.length > 0) {
+    throw new Error(
+      `Continuous optimization shards must be mutually exclusive. Duplicate assignments: ${formatDuplicateShardAssignments(
+        duplicateAssignments
+      )}`
+    );
+  }
 
   return {
     projectRoot,
@@ -728,10 +764,12 @@ module.exports = {
   STATIC_OPTIMIZATION_GAPS,
   TEST_SHARD_DEFINITIONS,
   collectMatchingTestFiles,
+  collectDuplicateShardAssignments,
   collectUnassignedTests,
   createExecutionPlan,
   createSpawnSpec,
   createRunId,
+  formatDuplicateShardAssignments,
   formatCommand,
   getGateDefinitions,
   getPnpmCommand,

@@ -15,7 +15,6 @@ const uiTestPatterns = [
   /^react-overlay-.*\.test\.js$/,
   /^react-ui-.*\.test\.js$/,
   /^settings-layout\.test\.js$/,
-  /^test-ui-entry-contract\.test\.js$/,
 ];
 
 function collectUiTestFiles(targetTestsDir = testsDir) {

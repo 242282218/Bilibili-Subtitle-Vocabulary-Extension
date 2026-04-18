@@ -36,6 +36,25 @@ function readWorkflow(fileName) {
   );
 }
 
+function collectDuplicateAssignments(shards) {
+  const ownership = new Map();
+
+  for (const shard of shards || []) {
+    for (const testFile of shard.testFiles || []) {
+      const assignedShards = ownership.get(testFile) || [];
+      assignedShards.push(shard.name);
+      ownership.set(testFile, assignedShards);
+    }
+  }
+
+  return [...ownership.entries()]
+    .filter(([, assignedShards]) => assignedShards.length > 1)
+    .map(([testFile, assignedShards]) => ({
+      testFile,
+      assignedShards,
+    }));
+}
+
 test('continuous optimization: parseCliArgs should support shard-only and report flags', () => {
   const parsed = parseCliArgs([
     '--shards-only',
@@ -135,14 +154,25 @@ test('continuous optimization: createExecutionPlan should resolve gates and shar
       path.join('tests', 'react-overlay-layout.test.js'),
       path.join('tests', 'react-ui-contract.test.js'),
       path.join('tests', 'settings-layout.test.js'),
-      path.join('tests', 'test-ui-entry-contract.test.js'),
     ]);
     assert.ok(
       plan.shards[3].testFiles.includes(path.join('tests', 'continuous-optimization.test.js'))
     );
+    assert.ok(
+      plan.shards[3].testFiles.includes(path.join('tests', 'test-ui-entry-contract.test.js'))
+    );
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
   }
+});
+
+test('continuous optimization: current shard plan should not duplicate test files across shards', () => {
+  const plan = createExecutionPlan({
+    projectRoot: path.join(__dirname, '..'),
+    testsDir: path.join(__dirname),
+  });
+
+  assert.deepEqual(collectDuplicateAssignments(plan.shards), []);
 });
 
 test('continuous optimization: selectOptimizationCandidates should prioritize failures', () => {

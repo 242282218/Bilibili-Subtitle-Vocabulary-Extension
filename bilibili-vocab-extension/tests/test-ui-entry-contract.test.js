@@ -65,7 +65,6 @@ test('test ui entry contract: run-ui-tests should select only ui contract files'
       path.join('tests', 'react-overlay-layout.test.js'),
       path.join('tests', 'react-ui-contract.test.js'),
       path.join('tests', 'settings-layout.test.js'),
-      path.join('tests', 'test-ui-entry-contract.test.js'),
     ]);
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
@@ -82,6 +81,7 @@ test('test ui entry contract: run-ui-tests should execute node test with explici
     fs.writeFileSync(path.join(testsDir, 'contentScript-overlay-bridge.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'react-ui-contract.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'settings-layout.test.js'), '', 'utf8');
+    fs.writeFileSync(path.join(testsDir, 'test-ui-entry-contract.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'renderer.test.js'), '', 'utf8');
 
     const calls = [];
