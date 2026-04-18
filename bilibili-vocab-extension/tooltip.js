@@ -17,6 +17,79 @@
         .replace(/\"/g, '&quot;')
         .replace(/'/g, '&#39;'));
 
+  function normalizeSourceText(value) {
+    return String(value || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function normalizeVideoTimeSeconds(value) {
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds) || seconds < 0) {
+      return null;
+    }
+    return Math.floor(seconds);
+  }
+
+  function formatSourceTimeLabel(value) {
+    const totalSeconds = normalizeVideoTimeSeconds(value);
+    if (totalSeconds == null) {
+      return '';
+    }
+
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) {
+      return [hours, minutes, seconds]
+        .map((part, index) => (index === 0 ? String(part) : String(part).padStart(2, '0')))
+        .join(':');
+    }
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  function readCurrentVideoTimeSeconds() {
+    const doc = globalScope.document;
+    if (!doc || typeof doc.querySelector !== 'function') {
+      return null;
+    }
+
+    const video = doc.querySelector('video');
+    if (!video || typeof video.currentTime !== 'number') {
+      return null;
+    }
+
+    return normalizeVideoTimeSeconds(video.currentTime);
+  }
+
+  function buildWordSourceMetadata() {
+    const doc = globalScope.document;
+    const location = globalScope.location;
+    const title = normalizeSourceText(doc && doc.title);
+    const url = normalizeSourceText(location && location.href);
+    const timeSeconds = readCurrentVideoTimeSeconds();
+    const timeLabel = formatSourceTimeLabel(timeSeconds);
+
+    if (!title && !url && timeSeconds == null && !timeLabel) {
+      return null;
+    }
+
+    const source = {};
+    if (title) {
+      source.title = title;
+    }
+    if (url) {
+      source.url = url;
+    }
+    if (timeSeconds != null) {
+      source.timeSeconds = timeSeconds;
+    }
+    if (timeLabel) {
+      source.timeLabel = timeLabel;
+    }
+    return source;
+  }
+
   function ensureTooltipElement() {
     if (tooltipElement) {
       return tooltipElement;
@@ -198,11 +271,13 @@
     if (feedback === 'save') {
       // 收藏到生词本
       if (learningState && typeof learningState.saveWordToVocabularyBook === 'function') {
+        const source = buildWordSourceMetadata();
         const success = await learningState.saveWordToVocabularyBook(word, {
           meaning,
           level,
           phonetic,
           context: originalSubtitle,
+          ...(source ? { source } : {}),
         });
         if (success) {
           activeWordElement.dataset.learningStatus = 'saved';
@@ -341,6 +416,8 @@
     hideTooltip,
     renderTooltipContent,
     getLearningStatusLabel,
+    formatSourceTimeLabel,
+    buildWordSourceMetadata,
     reportContextMisreplaceFeedback,
     handleTooltipFeedback,
   };

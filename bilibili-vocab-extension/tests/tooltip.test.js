@@ -31,6 +31,36 @@ test('renderTooltipContent: should include context, learning status and quick ac
   assert.match(html, /data-feedback="misreplace"/);
 });
 
+test('buildWordSourceMetadata: should capture current page source and video time', (t) => {
+  const previousDocument = globalThis.document;
+  const previousLocation = globalThis.location;
+
+  globalThis.document = {
+    title: '  Demo Subtitle Video  ',
+    querySelector(selector) {
+      assert.equal(selector, 'video');
+      return {
+        currentTime: 3723.9,
+      };
+    },
+  };
+  globalThis.location = {
+    href: 'https://www.bilibili.com/video/BV1demo',
+  };
+
+  t.after(() => {
+    globalThis.document = previousDocument;
+    globalThis.location = previousLocation;
+  });
+
+  assert.deepEqual(tooltip.buildWordSourceMetadata(), {
+    title: 'Demo Subtitle Video',
+    url: 'https://www.bilibili.com/video/BV1demo',
+    timeSeconds: 3723,
+    timeLabel: '1:02:03',
+  });
+});
+
 test('reportContextMisreplaceFeedback: should forward word feedback to translator module', () => {
   const calls = [];
   globalThis.SubtitleTranslator = {

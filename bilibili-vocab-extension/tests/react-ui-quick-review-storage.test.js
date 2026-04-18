@@ -370,11 +370,24 @@ test('react ui quick review storage: submitQuickReviewFeedback should persist ne
           level: 'CET4',
           status: 'seen',
           hitCount: 3,
+          exposures: 3,
           lastSeenAt: now - 2000,
           nextReviewBucket: 'today',
           nextReviewAt: now + 60 * 1000,
           intervalDays: 1,
           easeFactor: 2.3,
+          context: 'System appears in the subtitle sentence.',
+          source: {
+            title: 'Quick Review Episode',
+            url: 'https://www.bilibili.com/video/BVquick',
+            timeSeconds: 95,
+            timeLabel: '01:35',
+          },
+          details: {
+            meaning: '系统',
+            level: 'CET4',
+            phonetic: '/s/',
+          },
         },
       },
       [REVIEW_QUEUE_STORAGE_KEY]: {
@@ -405,6 +418,21 @@ test('react ui quick review storage: submitQuickReviewFeedback should persist ne
   assert.equal(storageState[LEARNING_WORD_STATS_STORAGE_KEY].system.reviewCount, 1);
   assert.equal(storageState[REVIEW_QUEUE_STORAGE_KEY].system.dueBucket, 'soon');
   assert.equal(storageState[LEARNING_SUMMARY_STORAGE_KEY].todayCount, 0);
+  assert.equal(
+    storageState[LEARNING_WORD_STATS_STORAGE_KEY].system.context,
+    'System appears in the subtitle sentence.'
+  );
+  assert.deepEqual(storageState[LEARNING_WORD_STATS_STORAGE_KEY].system.source, {
+    title: 'Quick Review Episode',
+    url: 'https://www.bilibili.com/video/BVquick',
+    timeSeconds: 95,
+    timeLabel: '01:35',
+  });
+  assert.deepEqual(storageState[LEARNING_WORD_STATS_STORAGE_KEY].system.details, {
+    meaning: '系统',
+    level: 'CET4',
+    phonetic: '/s/',
+  });
   assert.deepEqual(
     sentMessages.map((item) => item.type),
     ['BILI_VOCAB_ADAPTIVE_PERSIST_FEEDBACK']

@@ -393,6 +393,17 @@
       intervalDays,
       easeFactor,
       nextReviewAt,
+      savedAt: normalizeTimestamp(source.savedAt),
+      details: normalizeVocabularyDetails(source.details || source),
+      context: normalizeVocabularyContext(source),
+      source: normalizeVocabularySource(source),
+      exposures: normalizeCount(
+        source.exposures != null
+          ? source.exposures
+          : source.exposureCount != null
+            ? source.exposureCount
+            : source.hitCount
+      ),
     };
   }
 
@@ -762,6 +773,116 @@
       .trim();
   }
 
+  function normalizeSourceTimeSeconds(value) {
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds) || seconds < 0) {
+      return null;
+    }
+    return Math.floor(seconds);
+  }
+
+  function formatSourceTimeLabel(value) {
+    const totalSeconds = normalizeSourceTimeSeconds(value);
+    if (totalSeconds == null) {
+      return '';
+    }
+
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) {
+      return [hours, minutes, seconds]
+        .map((part, index) => (index === 0 ? String(part) : String(part).padStart(2, '0')))
+        .join(':');
+    }
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  function normalizeVocabularySource(details) {
+    const source = details && typeof details === 'object' ? details : {};
+    const detailsSource =
+      source.details && typeof source.details === 'object' ? source.details : {};
+    const nestedSource =
+      source.source && typeof source.source === 'object'
+        ? source.source
+        : detailsSource.source && typeof detailsSource.source === 'object'
+          ? detailsSource.source
+          : {};
+    const title = String(nestedSource.title || source.sourceTitle || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const url = String(nestedSource.url || source.sourceUrl || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const timeSeconds = normalizeSourceTimeSeconds(
+      nestedSource.timeSeconds != null
+        ? nestedSource.timeSeconds
+        : source.sourceTimeSeconds != null
+          ? source.sourceTimeSeconds
+          : source.sourceTime
+    );
+    const timeLabel =
+      String(nestedSource.timeLabel || source.sourceTimeLabel || '')
+        .replace(/\s+/g, ' ')
+        .trim() || formatSourceTimeLabel(timeSeconds);
+
+    if (!title && !url && timeSeconds == null && !timeLabel) {
+      return null;
+    }
+
+    const normalized = {};
+    if (title) {
+      normalized.title = title;
+    }
+    if (url) {
+      normalized.url = url;
+    }
+    if (timeSeconds != null) {
+      normalized.timeSeconds = timeSeconds;
+    }
+    if (timeLabel) {
+      normalized.timeLabel = timeLabel;
+    }
+    return normalized;
+  }
+
+  function mergeVocabularySource(primary, fallback) {
+    const nextSource = normalizeVocabularySource(primary);
+    const previousSource = normalizeVocabularySource(fallback);
+    if (!nextSource && !previousSource) {
+      return null;
+    }
+
+    const timeSeconds =
+      nextSource && nextSource.timeSeconds != null
+        ? nextSource.timeSeconds
+        : previousSource && previousSource.timeSeconds != null
+          ? previousSource.timeSeconds
+          : null;
+    const timeLabel =
+      (nextSource && nextSource.timeLabel) ||
+      (previousSource && previousSource.timeLabel) ||
+      formatSourceTimeLabel(timeSeconds);
+
+    const merged = {};
+    const title =
+      (nextSource && nextSource.title) || (previousSource && previousSource.title) || '';
+    const url = (nextSource && nextSource.url) || (previousSource && previousSource.url) || '';
+    if (title) {
+      merged.title = title;
+    }
+    if (url) {
+      merged.url = url;
+    }
+    if (timeSeconds != null) {
+      merged.timeSeconds = timeSeconds;
+    }
+    if (timeLabel) {
+      merged.timeLabel = timeLabel;
+    }
+    return merged;
+  }
+
   function normalizeWordStatsMap(rawStats) {
     if (!rawStats || typeof rawStats !== 'object') {
       return {};
@@ -789,6 +910,7 @@
       normalizedItem.savedAt = normalizeTimestamp(item.savedAt);
       normalizedItem.details = normalizeVocabularyDetails(item.details || item);
       normalizedItem.context = normalizeVocabularyContext(item);
+      normalizedItem.source = normalizeVocabularySource(item);
       normalizedItem.exposures = normalizeCount(
         item.exposures != null ? item.exposures : normalizedItem.exposureCount
       );
@@ -815,6 +937,7 @@
       savedAt: normalizeTimestamp(record && record.savedAt),
       details,
       context: normalizeVocabularyContext(record),
+      source: normalizeVocabularySource(record),
       exposures,
     };
   }
@@ -880,6 +1003,7 @@
         seenCount: record.seenCount,
         details: record.details,
         context: record.context,
+        source: record.source || undefined,
         exposures: record.exposures,
       };
     });
@@ -920,6 +1044,7 @@
       };
       const mergedContext =
         normalizeVocabularyContext(details) || normalizeVocabularyContext(existing);
+      const mergedSource = mergeVocabularySource(details, existing);
 
       const nextRecord = {
         ...normalizeLearningRecord(existing, {
@@ -934,6 +1059,7 @@
         savedAt: normalizeTimestamp(now),
         details: mergedDetails,
         context: mergedContext,
+        source: mergedSource,
         exposures: normalizeCount(
           existing.exposures != null ? existing.exposures : existing.exposureCount
         ),
@@ -1031,12 +1157,25 @@
   function exportVocabularyBook(format = 'json') {
     const words = getVocabularyBookWords();
     if (format === 'csv') {
-      const headers = ['单词', '释义', '难度等级', '原句上下文', '收藏时间', '遇见次数'];
+      const headers = [
+        '单词',
+        '释义',
+        '难度等级',
+        '原句上下文',
+        '来源标题',
+        '来源链接',
+        '来源时间点',
+        '收藏时间',
+        '遇见次数',
+      ];
       const rows = words.map((w) => [
         w.word,
         w.details && w.details.meaning ? w.details.meaning : w.translation || '',
         w.details && w.details.level ? w.details.level : w.level || '',
         w.context || '',
+        w.source && w.source.title ? w.source.title : '',
+        w.source && w.source.url ? w.source.url : '',
+        w.source && w.source.timeLabel ? w.source.timeLabel : '',
         w.savedAt ? new Date(w.savedAt).toLocaleString() : '',
         normalizeCount(w.exposures != null ? w.exposures : w.exposureCount),
       ]);

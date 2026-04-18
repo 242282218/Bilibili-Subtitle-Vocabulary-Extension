@@ -88,7 +88,7 @@ test('learning state storage: saveWordToVocabularyBook should keep local cache u
   assert.deepEqual(learningState.getVocabularyBookWords(), []);
 });
 
-test('learning state storage: saveWordToVocabularyBook should persist subtitle context when save succeeds', async (t) => {
+test('learning state storage: saveWordToVocabularyBook should persist subtitle context and source metadata when save succeeds', async (t) => {
   const previousChrome = globalThis.chrome;
   const previousUtils = globalThis.Utils;
   const runtime = { lastError: null };
@@ -126,9 +126,27 @@ test('learning state storage: saveWordToVocabularyBook should persist subtitle c
     meaning: '记住',
     level: 'CET6',
     context: '这能帮助你更好地记住知识。',
+    source: {
+      title: '字幕学习示例',
+      url: 'https://www.bilibili.com/video/BV1demo',
+      timeSeconds: 83,
+      timeLabel: '01:23',
+    },
   });
 
   assert.equal(success, true);
   assert.equal(storageState.bili_vocab_word_stats_v2.retain.context, '这能帮助你更好地记住知识。');
+  assert.deepEqual(storageState.bili_vocab_word_stats_v2.retain.source, {
+    title: '字幕学习示例',
+    url: 'https://www.bilibili.com/video/BV1demo',
+    timeSeconds: 83,
+    timeLabel: '01:23',
+  });
   assert.equal(learningState.getVocabularyBookWords()[0].context, '这能帮助你更好地记住知识。');
+  assert.deepEqual(learningState.getVocabularyBookWords()[0].source, {
+    title: '字幕学习示例',
+    url: 'https://www.bilibili.com/video/BV1demo',
+    timeSeconds: 83,
+    timeLabel: '01:23',
+  });
 });

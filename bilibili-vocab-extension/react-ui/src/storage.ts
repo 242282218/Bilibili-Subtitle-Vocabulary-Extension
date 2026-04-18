@@ -61,6 +61,15 @@ interface LearningRecord {
   nextReviewAt?: number | null;
   intervalDays?: number | null;
   easeFactor?: number | null;
+  savedAt?: number | null;
+  exposures?: number;
+  context?: string;
+  source?: VocabularySource;
+  details?: {
+    meaning?: string;
+    level?: string;
+    phonetic?: string;
+  };
 }
 
 interface ReviewQueueEntry {
@@ -106,18 +115,28 @@ export interface QuickReviewCommitResult extends QuickReviewDashboard {
   adaptiveApplied: boolean;
 }
 
+export interface VocabularySource {
+  title?: string;
+  url?: string;
+  timeSeconds?: number;
+  timeLabel?: string;
+}
+
 export interface VocabularyWord {
   word: string;
   status: string;
   savedAt?: number;
   exposures?: number;
   context?: string;
+  source?: VocabularySource;
   details?: {
     meaning?: string;
     level?: string;
     phonetic?: string;
   };
 }
+
+type VocabularyWordDetails = NonNullable<VocabularyWord['details']>;
 
 export type VocabularyExportFormat = 'json' | 'csv' | 'anki';
 export type ActiveTabSubtitleNavigationAction = 'previous' | 'replay' | 'next';
@@ -144,6 +163,10 @@ function normalizeVocabularyWord(input: unknown): VocabularyWord | null {
   }
 
   const source = input as Record<string, unknown>;
+  const detailsSource =
+    source.details && typeof source.details === 'object'
+      ? (source.details as Record<string, unknown>)
+      : {};
   const word = String(source.word || '').trim();
   const status = String(source.status || '')
     .trim()
@@ -151,34 +174,17 @@ function normalizeVocabularyWord(input: unknown): VocabularyWord | null {
   if (!word || !status) {
     return null;
   }
-
-  const detailsSource =
-    source.details && typeof source.details === 'object'
-      ? (source.details as Record<string, unknown>)
-      : {};
-  const exposures = Number(source.exposures);
+  const exposures = Number(source.exposures ?? source.exposureCount ?? source.hitCount);
+  const normalizedSource = normalizeVocabularySource(source, detailsSource);
 
   return {
     word,
     status,
     savedAt: normalizeTimestamp(source.savedAt) ?? undefined,
     exposures: Number.isFinite(exposures) && exposures > 0 ? Math.floor(exposures) : 0,
-    context: String(
-      source.context ||
-        source.example ||
-        source.originalSubtitle ||
-        detailsSource.context ||
-        detailsSource.example ||
-        detailsSource.originalSubtitle ||
-        ''
-    )
-      .replace(/\s+/g, ' ')
-      .trim(),
-    details: {
-      meaning: String(detailsSource.meaning || '').trim(),
-      level: String(detailsSource.level || '').trim(),
-      phonetic: String(detailsSource.phonetic || '').trim(),
-    },
+    context: normalizeVocabularyContext(source, detailsSource),
+    source: normalizedSource,
+    details: normalizeVocabularyDetails(Object.keys(detailsSource).length ? detailsSource : source),
   };
 }
 
@@ -278,6 +284,165 @@ function normalizeTimestamp(value: unknown): number | null {
     return null;
   }
   return Math.floor(parsed);
+}
+
+function normalizeSourceText(value: unknown): string {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeSourceTimeSeconds(value: unknown): number | null {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return null;
+  }
+  return Math.floor(seconds);
+}
+
+function formatVocabularySourceTimeLabel(value: unknown): string {
+  const totalSeconds = normalizeSourceTimeSeconds(value);
+  if (totalSeconds == null) {
+    return '';
+  }
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return [hours, minutes, seconds]
+      .map((part, index) => (index === 0 ? String(part) : String(part).padStart(2, '0')))
+      .join(':');
+  }
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function normalizeVocabularyDetails(input: unknown): VocabularyWordDetails {
+  const source = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+  return {
+    meaning: normalizeSourceText(source.meaning || source.translation || ''),
+    level: normalizeSourceText(source.level || ''),
+    phonetic: normalizeSourceText(source.phonetic || ''),
+  };
+}
+
+function normalizeVocabularyContext(
+  source: Record<string, unknown>,
+  detailsSource: Record<string, unknown>
+): string {
+  return normalizeSourceText(
+    source.context ||
+      source.example ||
+      source.originalSubtitle ||
+      detailsSource.context ||
+      detailsSource.example ||
+      detailsSource.originalSubtitle ||
+      ''
+  );
+}
+
+function normalizeVocabularySource(
+  input: unknown,
+  detailsSourceOverride?: Record<string, unknown>
+): VocabularySource | undefined {
+  const source = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+  const detailsSource =
+    detailsSourceOverride ||
+    (source.details && typeof source.details === 'object'
+      ? (source.details as Record<string, unknown>)
+      : {});
+  const nestedSource =
+    source.source && typeof source.source === 'object'
+      ? (source.source as Record<string, unknown>)
+      : detailsSource.source && typeof detailsSource.source === 'object'
+        ? (detailsSource.source as Record<string, unknown>)
+        : {};
+  const title = normalizeSourceText(nestedSource.title || source.sourceTitle || '');
+  const url = normalizeSourceText(nestedSource.url || source.sourceUrl || '');
+  const timeSeconds = normalizeSourceTimeSeconds(
+    nestedSource.timeSeconds != null
+      ? nestedSource.timeSeconds
+      : source.sourceTimeSeconds != null
+        ? source.sourceTimeSeconds
+        : source.sourceTime
+  );
+  const timeLabel =
+    normalizeSourceText(nestedSource.timeLabel || source.sourceTimeLabel || '') ||
+    formatVocabularySourceTimeLabel(timeSeconds);
+
+  if (!title && !url && timeSeconds == null && !timeLabel) {
+    return undefined;
+  }
+
+  const normalized: VocabularySource = {};
+  if (title) {
+    normalized.title = title;
+  }
+  if (url) {
+    normalized.url = url;
+  }
+  if (timeSeconds != null) {
+    normalized.timeSeconds = timeSeconds;
+  }
+  if (timeLabel) {
+    normalized.timeLabel = timeLabel;
+  }
+  return normalized;
+}
+
+function buildLearningRecordExportMetadata(input: unknown): Partial<LearningRecord> {
+  if (!input || typeof input !== 'object') {
+    return {};
+  }
+
+  const source = input as Record<string, unknown>;
+  const detailsSource =
+    source.details && typeof source.details === 'object'
+      ? (source.details as Record<string, unknown>)
+      : {};
+  const metadata: Partial<LearningRecord> = {};
+  const savedAt = normalizeTimestamp(source.savedAt);
+  const exposures = Number(source.exposures ?? source.exposureCount ?? source.hitCount);
+  const context = normalizeVocabularyContext(source, detailsSource);
+  const details = normalizeVocabularyDetails(
+    Object.keys(detailsSource).length ? detailsSource : source
+  );
+  const vocabularySource = normalizeVocabularySource(source, detailsSource);
+
+  if (savedAt != null) {
+    metadata.savedAt = savedAt;
+  }
+  if (Number.isFinite(exposures) && exposures > 0) {
+    metadata.exposures = Math.floor(exposures);
+  }
+  if (context) {
+    metadata.context = context;
+  }
+  if (details.meaning || details.level || details.phonetic) {
+    metadata.details = details;
+  }
+  if (vocabularySource) {
+    metadata.source = vocabularySource;
+  }
+  return metadata;
+}
+
+function mergeLearningRecordExportMetadata(
+  current: LearningRecord,
+  nextRecord: LearningRecord
+): LearningRecord {
+  const merged: LearningRecord = {
+    ...nextRecord,
+    ...buildLearningRecordExportMetadata(current),
+  };
+  if (
+    String(merged.status || '')
+      .trim()
+      .toLowerCase() !== 'saved'
+  ) {
+    delete merged.savedAt;
+  }
+  return merged;
 }
 
 function toDayKey(value: number): string {
@@ -620,7 +785,10 @@ function normalizeLearningStats(
     if (!normalizedWord) {
       return;
     }
-    normalized[normalizedWord] = normalizedItem;
+    normalized[normalizedWord] = {
+      ...normalizedItem,
+      ...buildLearningRecordExportMetadata(item),
+    };
   });
   return normalized;
 }
@@ -816,9 +984,12 @@ export async function submitQuickReviewFeedback(
 
     const normalizedAction = normalizeQuickReviewAction(action);
     const now = Date.now();
-    const nextRecord = applyLearningAction
-      ? applyLearningAction(record, normalizedAction, now)
-      : applyReviewFeedback!(record, normalizedAction, now);
+    const nextRecord = mergeLearningRecordExportMetadata(
+      record,
+      applyLearningAction
+        ? applyLearningAction(record, normalizedAction, now)
+        : applyReviewFeedback!(record, normalizedAction, now)
+    );
     const nextStats = {
       ...current.stats,
       [normalizedWord]: nextRecord,
@@ -1199,7 +1370,17 @@ function sanitizeAnkiField(value: unknown): string {
 }
 
 function buildAnkiTsv(savedWords: VocabularyWord[]): string {
-  const headers = ['Front', 'Back', 'Example', 'Level', 'Phonetic', 'SavedAt'];
+  const headers = [
+    'Front',
+    'Back',
+    'Example',
+    'Level',
+    'Phonetic',
+    'SavedAt',
+    'SourceTitle',
+    'SourceUrl',
+    'SourceTime',
+  ];
   const rows = savedWords.map((word) => [
     sanitizeAnkiField(word.word),
     sanitizeAnkiField(word.details?.meaning || ''),
@@ -1207,6 +1388,9 @@ function buildAnkiTsv(savedWords: VocabularyWord[]): string {
     sanitizeAnkiField(word.details?.level || ''),
     sanitizeAnkiField(word.details?.phonetic || ''),
     word.savedAt ? new Date(word.savedAt).toISOString() : '',
+    sanitizeAnkiField(word.source?.title || ''),
+    sanitizeAnkiField(word.source?.url || ''),
+    sanitizeAnkiField(word.source?.timeLabel || ''),
   ]);
   return [headers.join('\t'), ...rows.map((row) => row.join('\t'))].join('\n');
 }
@@ -1224,13 +1408,27 @@ export async function exportVocabularyBook(
     .sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
 
   if (format === 'csv') {
-    const headers = ['单词', '释义', '难度等级', '音标', '原句上下文', '收藏时间', '遇见次数'];
+    const headers = [
+      '单词',
+      '释义',
+      '难度等级',
+      '音标',
+      '原句上下文',
+      '来源标题',
+      '来源链接',
+      '来源时间点',
+      '收藏时间',
+      '遇见次数',
+    ];
     const rows = savedWords.map((word) => [
       word.word,
       word.details?.meaning || '',
       word.details?.level || '',
       word.details?.phonetic || '',
       word.context || '',
+      word.source?.title || '',
+      word.source?.url || '',
+      word.source?.timeLabel || '',
       word.savedAt ? new Date(word.savedAt).toLocaleString() : '',
       word.exposures || 0,
     ]);

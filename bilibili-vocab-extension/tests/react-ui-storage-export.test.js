@@ -133,6 +133,12 @@ test('react ui storage export: should ignore malformed vocabulary records', asyn
         savedAt: 1700000000000,
         exposures: 2,
         context: 'Alpha helps you keep the first idea in mind.',
+        source: {
+          title: 'Alpha Episode',
+          url: 'https://www.bilibili.com/video/BValpha',
+          timeSeconds: 65,
+          timeLabel: '01:05',
+        },
         details: { meaning: 'A', level: 'CET4', phonetic: '/a/' },
       },
       latestSaved: {
@@ -141,6 +147,12 @@ test('react ui storage export: should ignore malformed vocabulary records', asyn
         savedAt: 1800000000000,
         exposures: 5,
         context: 'Beta appears in the next subtitle sentence.',
+        source: {
+          title: 'Beta Episode',
+          url: 'https://www.bilibili.com/video/BVbeta',
+          timeSeconds: 3723,
+          timeLabel: '1:02:03',
+        },
         details: { meaning: 'B', level: 'CET6', phonetic: '/b/' },
       },
     },
@@ -160,20 +172,46 @@ test('react ui storage export: should ignore malformed vocabulary records', asyn
     words.map((item) => item.context),
     ['Beta appears in the next subtitle sentence.', 'Alpha helps you keep the first idea in mind.']
   );
+  assert.deepEqual(
+    words.map((item) => item.source),
+    [
+      {
+        title: 'Beta Episode',
+        url: 'https://www.bilibili.com/video/BVbeta',
+        timeSeconds: 3723,
+        timeLabel: '1:02:03',
+      },
+      {
+        title: 'Alpha Episode',
+        url: 'https://www.bilibili.com/video/BValpha',
+        timeSeconds: 65,
+        timeLabel: '01:05',
+      },
+    ]
+  );
 
   const csvPayload = await storageModule.exportVocabularyBook('csv');
   assert.match(csvPayload, /"beta"/);
   assert.match(csvPayload, /"alpha"/);
   assert.match(csvPayload, /"Beta appears in the next subtitle sentence\."/);
+  assert.match(csvPayload, /"Beta Episode"/);
+  assert.match(csvPayload, /"https:\/\/www\.bilibili\.com\/video\/BVbeta"/);
+  assert.match(csvPayload, /"1:02:03"/);
   assert.doesNotMatch(csvPayload, /"draft"/);
 
   const ankiPayload = await storageModule.exportVocabularyBook('anki');
   const [header, firstRow, secondRow] = ankiPayload.split('\n');
-  assert.equal(header, 'Front\tBack\tExample\tLevel\tPhonetic\tSavedAt');
-  assert.match(firstRow, /^beta\tB\tBeta appears in the next subtitle sentence\.\tCET6\t\/b\/\t/);
+  assert.equal(
+    header,
+    'Front\tBack\tExample\tLevel\tPhonetic\tSavedAt\tSourceTitle\tSourceUrl\tSourceTime'
+  );
+  assert.match(
+    firstRow,
+    /^beta\tB\tBeta appears in the next subtitle sentence\.\tCET6\t\/b\/\t.+\tBeta Episode\thttps:\/\/www\.bilibili\.com\/video\/BVbeta\t1:02:03$/
+  );
   assert.match(
     secondRow,
-    /^alpha\tA\tAlpha helps you keep the first idea in mind\.\tCET4\t\/a\/\t/
+    /^alpha\tA\tAlpha helps you keep the first idea in mind\.\tCET4\t\/a\/\t.+\tAlpha Episode\thttps:\/\/www\.bilibili\.com\/video\/BValpha\t01:05$/
   );
   assert.doesNotMatch(ankiPayload, /draft/);
 });
