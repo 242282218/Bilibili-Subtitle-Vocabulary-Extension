@@ -657,6 +657,23 @@ function normalizeReviewQueue(
   return learningState.normalizeReviewQueue(rawQueue);
 }
 
+function buildLearningSummaryFromStorageState(
+  rawStats: unknown,
+  rawQueue: unknown,
+  learningState: LearningStateApi | null
+): LearningSummary | null {
+  if (!learningState || typeof learningState.buildLearningSummary !== 'function') {
+    return null;
+  }
+
+  return normalizeLearningSummary(
+    learningState.buildLearningSummary(
+      normalizeLearningStats(rawStats, learningState),
+      normalizeReviewQueue(rawQueue, learningState)
+    )
+  );
+}
+
 function buildQuickReviewItems(
   stats: Record<string, LearningRecord>,
   queue: Record<string, ReviewQueueEntry>,
@@ -1232,7 +1249,11 @@ export async function exportVocabularyBook(
 
 export async function clearVocabularyBook(): Promise<number> {
   return enqueueStorageMutation(async () => {
-    const payload = await readStorage<Record<string, unknown>>([VOCABULARY_BOOK_STORAGE_KEY]);
+    const learningState = getLearningStateApi();
+    const payload = await readStorage<Record<string, unknown>>([
+      VOCABULARY_BOOK_STORAGE_KEY,
+      REVIEW_QUEUE_STORAGE_KEY,
+    ]);
     const sourceWordStats =
       payload[VOCABULARY_BOOK_STORAGE_KEY] &&
       typeof payload[VOCABULARY_BOOK_STORAGE_KEY] === 'object'
@@ -1267,9 +1288,19 @@ export async function clearVocabularyBook(): Promise<number> {
       return 0;
     }
 
-    await writeStorage({
+    const nextSummary = buildLearningSummaryFromStorageState(
+      nextWordStats,
+      payload[REVIEW_QUEUE_STORAGE_KEY],
+      learningState
+    );
+    const nextStoragePayload: Record<string, unknown> = {
       [VOCABULARY_BOOK_STORAGE_KEY]: nextWordStats,
-    });
+    };
+    if (nextSummary) {
+      nextStoragePayload[LEARNING_SUMMARY_STORAGE_KEY] = nextSummary;
+    }
+
+    await writeStorage(nextStoragePayload);
 
     return clearedCount;
   });

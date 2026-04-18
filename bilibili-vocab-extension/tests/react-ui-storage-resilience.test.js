@@ -14,10 +14,12 @@ const LEARNING_DASHBOARD_SOURCE_PATH = path.join(
   'src',
   'learning-dashboard.ts'
 );
+const LEARNING_STATE_SOURCE_PATH = path.join(__dirname, '..', 'learningState.js');
 const SETTINGS_STORAGE_KEY_V3 = 'bili_vocab_settings_v3';
 const ADAPTIVE_TUNING_STORAGE_KEY = 'bili_vocab_adaptive_tuning_v1';
 const EXPERIENCE_METRICS_STORAGE_KEY = 'bili_vocab_experience_metrics_v1';
 const LEARNING_STREAK_STORAGE_KEY = 'bili_vocab_learning_streak_v1';
+const LEARNING_SUMMARY_STORAGE_KEY = 'bili_vocab_learning_summary_v1';
 
 function cloneValue(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -234,6 +236,7 @@ function createStorageModule(options = {}) {
       return require(id);
     },
     chrome,
+    LearningState: require(LEARNING_STATE_SOURCE_PATH),
     Date: MockDate,
     URL,
     Promise,
@@ -535,18 +538,30 @@ test('react ui storage resilience: clearVocabularyBook should only downgrade sav
           status: 'saved',
           savedAt: 1700000000000,
           exposures: 3,
+          lastSeenAt: 1700000000000,
           details: { meaning: 'A' },
         },
         seenWord: {
           word: 'beta',
           status: 'seen',
           exposures: 1,
+          lastSeenAt: 1699999999000,
         },
         malformedSaved: {
           status: 'saved',
+          lastSeenAt: 1699999998000,
           note: 'missing-word',
         },
         malformed: 'bad-record',
+      },
+      [LEARNING_SUMMARY_STORAGE_KEY]: {
+        todayCount: 0,
+        newCount: 0,
+        masteredCount: 0,
+        recentWords: [
+          { word: 'alpha', status: 'saved' },
+          { word: 'malformedsaved', status: 'saved' },
+        ],
       },
     },
   });
@@ -560,6 +575,11 @@ test('react ui storage resilience: clearVocabularyBook should only downgrade sav
   assert.equal(storageState.bili_vocab_word_stats_v2.seenWord.status, 'seen');
   assert.equal(storageState.bili_vocab_word_stats_v2.malformedSaved.status, 'seen');
   assert.equal(storageState.bili_vocab_word_stats_v2.malformed, 'bad-record');
+  assert.deepEqual(storageState[LEARNING_SUMMARY_STORAGE_KEY].recentWords, [
+    { word: 'alpha', translation: '', status: 'seen' },
+    { word: 'beta', translation: '', status: 'seen' },
+    { word: 'malformedsaved', translation: '', status: 'seen' },
+  ]);
 });
 
 test('react ui storage resilience: clearVocabularyBook should keep storage unchanged when write fails', async () => {
