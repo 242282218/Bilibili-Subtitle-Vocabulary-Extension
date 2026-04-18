@@ -17,11 +17,24 @@ import {
   LearningSummary,
   subscribeLearningSummary,
 } from './overlay-storage';
+import {
+  SubtitleNavigationState,
+  SubtitleTimelineItem,
+  buildSubtitleNavigationState,
+  isSubtitleTimelineHostSupported,
+  normalizeSubtitleTimeline,
+  seekVideoToSubtitle,
+} from './subtitle-navigation';
 import { getThemeModeLabel, THEME_MODE_OPTIONS, useResolvedTheme } from './ui-theme';
 import { useOverlaySettings } from './use-overlay-settings';
+import { startTransition, useRef } from 'react';
 
 const ROOT_ID = 'bili-vocab-react-overlay-root';
 const STYLE_ID = 'bili-vocab-react-overlay-style';
+
+interface SubtitleParserApi {
+  loadSubtitleTimeline?: () => Promise<unknown>;
+}
 
 function asNumber(value: string, fallback: number): number {
   const parsed = Number(value);
@@ -37,7 +50,23 @@ function getRecentWordMeta(item: LearningSummary['recentWords'][number]): string
   return parts.length ? parts.join(' · ') : '继续观看后会补齐释义和状态';
 }
 
+function readVideoElement(): HTMLVideoElement | null {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  const video = document.querySelector('video');
+  return video && 'currentTime' in video ? (video as HTMLVideoElement) : null;
+}
+
+function readSubtitleParser(): SubtitleParserApi | null {
+  const scope = globalThis as typeof globalThis & { SubtitleParser?: SubtitleParserApi };
+  return scope.SubtitleParser || null;
+}
+
 function OverlayApp() {
+  const hostname =
+    typeof globalThis.location !== 'undefined' ? String(globalThis.location.hostname || '') : '';
   const {
     working: settings,
     saving,
@@ -56,6 +85,32 @@ function OverlayApp() {
     masteredCount: 0,
     recentWords: [],
   });
+  const subtitleTimelineRef = useRef<SubtitleTimelineItem[]>([]);
+  const subtitleLoadingRef = useRef(isSubtitleTimelineHostSupported(hostname));
+  const [subtitleNavigation, setSubtitleNavigation] = useState<SubtitleNavigationState>(() => {
+    const video = readVideoElement();
+    return buildSubtitleNavigationState({
+      hostname,
+      loading: subtitleLoadingRef.current,
+      hasVideo: Boolean(video),
+      currentTime: video ? Number(video.currentTime) : Number.NaN,
+      timeline: subtitleTimelineRef.current,
+    });
+  });
+
+  function syncSubtitleNavigation() {
+    const video = readVideoElement();
+    const nextState = buildSubtitleNavigationState({
+      hostname,
+      loading: subtitleLoadingRef.current,
+      hasVideo: Boolean(video),
+      currentTime: video ? Number(video.currentTime) : Number.NaN,
+      timeline: subtitleTimelineRef.current,
+    });
+    startTransition(() => {
+      setSubtitleNavigation(nextState);
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -80,6 +135,55 @@ function OverlayApp() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      if (!cancelled) {
+        syncSubtitleNavigation();
+      }
+    }, 450);
+    const subtitleParser = readSubtitleParser();
+
+    syncSubtitleNavigation();
+    if (
+      !isSubtitleTimelineHostSupported(hostname) ||
+      !subtitleParser ||
+      typeof subtitleParser.loadSubtitleTimeline !== 'function'
+    ) {
+      subtitleLoadingRef.current = false;
+      syncSubtitleNavigation();
+      return () => {
+        cancelled = true;
+        window.clearInterval(timer);
+      };
+    }
+
+    subtitleLoadingRef.current = true;
+    void subtitleParser
+      .loadSubtitleTimeline()
+      .then((timeline) => {
+        if (cancelled) {
+          return;
+        }
+        subtitleTimelineRef.current = normalizeSubtitleTimeline(timeline);
+        subtitleLoadingRef.current = false;
+        syncSubtitleNavigation();
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        subtitleTimelineRef.current = [];
+        subtitleLoadingRef.current = false;
+        syncSubtitleNavigation();
+      });
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [hostname]);
+
   const profileOptions = useMemo(() => {
     if (!settings) {
       return [];
@@ -103,6 +207,17 @@ function OverlayApp() {
 
   function mutateSettings(updater: (draft: SettingsV3) => SettingsV3) {
     mutateWorking((draft) => normalizeSettingsV3(updater(draft)));
+  }
+
+  function jumpToSubtitle(targetIndex: number | null, message: string) {
+    const video = readVideoElement();
+    const seekedAt = seekVideoToSubtitle(video, subtitleTimelineRef.current, targetIndex);
+    if (seekedAt == null) {
+      setStatus('当前没有可跳转的字幕句段。');
+      return;
+    }
+    syncSubtitleNavigation();
+    setStatus(`${message}（${seekedAt.toFixed(1)}s）`);
   }
 
   function patchProfile(patch: Partial<ProfileConfig>) {
@@ -242,6 +357,48 @@ function OverlayApp() {
                     继续观看带字幕的视频后，这里会显示最近命中的词。
                   </div>
                 )}
+              </div>
+            </section>
+
+            <section className="rv-card rv-subtitle-card">
+              <div className="rv-subtitle-head">
+                <div className="rv-subtitle-copy">
+                  <h4>字幕导航</h4>
+                  <p>{subtitleNavigation.description}</p>
+                </div>
+                <strong className="rv-subtitle-progress">{subtitleNavigation.progressLabel}</strong>
+              </div>
+              <div className="rv-subtitle-current" aria-live="polite">
+                <span>{subtitleNavigation.headline}</span>
+                <strong>{subtitleNavigation.currentText}</strong>
+              </div>
+              <div className="rv-subtitle-actions">
+                <button
+                  type="button"
+                  className="rv-btn"
+                  disabled={subtitleNavigation.previousIndex == null}
+                  onClick={() =>
+                    jumpToSubtitle(subtitleNavigation.previousIndex, '已跳到上一句字幕')
+                  }
+                >
+                  上一句
+                </button>
+                <button
+                  type="button"
+                  className="rv-btn"
+                  disabled={subtitleNavigation.replayIndex == null}
+                  onClick={() => jumpToSubtitle(subtitleNavigation.replayIndex, '已重播当前字幕')}
+                >
+                  重播本句
+                </button>
+                <button
+                  type="button"
+                  className="rv-btn"
+                  disabled={subtitleNavigation.nextIndex == null}
+                  onClick={() => jumpToSubtitle(subtitleNavigation.nextIndex, '已跳到下一句字幕')}
+                >
+                  下一句
+                </button>
               </div>
             </section>
 
