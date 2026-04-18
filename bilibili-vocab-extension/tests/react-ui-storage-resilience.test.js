@@ -505,8 +505,10 @@ test('react ui storage resilience: clearVocabularyBook should keep storage uncha
 });
 
 test('react ui storage resilience: readActiveTabSubtitleNavigation should normalize tab snapshot payload', async () => {
+  let tabsQueryCalls = 0;
   const { module: storageModule } = createStorageModule({
     tabsQueryImpl({ callback }) {
+      tabsQueryCalls += 1;
       callback([
         {
           id: 7,
@@ -535,6 +537,7 @@ test('react ui storage resilience: readActiveTabSubtitleNavigation should normal
 
   const snapshot = cloneValue(await storageModule.readActiveTabSubtitleNavigation());
 
+  assert.equal(tabsQueryCalls, 1);
   assert.deepEqual(snapshot, {
     supported: true,
     progressLabel: '12 / 48',
@@ -547,9 +550,60 @@ test('react ui storage resilience: readActiveTabSubtitleNavigation should normal
   });
 });
 
-test('react ui storage resilience: readActiveTabSubtitleNavigation should fallback when tab bridge is unavailable', async () => {
+test('react ui storage resilience: readActiveTabSubtitleStatus should keep hostname and snapshot on one active tab query', async () => {
+  let tabsQueryCalls = 0;
   const { module: storageModule } = createStorageModule({
     tabsQueryImpl({ callback }) {
+      tabsQueryCalls += 1;
+      callback([
+        {
+          id: 70,
+          url: 'https://www.bilibili.com/video/BV1shared',
+        },
+      ]);
+    },
+    tabsSendMessageImpl({ message, callback, runtime }) {
+      runtime.lastError = null;
+      assert.equal(message.type, 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_READ');
+      callback({
+        ok: true,
+        payload: {
+          supported: true,
+          progressLabel: '5 / 18',
+          headline: '当前字幕',
+          description: '00:08.2 - 00:10.4 · 可直接回看上一句或跳到下一句。',
+          currentText: '共享快照',
+          canGoPrevious: true,
+          canReplay: true,
+          canGoNext: true,
+        },
+      });
+    },
+  });
+
+  const status = cloneValue(await storageModule.readActiveTabSubtitleStatus());
+
+  assert.equal(tabsQueryCalls, 1);
+  assert.deepEqual(status, {
+    hostname: 'www.bilibili.com',
+    subtitleNavigation: {
+      supported: true,
+      progressLabel: '5 / 18',
+      headline: '当前字幕',
+      description: '00:08.2 - 00:10.4 · 可直接回看上一句或跳到下一句。',
+      currentText: '共享快照',
+      canGoPrevious: true,
+      canReplay: true,
+      canGoNext: true,
+    },
+  });
+});
+
+test('react ui storage resilience: readActiveTabSubtitleNavigation should fallback when tab bridge is unavailable', async () => {
+  let tabsQueryCalls = 0;
+  const { module: storageModule } = createStorageModule({
+    tabsQueryImpl({ callback }) {
+      tabsQueryCalls += 1;
       callback([
         {
           id: 8,
@@ -568,6 +622,7 @@ test('react ui storage resilience: readActiveTabSubtitleNavigation should fallba
 
   const snapshot = cloneValue(await storageModule.readActiveTabSubtitleNavigation());
 
+  assert.equal(tabsQueryCalls, 1);
   assert.equal(snapshot.supported, false);
   assert.equal(snapshot.progressLabel, '未连接');
   assert.match(snapshot.description, /youtube\.com 当前还没有可用字幕导航/);

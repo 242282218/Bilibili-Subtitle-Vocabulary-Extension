@@ -10,6 +10,7 @@ function readProjectFile(fileName) {
 test('react ui popup subtitle navigation contract: storage should expose active tab subtitle helpers', () => {
   const source = readProjectFile('react-ui/src/storage.ts');
 
+  assert.match(source, /export async function readActiveTabSubtitleStatus/);
   assert.match(source, /export async function readActiveTabSubtitleNavigation/);
   assert.match(source, /export async function navigateActiveTabSubtitle/);
   assert.match(source, /ACTIVE_TAB_SUBTITLE_NAVIGATION_READ/);
@@ -21,7 +22,7 @@ test('react ui popup subtitle navigation contract: popup should render current s
 
   assert.match(source, /当前字幕导航/);
   assert.match(source, /直接控制当前标签页的上一句、重播和下一句/);
-  assert.match(source, /readActiveTabSubtitleNavigation/);
+  assert.match(source, /readActiveTabSubtitleStatus/);
   assert.match(source, /navigateActiveTabSubtitle/);
   assert.match(source, /重播本句/);
   assert.match(source, /下一句/);

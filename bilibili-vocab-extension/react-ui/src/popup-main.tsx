@@ -47,10 +47,9 @@ import {
   subscribeExperienceMetricsSnapshot,
   subscribeLearningStreak,
   exportVocabularyBook,
-  getCurrentTabHostname,
   navigateActiveTabSubtitle,
   openOptionsPage,
-  readActiveTabSubtitleNavigation,
+  readActiveTabSubtitleStatus,
   subscribeQuickReviewSource,
 } from './storage';
 import { getThemeModeLabel, useDocumentTheme } from './ui-theme';
@@ -204,19 +203,16 @@ function PopupApp() {
   }
 
   async function refreshActiveTabSubtitleStatus(shouldSkip: () => boolean = () => false) {
-    const [currentHostname, nextSubtitleNavigation] = await Promise.all([
-      getCurrentTabHostname(),
-      readActiveTabSubtitleNavigation(),
-    ]);
+    const activeTabStatus = await readActiveTabSubtitleStatus();
     if (shouldSkip()) {
       return;
     }
-    const normalizedHostname = normalizeHostname(currentHostname);
+    const normalizedHostname = normalizeHostname(activeTabStatus.hostname);
     setHostname((current) => (current === normalizedHostname ? current : normalizedHostname));
     setSubtitleNavigation((current) =>
-      isSameActiveTabSubtitleNavigation(current, nextSubtitleNavigation)
+      isSameActiveTabSubtitleNavigation(current, activeTabStatus.subtitleNavigation)
         ? current
-        : nextSubtitleNavigation
+        : activeTabStatus.subtitleNavigation
     );
   }
 

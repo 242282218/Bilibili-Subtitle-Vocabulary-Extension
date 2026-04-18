@@ -130,6 +130,11 @@ export interface ActiveTabSubtitleNavigation {
   canGoNext: boolean;
 }
 
+export interface ActiveTabSubtitleStatus {
+  hostname: string;
+  subtitleNavigation: ActiveTabSubtitleNavigation;
+}
+
 function normalizeVocabularyWord(input: unknown): VocabularyWord | null {
   if (!input || typeof input !== 'object') {
     return null;
@@ -848,20 +853,8 @@ export async function readEncounteredWordRanking(
 }
 
 export async function getCurrentTabHostname(): Promise<string> {
-  if (!hasChromeTabs()) {
-    return '';
-  }
-  return new Promise<string>((resolve) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const activeTab = Array.isArray(tabs) && tabs.length ? tabs[0] : null;
-      const rawUrl = activeTab && typeof activeTab.url === 'string' ? activeTab.url : '';
-      try {
-        resolve(rawUrl ? new URL(rawUrl).hostname : '');
-      } catch {
-        resolve('');
-      }
-    });
-  });
+  const activeTab = await queryActiveTab().catch(() => null);
+  return resolveHostnameFromTabUrl(activeTab && activeTab.url);
 }
 
 function createEmptyActiveTabSubtitleNavigation(
@@ -922,12 +915,15 @@ async function queryActiveTab(): Promise<chrome.tabs.Tab | null> {
   });
 }
 
-async function sendActiveTabMessage<T>(type: string, payload: Record<string, unknown>): Promise<T> {
+async function sendTabMessage<T>(
+  activeTab: chrome.tabs.Tab | null,
+  type: string,
+  payload: Record<string, unknown>
+): Promise<T> {
   if (!hasChromeTabMessaging()) {
     return Promise.reject(new Error('chrome.tabs.sendMessage unavailable'));
   }
 
-  const activeTab = await queryActiveTab();
   if (!activeTab || typeof activeTab.id !== 'number') {
     return Promise.reject(new Error('active tab unavailable'));
   }
@@ -954,20 +950,40 @@ async function sendActiveTabMessage<T>(type: string, payload: Record<string, unk
   });
 }
 
-export async function readActiveTabSubtitleNavigation(): Promise<ActiveTabSubtitleNavigation> {
+async function sendActiveTabMessage<T>(type: string, payload: Record<string, unknown>): Promise<T> {
+  return sendTabMessage(await queryActiveTab(), type, payload);
+}
+
+function buildEmptyActiveTabSubtitleStatus(hostname: string): ActiveTabSubtitleStatus {
+  return {
+    hostname,
+    subtitleNavigation: createEmptyActiveTabSubtitleNavigation(
+      hostname ? `${hostname} 当前还没有可用字幕导航。` : '当前标签页暂不支持字幕导航。'
+    ),
+  };
+}
+
+export async function readActiveTabSubtitleStatus(): Promise<ActiveTabSubtitleStatus> {
+  const activeTab = await queryActiveTab().catch(() => null);
+  const hostname = resolveHostnameFromTabUrl(activeTab && activeTab.url);
+
   try {
-    const payload = await sendActiveTabMessage<Record<string, unknown>>(
+    const payload = await sendTabMessage<Record<string, unknown>>(
+      activeTab,
       ACTIVE_TAB_SUBTITLE_NAVIGATION_READ,
       {}
     );
-    return normalizeActiveTabSubtitleNavigation(payload);
+    return {
+      hostname,
+      subtitleNavigation: normalizeActiveTabSubtitleNavigation(payload),
+    };
   } catch {
-    const activeTab = await queryActiveTab().catch(() => null);
-    const hostname = resolveHostnameFromTabUrl(activeTab && activeTab.url);
-    return createEmptyActiveTabSubtitleNavigation(
-      hostname ? `${hostname} 当前还没有可用字幕导航。` : '当前标签页暂不支持字幕导航。'
-    );
+    return buildEmptyActiveTabSubtitleStatus(hostname);
   }
+}
+
+export async function readActiveTabSubtitleNavigation(): Promise<ActiveTabSubtitleNavigation> {
+  return (await readActiveTabSubtitleStatus()).subtitleNavigation;
 }
 
 export async function navigateActiveTabSubtitle(
