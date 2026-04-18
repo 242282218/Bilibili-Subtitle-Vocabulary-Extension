@@ -170,6 +170,11 @@
 
 这些盲区不一定阻塞每轮提交，但必须持续在报告中显式列出，避免“全绿错觉”。
 
+排序 contract：
+
+- 若本轮 gate / shard / `unassignedTests` 全部清零，`Next Focus Candidates` 先返回上述已知 blind spots，再把 `legacy-deferred-tests` 作为尾部提醒。
+- 若出现 gate 失败、shard 失败或 `unassignedTests`，这些真实回归 / 覆盖缺口仍优先于静态 blind spots 与 deferred legacy tests。
+
 ## 单轮持续优化循环
 
 ### 执行顺序

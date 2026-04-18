@@ -374,6 +374,7 @@ function selectOptimizationCandidates(summary) {
   }
 
   const extraCandidates = [];
+  const tailCandidates = [];
 
   if (Array.isArray(summary.unassignedTests) && summary.unassignedTests.length > 0) {
     extraCandidates.push({
@@ -387,9 +388,9 @@ function selectOptimizationCandidates(summary) {
   }
 
   if (Array.isArray(summary.deferredLegacyTests) && summary.deferredLegacyTests.length > 0) {
-    extraCandidates.push({
+    tailCandidates.push({
       id: 'legacy-deferred-tests',
-      priority: extraCandidates.length,
+      priority: 0,
       title: '迁移或淘汰 legacy popup/options shell 测试',
       rationale: `当前有 ${summary.deferredLegacyTests.length} 个测试文件锁定 legacy popup/options 入口；${LEGACY_DEFERRED_REASON}`,
       files: summary.deferredLegacyTests.slice(),
@@ -397,23 +398,22 @@ function selectOptimizationCandidates(summary) {
     });
   }
 
-  if (extraCandidates.length > 0) {
-    return [
-      ...extraCandidates,
-      ...STATIC_OPTIMIZATION_GAPS.map((item, index) => ({
-        ...item,
-        priority: index + extraCandidates.length,
-        files: item.files.slice(),
-        suggestedCommands: item.suggestedCommands.slice(),
-      })),
-    ];
-  }
-
-  return STATIC_OPTIMIZATION_GAPS.map((item) => ({
+  const prioritizedBlindSpots = STATIC_OPTIMIZATION_GAPS.map((item) => ({
     ...item,
     files: item.files.slice(),
     suggestedCommands: item.suggestedCommands.slice(),
   }));
+
+  if (extraCandidates.length > 0 || tailCandidates.length > 0) {
+    return [...extraCandidates, ...prioritizedBlindSpots, ...tailCandidates].map(
+      (candidate, index) => ({
+        ...candidate,
+        priority: index,
+      })
+    );
+  }
+
+  return prioritizedBlindSpots;
 }
 
 function renderMarkdownReport(summary) {

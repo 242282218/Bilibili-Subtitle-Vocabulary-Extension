@@ -282,7 +282,7 @@ test('continuous optimization: runContinuousOptimization should write reports an
   }
 });
 
-test('continuous optimization: runContinuousOptimization should classify legacy popup/options tests separately', async () => {
+test('continuous optimization: runContinuousOptimization should keep legacy popup/options tests deferred without overriding blind-spot priority', async () => {
   const workspace = createWorkspace();
   const testsDir = path.join(workspace, 'tests');
   const reportDir = path.join(workspace, 'reports');
@@ -340,18 +340,21 @@ test('continuous optimization: runContinuousOptimization should classify legacy 
     assert.equal(summary.overallStatus, 'pass');
     assert.deepEqual(summary.unassignedTests, []);
     assert.deepEqual(summary.deferredLegacyTests, ['popup.test.js']);
-    assert.equal(summary.nextFocusCandidates[0].id, 'legacy-deferred-tests');
-    assert.equal(
-      summary.nextFocusCandidates[0].title,
-      '迁移或淘汰 legacy popup/options shell 测试'
-    );
-    assert.deepEqual(summary.nextFocusCandidates[0].files, ['popup.test.js']);
+    assert.equal(summary.nextFocusCandidates[0].id, 'browser-e2e-smoke');
+    assert.equal(summary.nextFocusCandidates[1].id, 'runtime-bridge-coverage');
+    assert.equal(summary.nextFocusCandidates[2].id, 'legacy-react-drift');
+    assert.equal(summary.nextFocusCandidates[3].id, 'content-script-decomposition');
+
+    const deferredCandidate = summary.nextFocusCandidates.at(-1);
+    assert.equal(deferredCandidate.id, 'legacy-deferred-tests');
+    assert.equal(deferredCandidate.title, '迁移或淘汰 legacy popup/options shell 测试');
+    assert.deepEqual(deferredCandidate.files, ['popup.test.js']);
     assert.match(
-      summary.nextFocusCandidates[0].rationale,
+      deferredCandidate.rationale,
       /dist\/popup\.html.*dist\/options\.html[\s\S]*legacy popup\/options 入口/
     );
-    assert.match(summary.nextFocusCandidates[0].rationale, /shared-settings-integration\.test\.js/);
-    assert.match(summary.nextFocusCandidates[0].rationale, /standalone-init\.test\.js/);
+    assert.match(deferredCandidate.rationale, /shared-settings-integration\.test\.js/);
+    assert.match(deferredCandidate.rationale, /standalone-init\.test\.js/);
 
     const latestReport = JSON.parse(fs.readFileSync(path.join(reportDir, 'latest.json'), 'utf8'));
     assert.deepEqual(latestReport.unassignedTests, []);
