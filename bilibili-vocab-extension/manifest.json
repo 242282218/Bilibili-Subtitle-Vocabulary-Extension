@@ -45,6 +45,7 @@
         "scripts/danmaku.js",
         "scripts/scheduler.js",
         "tooltip.js",
+        "subtitleNavigation.js",
         "contentScript.js"
       ],
       "css": [

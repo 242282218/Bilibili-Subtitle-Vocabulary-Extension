@@ -6,6 +6,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 const MODULE_PATH = path.join(__dirname, '..', 'react-ui', 'src', 'subtitle-navigation.ts');
+const SHARED_MODULE_PATH = path.join(__dirname, '..', 'subtitleNavigation.js');
 
 function cloneValue(value) {
   return JSON.parse(JSON.stringify(value));
@@ -21,11 +22,13 @@ function loadSubtitleNavigationModule() {
     },
   }).outputText;
   const moduleRef = { exports: {} };
+  const sharedApi = require(SHARED_MODULE_PATH);
   const sandbox = {
     module: moduleRef,
     exports: moduleRef.exports,
     require,
     console,
+    SubtitleNavigationShared: sharedApi,
   };
   sandbox.globalThis = sandbox;
   vm.runInNewContext(transpiled, sandbox, { filename: 'subtitle-navigation.js' });
@@ -112,7 +115,7 @@ test('react overlay subtitle navigation: should expose unsupported message outsi
 
   assert.equal(state.supported, false);
   assert.equal(state.progressLabel, '未支持');
-  assert.match(state.currentText, /后续再扩展到其他站点/);
+  assert.match(state.currentText, /切到支持的视频页后即可使用句级字幕导航/);
 });
 
 test('react overlay subtitle navigation: should seek video to subtitle start with small offset', () => {

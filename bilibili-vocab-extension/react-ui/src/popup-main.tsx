@@ -57,6 +57,7 @@ import { getThemeModeLabel, useDocumentTheme } from './ui-theme';
 import { useV3Settings } from './use-v3-settings';
 
 const HIGH_RISK_UNDO_WINDOW_MS = 6 * 1000;
+const ACTIVE_TAB_SUBTITLE_REFRESH_MS = 1000;
 const EMPTY_SUMMARY: LearningSummary = {
   todayCount: 0,
   newCount: 0,
@@ -114,6 +115,22 @@ interface PendingUndoAction {
 function asNumber(value: string, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function isSameActiveTabSubtitleNavigation(
+  left: ActiveTabSubtitleNavigation,
+  right: ActiveTabSubtitleNavigation
+): boolean {
+  return (
+    left.supported === right.supported &&
+    left.progressLabel === right.progressLabel &&
+    left.headline === right.headline &&
+    left.description === right.description &&
+    left.currentText === right.currentText &&
+    left.canGoPrevious === right.canGoPrevious &&
+    left.canReplay === right.canReplay &&
+    left.canGoNext === right.canGoNext
+  );
 }
 
 function getTodayDateString() {
@@ -186,22 +203,33 @@ function PopupApp() {
     setExperienceMetrics(nextMetrics);
   }
 
+  async function refreshActiveTabSubtitleStatus(shouldSkip: () => boolean = () => false) {
+    const [currentHostname, nextSubtitleNavigation] = await Promise.all([
+      getCurrentTabHostname(),
+      readActiveTabSubtitleNavigation(),
+    ]);
+    if (shouldSkip()) {
+      return;
+    }
+    const normalizedHostname = normalizeHostname(currentHostname);
+    setHostname((current) => (current === normalizedHostname ? current : normalizedHostname));
+    setSubtitleNavigation((current) =>
+      isSameActiveTabSubtitleNavigation(current, nextSubtitleNavigation)
+        ? current
+        : nextSubtitleNavigation
+    );
+  }
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const [dashboardPayload, currentHostname, nextSubtitleNavigation] = await Promise.all([
-          readQuickReviewDashboard(),
-          getCurrentTabHostname(),
-          readActiveTabSubtitleNavigation(),
-        ]);
+        const dashboardPayload = await readQuickReviewDashboard();
         if (cancelled) {
           return;
         }
         setSummary(dashboardPayload.summary);
         setQuickReview(dashboardPayload);
-        setHostname(normalizeHostname(currentHostname));
-        setSubtitleNavigation(nextSubtitleNavigation);
         setStatus('已加载当前策略，可快速调整后手动保存。');
       } catch {
         if (!cancelled) {
@@ -213,6 +241,35 @@ function PopupApp() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let refreshing = false;
+
+    async function refreshSilently() {
+      if (cancelled || refreshing || subtitleNavigating) {
+        return;
+      }
+      refreshing = true;
+      try {
+        await refreshActiveTabSubtitleStatus(() => cancelled);
+      } catch {
+        // Ignore polling failures to keep popup actions responsive.
+      } finally {
+        refreshing = false;
+      }
+    }
+
+    void refreshSilently();
+    const timer = window.setInterval(() => {
+      void refreshSilently();
+    }, ACTIVE_TAB_SUBTITLE_REFRESH_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [subtitleNavigating]);
 
   useEffect(() => {
     const unsubscribeQuickReview = subscribeQuickReviewSource(() => {

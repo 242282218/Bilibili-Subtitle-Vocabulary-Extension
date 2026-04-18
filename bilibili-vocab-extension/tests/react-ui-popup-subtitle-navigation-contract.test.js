@@ -26,3 +26,11 @@ test('react ui popup subtitle navigation contract: popup should render current s
   assert.match(source, /重播本句/);
   assert.match(source, /下一句/);
 });
+
+test('react ui popup subtitle navigation contract: popup should poll active tab subtitle state while open', () => {
+  const source = readProjectFile('react-ui/src/popup-main.tsx');
+
+  assert.match(source, /refreshActiveTabSubtitleStatus/);
+  assert.match(source, /ACTIVE_TAB_SUBTITLE_REFRESH_MS/);
+  assert.match(source, /window\.setInterval/);
+});

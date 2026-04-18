@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const previousDocument = global.document;
 const previousChrome = global.chrome;
@@ -89,6 +91,22 @@ test('contentScript subtitle navigation: should build popup-friendly snapshot', 
   assert.equal(snapshot.canGoPrevious, true);
   assert.equal(snapshot.canReplay, true);
   assert.equal(snapshot.canGoNext, false);
+});
+
+test('contentScript subtitle navigation: manifest should load shared runtime before contentScript', () => {
+  const manifestPath = path.join(__dirname, '..', 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8').replace(/^\uFEFF/, ''));
+  const contentScripts = Array.isArray(manifest.content_scripts) ? manifest.content_scripts : [];
+  const shippedEntry = contentScripts.find((entry) => Array.isArray(entry.js));
+  assert.ok(shippedEntry, 'content_scripts entry should exist');
+
+  const scriptList = shippedEntry.js;
+  const runtimeIndex = scriptList.indexOf('subtitleNavigation.js');
+  const contentScriptIndex = scriptList.indexOf('contentScript.js');
+
+  assert.notEqual(runtimeIndex, -1);
+  assert.notEqual(contentScriptIndex, -1);
+  assert.ok(runtimeIndex < contentScriptIndex);
 });
 
 test.after(() => {

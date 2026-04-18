@@ -14,6 +14,9 @@
   const sharedSettings =
     globalThis.SharedSettings ||
     (typeof require === 'function' ? require('./sharedSettings.js') : null);
+  const subtitleNavigation =
+    globalThis.SubtitleNavigationShared ||
+    (typeof require === 'function' ? require('./subtitleNavigation.js') : null);
 
   const PROCESS_DELAY_MS = 120;
   const TIMELINE_POLL_MS = 300;
@@ -895,29 +898,82 @@
     return ['previous', 'replay', 'next'].includes(normalized) ? normalized : '';
   }
 
-  function isSubtitleNavigationSupportedHost() {
-    return Boolean(
-      globalThis.SubtitleParser &&
-      typeof globalThis.SubtitleParser.isBilibiliHost === 'function' &&
-      globalThis.SubtitleParser.isBilibiliHost(globalThis.location && globalThis.location.hostname)
-    );
+  function getSubtitleNavigationHostname() {
+    return String((globalThis.location && globalThis.location.hostname) || '');
   }
 
-  function createEmptySubtitleNavigationSnapshot(description, currentText, supported) {
+  function normalizeSubtitleNavigationTimeline(timeline) {
+    if (subtitleNavigation && typeof subtitleNavigation.normalizeSubtitleTimeline === 'function') {
+      return subtitleNavigation.normalizeSubtitleTimeline(timeline);
+    }
+    return [];
+  }
+
+  function buildSharedSubtitleNavigationState(options) {
+    if (
+      subtitleNavigation &&
+      typeof subtitleNavigation.buildSubtitleNavigationState === 'function'
+    ) {
+      return subtitleNavigation.buildSubtitleNavigationState(options);
+    }
+
     return {
-      supported: supported === true,
-      progressLabel: supported === true ? '0 / 0' : '未支持',
-      headline: supported === true ? '当前标签页暂无字幕导航' : '当前站点暂不支持字幕导航',
-      description,
-      currentText: currentText || '还没有可直接跳转的字幕句段。',
-      canGoPrevious: false,
-      canReplay: false,
-      canGoNext: false,
+      supported: false,
+      loading: false,
+      total: 0,
+      currentIndex: null,
+      progressLabel: '未支持',
+      headline: '当前站点暂不支持句级跳转',
+      description: '现阶段仅在 Bilibili 字幕时间轴上提供上一句、重播本句和下一句导航。',
+      currentText: '切到支持的视频页后即可使用句级字幕导航。',
+      previousIndex: null,
+      replayIndex: null,
+      nextIndex: null,
     };
   }
 
+  function createSubtitleNavigationSnapshotFromState(state) {
+    if (
+      subtitleNavigation &&
+      typeof subtitleNavigation.createActiveTabSubtitleNavigationSnapshot === 'function'
+    ) {
+      return subtitleNavigation.createActiveTabSubtitleNavigationSnapshot(state);
+    }
+
+    return {
+      supported: state && state.supported === true,
+      progressLabel: String((state && state.progressLabel) || '未支持'),
+      headline: String((state && state.headline) || '当前标签页暂无字幕导航'),
+      description: String((state && state.description) || '请先打开支持字幕的 Bilibili 视频页。'),
+      currentText: String((state && state.currentText) || '还没有可直接跳转的字幕句段。'),
+      canGoPrevious: Boolean(state && state.previousIndex != null),
+      canReplay: Boolean(state && state.replayIndex != null),
+      canGoNext: Boolean(state && state.nextIndex != null),
+    };
+  }
+
+  function isSubtitleNavigationSupportedHost() {
+    if (
+      subtitleNavigation &&
+      typeof subtitleNavigation.isSubtitleTimelineHostSupported === 'function'
+    ) {
+      return subtitleNavigation.isSubtitleTimelineHostSupported(getSubtitleNavigationHostname());
+    }
+
+    return Boolean(
+      globalThis.SubtitleParser &&
+      typeof globalThis.SubtitleParser.isBilibiliHost === 'function' &&
+      globalThis.SubtitleParser.isBilibiliHost(getSubtitleNavigationHostname())
+    );
+  }
+
   function findSubtitleNavigationIndices(timeline, currentTime) {
-    if (!Array.isArray(timeline) || timeline.length === 0 || !Number.isFinite(currentTime)) {
+    const normalizedTimeline = normalizeSubtitleNavigationTimeline(timeline);
+    if (
+      !subtitleNavigation ||
+      typeof subtitleNavigation.findSubtitleIndexAtTime !== 'function' ||
+      typeof subtitleNavigation.resolveSubtitleNavigationTargets !== 'function'
+    ) {
       return {
         currentIndex: -1,
         previousIndex: null,
@@ -926,151 +982,71 @@
       };
     }
 
-    let currentIndex = -1;
-    for (let index = 0; index < timeline.length; index += 1) {
-      const item = timeline[index];
-      if (currentTime >= Number(item && item.from) && currentTime <= Number(item && item.to)) {
-        currentIndex = index;
-        break;
-      }
-    }
-
-    if (currentIndex >= 0) {
-      return {
-        currentIndex,
-        previousIndex: currentIndex > 0 ? currentIndex - 1 : null,
-        replayIndex: currentIndex,
-        nextIndex: currentIndex < timeline.length - 1 ? currentIndex + 1 : null,
-      };
-    }
-
-    let previousIndex = null;
-    let nextIndex = null;
-    for (let index = timeline.length - 1; index >= 0; index -= 1) {
-      if (Number(timeline[index] && timeline[index].from) < currentTime) {
-        previousIndex = index;
-        break;
-      }
-    }
-    for (let index = 0; index < timeline.length; index += 1) {
-      if (Number(timeline[index] && timeline[index].from) > currentTime) {
-        nextIndex = index;
-        break;
-      }
-    }
+    const currentIndex = subtitleNavigation.findSubtitleIndexAtTime(
+      normalizedTimeline,
+      currentTime
+    );
+    const targets = subtitleNavigation.resolveSubtitleNavigationTargets(
+      normalizedTimeline,
+      currentTime
+    );
 
     return {
-      currentIndex: -1,
-      previousIndex,
-      replayIndex: previousIndex != null ? previousIndex : nextIndex,
-      nextIndex,
+      currentIndex,
+      previousIndex: targets.previousIndex,
+      replayIndex: targets.replayIndex,
+      nextIndex: targets.nextIndex,
     };
   }
 
-  function formatSubtitleNavigationTime(value) {
-    const time = Number(value);
-    if (!Number.isFinite(time) || time < 0) {
-      return '--:--.-';
-    }
-    const totalTenths = Math.round(time * 10);
-    const minutes = Math.floor(totalTenths / 600);
-    const seconds = Math.floor((totalTenths % 600) / 10);
-    const tenths = totalTenths % 10;
-    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${tenths}`;
+  function buildSubtitleNavigationSnapshot(timeline, currentTime) {
+    const normalizedTimeline = normalizeSubtitleNavigationTimeline(timeline);
+    const state = buildSharedSubtitleNavigationState({
+      hostname: getSubtitleNavigationHostname() || 'www.bilibili.com',
+      loading: false,
+      hasVideo: true,
+      currentTime,
+      timeline: normalizedTimeline,
+    });
+    return createSubtitleNavigationSnapshotFromState(state);
   }
 
-  function buildSubtitleNavigationSnapshot(timeline, currentTime) {
-    const indices = findSubtitleNavigationIndices(timeline, currentTime);
-    if (!Array.isArray(timeline) || timeline.length === 0) {
-      return createEmptySubtitleNavigationSnapshot(
-        '当前视频暂无可用字幕时间轴。',
-        '还没有可直接跳转的字幕句段。',
-        true
-      );
-    }
+  function isSubtitleNavigationVideo(value) {
+    return Boolean(value && typeof value.currentTime === 'number');
+  }
 
-    if (indices.currentIndex >= 0) {
-      const currentItem = timeline[indices.currentIndex];
-      return {
-        supported: true,
-        progressLabel: `${indices.currentIndex + 1} / ${timeline.length}`,
-        headline: '当前字幕',
-        description: `${formatSubtitleNavigationTime(currentItem.from)} - ${formatSubtitleNavigationTime(currentItem.to)} · 可直接回看上一句或跳到下一句。`,
-        currentText: normalizeText(currentItem.content),
-        canGoPrevious: indices.previousIndex != null,
-        canReplay: indices.replayIndex != null,
-        canGoNext: indices.nextIndex != null,
-      };
-    }
+  function buildSubtitleNavigationContext(video, timeline) {
+    const normalizedTimeline = normalizeSubtitleNavigationTimeline(timeline);
+    const state = buildSharedSubtitleNavigationState({
+      hostname: getSubtitleNavigationHostname(),
+      loading: false,
+      hasVideo: isSubtitleNavigationVideo(video),
+      currentTime: isSubtitleNavigationVideo(video) ? Number(video.currentTime) : Number.NaN,
+      timeline: normalizedTimeline,
+    });
 
-    const anchorIndex = indices.nextIndex != null ? indices.nextIndex : indices.replayIndex;
-    const anchorItem = anchorIndex != null ? timeline[anchorIndex] : null;
     return {
-      supported: true,
-      progressLabel: '待定位',
-      headline: indices.nextIndex != null ? '下一句字幕' : '最近字幕',
-      description: anchorItem
-        ? `${formatSubtitleNavigationTime(anchorItem.from)} - ${formatSubtitleNavigationTime(anchorItem.to)} · 当前不在句段内，可直接跳转定位。`
-        : '当前不在字幕句段内，可等待下一句出现或手动跳转。',
-      currentText: anchorItem ? normalizeText(anchorItem.content) : '等待字幕出现...',
-      canGoPrevious: indices.previousIndex != null,
-      canReplay: indices.replayIndex != null,
-      canGoNext: indices.nextIndex != null,
+      timeline: normalizedTimeline,
+      video: isSubtitleNavigationVideo(video) ? video : null,
+      state,
+      snapshot: createSubtitleNavigationSnapshotFromState(state),
     };
   }
 
   async function readSubtitleNavigationContext() {
     if (!isSubtitleNavigationSupportedHost()) {
-      return {
-        timeline: [],
-        currentTime: Number.NaN,
-        indices: {
-          currentIndex: -1,
-          previousIndex: null,
-          replayIndex: null,
-          nextIndex: null,
-        },
-        video: null,
-        snapshot: createEmptySubtitleNavigationSnapshot(
-          '现阶段先在 Bilibili 字幕时间轴上提供 popup 句级导航。',
-          '请先切到支持的 Bilibili 视频页。',
-          false
-        ),
-      };
+      return buildSubtitleNavigationContext(null, []);
     }
 
     const video = document.querySelector('video');
-    if (!(video instanceof HTMLVideoElement)) {
-      return {
-        timeline: [],
-        currentTime: Number.NaN,
-        indices: {
-          currentIndex: -1,
-          previousIndex: null,
-          replayIndex: null,
-          nextIndex: null,
-        },
-        video: null,
-        snapshot: createEmptySubtitleNavigationSnapshot(
-          '当前页面还没有可控制的视频元素。',
-          '打开带字幕的视频后即可在 popup 内按句跳转。',
-          true
-        ),
-      };
+    if (!isSubtitleNavigationVideo(video)) {
+      return buildSubtitleNavigationContext(null, []);
     }
 
     const timeline = hasMethod(globalThis.SubtitleParser, 'loadSubtitleTimeline')
       ? await globalThis.SubtitleParser.loadSubtitleTimeline()
       : [];
-    const currentTime = Number(video.currentTime);
-    const indices = findSubtitleNavigationIndices(timeline, currentTime);
-    return {
-      timeline,
-      currentTime,
-      indices,
-      video,
-      snapshot: buildSubtitleNavigationSnapshot(timeline, currentTime),
-    };
+    return buildSubtitleNavigationContext(video, timeline);
   }
 
   async function readSubtitleNavigationSnapshot() {
@@ -1091,15 +1067,18 @@
 
     const targetIndex =
       normalizedAction === 'previous'
-        ? context.indices.previousIndex
+        ? context.state.previousIndex
         : normalizedAction === 'replay'
-          ? context.indices.replayIndex
-          : context.indices.nextIndex;
-    if (targetIndex == null || !context.timeline[targetIndex]) {
+          ? context.state.replayIndex
+          : context.state.nextIndex;
+    if (
+      !subtitleNavigation ||
+      typeof subtitleNavigation.seekVideoToSubtitle !== 'function' ||
+      subtitleNavigation.seekVideoToSubtitle(context.video, context.timeline, targetIndex) == null
+    ) {
       return context.snapshot;
     }
 
-    context.video.currentTime = Math.max(0, Number(context.timeline[targetIndex].from) + 0.02);
     return buildSubtitleNavigationSnapshot(context.timeline, context.video.currentTime);
   }
 
