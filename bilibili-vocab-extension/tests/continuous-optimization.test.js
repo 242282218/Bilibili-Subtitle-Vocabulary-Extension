@@ -209,6 +209,7 @@ test('continuous optimization: current shard plan should route runtime bridge an
       [
         'contentScript-overlay-bridge.test.js',
         'react-ui-runtime-messaging.test.js',
+        'react-ui-subtitle-navigation.test.js',
         'react-ui-study-preview.test.js',
         'react-ui-use-overlay-settings.test.js',
       ].includes(path.basename(file))
@@ -217,6 +218,7 @@ test('continuous optimization: current shard plan should route runtime bridge an
       path.join('tests', 'contentScript-overlay-bridge.test.js'),
       path.join('tests', 'react-ui-runtime-messaging.test.js'),
       path.join('tests', 'react-ui-study-preview.test.js'),
+      path.join('tests', 'react-ui-subtitle-navigation.test.js'),
       path.join('tests', 'react-ui-use-overlay-settings.test.js'),
     ]
   );
