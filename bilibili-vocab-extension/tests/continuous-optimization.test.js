@@ -75,6 +75,7 @@ test('continuous optimization: createExecutionPlan should resolve gates and shar
       'background.test.js',
       'experience-metrics.test.js',
       'learning-state.test.js',
+      'settings-ui-state-machine.test.js',
       'shared-settings.test.js',
       'vocabulary.test.js',
       'contentScript-hit-tracking.test.js',
@@ -119,7 +120,10 @@ test('continuous optimization: createExecutionPlan should resolve gates and shar
       plan.shards.map((shard) => shard.name),
       ['runtime-state', 'subtitle-content', 'ui-overlay', 'build-contract-data']
     );
-    assert.equal(plan.shards[0].testFileCount, 6);
+    assert.equal(plan.shards[0].testFileCount, 7);
+    assert.ok(
+      plan.shards[0].testFiles.includes(path.join('tests', 'settings-ui-state-machine.test.js'))
+    );
     assert.equal(plan.shards[1].testFileCount, 6);
     assert.deepEqual(plan.shards[2].testFiles, [
       path.join('tests', 'contentScript-overlay-bridge.test.js'),
