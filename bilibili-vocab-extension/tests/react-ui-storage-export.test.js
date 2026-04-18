@@ -132,6 +132,7 @@ test('react ui storage export: should ignore malformed vocabulary records', asyn
         word: 'alpha',
         savedAt: 1700000000000,
         exposures: 2,
+        context: 'Alpha helps you keep the first idea in mind.',
         details: { meaning: 'A', level: 'CET4', phonetic: '/a/' },
       },
       latestSaved: {
@@ -139,6 +140,7 @@ test('react ui storage export: should ignore malformed vocabulary records', asyn
         word: 'beta',
         savedAt: 1800000000000,
         exposures: 5,
+        context: 'Beta appears in the next subtitle sentence.',
         details: { meaning: 'B', level: 'CET6', phonetic: '/b/' },
       },
     },
@@ -154,16 +156,24 @@ test('react ui storage export: should ignore malformed vocabulary records', asyn
     words.map((item) => item.status),
     ['saved', 'saved']
   );
+  assert.deepEqual(
+    words.map((item) => item.context),
+    ['Beta appears in the next subtitle sentence.', 'Alpha helps you keep the first idea in mind.']
+  );
 
   const csvPayload = await storageModule.exportVocabularyBook('csv');
   assert.match(csvPayload, /"beta"/);
   assert.match(csvPayload, /"alpha"/);
+  assert.match(csvPayload, /"Beta appears in the next subtitle sentence\."/);
   assert.doesNotMatch(csvPayload, /"draft"/);
 
   const ankiPayload = await storageModule.exportVocabularyBook('anki');
   const [header, firstRow, secondRow] = ankiPayload.split('\n');
-  assert.equal(header, 'Front\tBack\tLevel\tPhonetic\tSavedAt');
-  assert.match(firstRow, /^beta\tB\tCET6\t\/b\/\t/);
-  assert.match(secondRow, /^alpha\tA\tCET4\t\/a\/\t/);
+  assert.equal(header, 'Front\tBack\tExample\tLevel\tPhonetic\tSavedAt');
+  assert.match(firstRow, /^beta\tB\tBeta appears in the next subtitle sentence\.\tCET6\t\/b\/\t/);
+  assert.match(
+    secondRow,
+    /^alpha\tA\tAlpha helps you keep the first idea in mind\.\tCET4\t\/a\/\t/
+  );
   assert.doesNotMatch(ankiPayload, /draft/);
 });

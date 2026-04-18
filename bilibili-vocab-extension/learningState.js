@@ -746,6 +746,22 @@
     };
   }
 
+  function normalizeVocabularyContext(details) {
+    const source = details && typeof details === 'object' ? details : {};
+    return String(
+      source.context ||
+        source.example ||
+        source.originalSubtitle ||
+        (source.details &&
+        typeof source.details === 'object' &&
+        (source.details.context || source.details.example || source.details.originalSubtitle)
+          ? source.details.context || source.details.example || source.details.originalSubtitle
+          : '')
+    )
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   function normalizeWordStatsMap(rawStats) {
     if (!rawStats || typeof rawStats !== 'object') {
       return {};
@@ -772,6 +788,7 @@
       normalizedItem.word = word;
       normalizedItem.savedAt = normalizeTimestamp(item.savedAt);
       normalizedItem.details = normalizeVocabularyDetails(item.details || item);
+      normalizedItem.context = normalizeVocabularyContext(item);
       normalizedItem.exposures = normalizeCount(
         item.exposures != null ? item.exposures : normalizedItem.exposureCount
       );
@@ -797,6 +814,7 @@
       status: normalized.status,
       savedAt: normalizeTimestamp(record && record.savedAt),
       details,
+      context: normalizeVocabularyContext(record),
       exposures,
     };
   }
@@ -861,6 +879,7 @@
         exposureCount: record.exposureCount,
         seenCount: record.seenCount,
         details: record.details,
+        context: record.context,
         exposures: record.exposures,
       };
     });
@@ -899,6 +918,8 @@
         ...normalizeVocabularyDetails(existing.details),
         ...normalizeVocabularyDetails(details),
       };
+      const mergedContext =
+        normalizeVocabularyContext(details) || normalizeVocabularyContext(existing);
 
       const nextRecord = {
         ...normalizeLearningRecord(existing, {
@@ -912,6 +933,7 @@
         lastReviewedAt: normalizeTimestamp(now),
         savedAt: normalizeTimestamp(now),
         details: mergedDetails,
+        context: mergedContext,
         exposures: normalizeCount(
           existing.exposures != null ? existing.exposures : existing.exposureCount
         ),
@@ -1009,11 +1031,12 @@
   function exportVocabularyBook(format = 'json') {
     const words = getVocabularyBookWords();
     if (format === 'csv') {
-      const headers = ['单词', '释义', '难度等级', '收藏时间', '遇见次数'];
+      const headers = ['单词', '释义', '难度等级', '原句上下文', '收藏时间', '遇见次数'];
       const rows = words.map((w) => [
         w.word,
         w.details && w.details.meaning ? w.details.meaning : w.translation || '',
         w.details && w.details.level ? w.details.level : w.level || '',
+        w.context || '',
         w.savedAt ? new Date(w.savedAt).toLocaleString() : '',
         normalizeCount(w.exposures != null ? w.exposures : w.exposureCount),
       ]);

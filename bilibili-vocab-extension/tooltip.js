@@ -181,6 +181,7 @@
     const meaning = activeWordElement.dataset.meaning || '';
     const level = activeWordElement.dataset.level || '';
     const phonetic = activeWordElement.dataset.phonetic || '';
+    const originalSubtitle = activeWordElement.dataset.originalSubtitle || '';
     if (!word) {
       return;
     }
@@ -201,6 +202,7 @@
           meaning,
           level,
           phonetic,
+          context: originalSubtitle,
         });
         if (success) {
           activeWordElement.dataset.learningStatus = 'saved';

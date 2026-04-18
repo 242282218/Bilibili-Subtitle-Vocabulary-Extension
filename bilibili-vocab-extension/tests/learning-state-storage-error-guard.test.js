@@ -87,3 +87,48 @@ test('learning state storage: saveWordToVocabularyBook should keep local cache u
   assert.equal(success, false);
   assert.deepEqual(learningState.getVocabularyBookWords(), []);
 });
+
+test('learning state storage: saveWordToVocabularyBook should persist subtitle context when save succeeds', async (t) => {
+  const previousChrome = globalThis.chrome;
+  const previousUtils = globalThis.Utils;
+  const runtime = { lastError: null };
+  let storageState = {};
+
+  globalThis.Utils = { logError() {} };
+  globalThis.chrome = {
+    runtime,
+    storage: {
+      local: {
+        get(_keys, callback) {
+          runtime.lastError = null;
+          callback(storageState);
+        },
+        set(payload, callback) {
+          storageState = {
+            ...storageState,
+            ...payload,
+          };
+          runtime.lastError = null;
+          callback();
+        },
+      },
+    },
+  };
+
+  t.after(() => {
+    delete require.cache[learningStatePath];
+    globalThis.chrome = previousChrome;
+    globalThis.Utils = previousUtils;
+  });
+
+  const learningState = loadLearningStateModule();
+  const success = await learningState.saveWordToVocabularyBook('retain', {
+    meaning: '记住',
+    level: 'CET6',
+    context: '这能帮助你更好地记住知识。',
+  });
+
+  assert.equal(success, true);
+  assert.equal(storageState.bili_vocab_word_stats_v2.retain.context, '这能帮助你更好地记住知识。');
+  assert.equal(learningState.getVocabularyBookWords()[0].context, '这能帮助你更好地记住知识。');
+});

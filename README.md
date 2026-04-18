@@ -62,7 +62,8 @@
 ## 生词本导出
 
 - Popup 可直接导出生词本为 `JSON`、`CSV`、`Anki TSV`
-- `Anki TSV` 默认字段为 `Front / Back / Level / Phonetic / SavedAt`
+- 如果单词是从字幕 tooltip 收藏的，导出结果会一并带出对应字幕原句，便于后续复习或导入 SRS
+- `Anki TSV` 默认字段为 `Front / Back / Example / Level / Phonetic / SavedAt`
 - 完整配置、站点规则和悬浮面板参数可在选项页统一管理
 
 ## 配置备份与词库维护

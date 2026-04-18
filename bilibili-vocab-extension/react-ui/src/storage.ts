@@ -111,6 +111,7 @@ export interface VocabularyWord {
   status: string;
   savedAt?: number;
   exposures?: number;
+  context?: string;
   details?: {
     meaning?: string;
     level?: string;
@@ -162,6 +163,17 @@ function normalizeVocabularyWord(input: unknown): VocabularyWord | null {
     status,
     savedAt: normalizeTimestamp(source.savedAt) ?? undefined,
     exposures: Number.isFinite(exposures) && exposures > 0 ? Math.floor(exposures) : 0,
+    context: String(
+      source.context ||
+        source.example ||
+        source.originalSubtitle ||
+        detailsSource.context ||
+        detailsSource.example ||
+        detailsSource.originalSubtitle ||
+        ''
+    )
+      .replace(/\s+/g, ' ')
+      .trim(),
     details: {
       meaning: String(detailsSource.meaning || '').trim(),
       level: String(detailsSource.level || '').trim(),
@@ -1170,10 +1182,11 @@ function sanitizeAnkiField(value: unknown): string {
 }
 
 function buildAnkiTsv(savedWords: VocabularyWord[]): string {
-  const headers = ['Front', 'Back', 'Level', 'Phonetic', 'SavedAt'];
+  const headers = ['Front', 'Back', 'Example', 'Level', 'Phonetic', 'SavedAt'];
   const rows = savedWords.map((word) => [
     sanitizeAnkiField(word.word),
     sanitizeAnkiField(word.details?.meaning || ''),
+    sanitizeAnkiField(word.context || ''),
     sanitizeAnkiField(word.details?.level || ''),
     sanitizeAnkiField(word.details?.phonetic || ''),
     word.savedAt ? new Date(word.savedAt).toISOString() : '',
@@ -1194,12 +1207,13 @@ export async function exportVocabularyBook(
     .sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
 
   if (format === 'csv') {
-    const headers = ['单词', '释义', '难度等级', '音标', '收藏时间', '遇见次数'];
+    const headers = ['单词', '释义', '难度等级', '音标', '原句上下文', '收藏时间', '遇见次数'];
     const rows = savedWords.map((word) => [
       word.word,
       word.details?.meaning || '',
       word.details?.level || '',
       word.details?.phonetic || '',
+      word.context || '',
       word.savedAt ? new Date(word.savedAt).toLocaleString() : '',
       word.exposures || 0,
     ]);
