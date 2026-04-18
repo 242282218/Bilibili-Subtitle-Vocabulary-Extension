@@ -329,7 +329,7 @@ test('continuous optimization: runContinuousOptimization should write reports an
   }
 });
 
-test('continuous optimization: runContinuousOptimization should keep legacy popup/options deferred and browser smoke out of shard coverage without overriding blind-spot priority', async () => {
+test('continuous optimization: runContinuousOptimization should keep legacy popup/options deferred and browser smoke out of shard coverage', async () => {
   const workspace = createWorkspace();
   const testsDir = path.join(workspace, 'tests');
   const reportDir = path.join(workspace, 'reports');
@@ -389,10 +389,9 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
     assert.deepEqual(summary.unassignedTests, []);
     assert.deepEqual(summary.outOfBandSmokeTests, ['browser-extension-smoke.test.js']);
     assert.deepEqual(summary.deferredLegacyTests, ['popup.test.js']);
-    assert.equal(summary.nextFocusCandidates[0].id, 'extension-browser-smoke-lane');
-    assert.equal(summary.nextFocusCandidates[1].id, 'runtime-bridge-coverage');
-    assert.equal(summary.nextFocusCandidates[2].id, 'legacy-react-drift');
-    assert.equal(summary.nextFocusCandidates[3].id, 'content-script-decomposition');
+    assert.equal(summary.nextFocusCandidates[0].id, 'runtime-bridge-coverage');
+    assert.equal(summary.nextFocusCandidates[1].id, 'legacy-react-drift');
+    assert.equal(summary.nextFocusCandidates[2].id, 'content-script-decomposition');
 
     const deferredCandidate = summary.nextFocusCandidates.at(-1);
     assert.equal(deferredCandidate.id, 'legacy-deferred-tests');
@@ -414,6 +413,7 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
     assert.match(markdown, /Out-of-Band Browser Smoke Tests/);
     assert.match(markdown, /browser-extension-smoke\.test\.js/);
     assert.match(markdown, /pnpm run test:extension-smoke/);
+    assert.match(markdown, /独立 CI job/);
     assert.match(markdown, /Legacy Deferred Tests/);
     assert.match(markdown, /popup\.test\.js/);
     assert.match(
@@ -463,4 +463,12 @@ test('continuous optimization contract: ci workflow should upload continuous opt
     workflow,
     /continuous-optimization:[\s\S]*path: \$\{\{\s*env\.WORKDIR\s*\}\}\/test-results\/continuous-optimization/
   );
+});
+
+test('continuous optimization contract: ci workflow should run extension smoke in a dedicated windows job', () => {
+  const workflow = readWorkflow('ci.yml');
+
+  assert.match(workflow, /^  extension-smoke-windows:\r?$/m);
+  assert.match(workflow, /extension-smoke-windows:[\s\S]*runs-on: windows-latest/);
+  assert.match(workflow, /extension-smoke-windows:[\s\S]*run: pnpm run test:extension-smoke/);
 });

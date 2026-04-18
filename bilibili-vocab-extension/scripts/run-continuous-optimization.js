@@ -26,17 +26,8 @@ const LEGACY_DEFERRED_REASON = `manifest / pack 真实交付入口是 dist/popup
 
 const STATIC_OPTIMIZATION_GAPS = [
   {
-    id: 'extension-browser-smoke-lane',
-    priority: 0,
-    title: '把 extension browser smoke 接进自动门禁',
-    rationale:
-      '仓库已具备本地 `test:extension-smoke`，但默认 continuous optimization / CI 仍以 Node 合同为主，真实扩展运行时 smoke 尚未进入自动门禁。',
-    files: ['package.json', 'tests/browser-extension-smoke.test.js', '.github/workflows/ci.yml'],
-    suggestedCommands: ['pnpm run test:extension-smoke'],
-  },
-  {
     id: 'runtime-bridge-coverage',
-    priority: 1,
+    priority: 0,
     title: '继续补通用工具与轻量适配层的直接测试',
     rationale: '当前直接测试缺口已明显缩小，剩余优先项应转向更高价值的浏览器级冒烟或复杂链路守卫。',
     files: [],
@@ -44,7 +35,7 @@ const STATIC_OPTIMIZATION_GAPS = [
   },
   {
     id: 'legacy-react-drift',
-    priority: 2,
+    priority: 1,
     title: '继续压低 React 与 legacy 双栈漂移风险',
     rationale:
       'manifest 已切到 React 入口，但根目录 legacy popup/options/overlay 仍存在，后续优化需要持续防止目标漂移。',
@@ -53,7 +44,7 @@ const STATIC_OPTIMIZATION_GAPS = [
   },
   {
     id: 'content-script-decomposition',
-    priority: 3,
+    priority: 2,
     title: '围绕 contentScript.js 做定向拆分或补守卫测试',
     rationale:
       'contentScript.js 仍是最高复杂区，初始化、缓存、观察者、字幕导航和 overlay 桥接耦合较重。',
@@ -499,7 +490,7 @@ function renderMarkdownReport(summary) {
     lines.push('- None');
   } else {
     lines.push(
-      '- 说明: 以下测试通过 `pnpm run test:extension-smoke` 单独执行，当前不纳入默认 continuous optimization shard；剩余缺口是把这条真实扩展运行时 smoke 接进自动门禁。'
+      '- 说明: 以下测试通过 `pnpm run test:extension-smoke` 和独立 CI job 执行，当前不纳入默认 continuous optimization shard。'
     );
     for (const testFile of summary.outOfBandSmokeTests) {
       lines.push(`- ${testFile}`);
