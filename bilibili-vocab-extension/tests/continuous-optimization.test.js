@@ -83,6 +83,7 @@ test('continuous optimization: createExecutionPlan should resolve gates and shar
       'segmenter.test.js',
       'translator.test.js',
       'tooltip.test.js',
+      'contentScript-overlay-bridge.test.js',
       'react-ui-contract.test.js',
       'react-overlay-layout.test.js',
       'overlay-panel.test.js',
@@ -121,6 +122,7 @@ test('continuous optimization: createExecutionPlan should resolve gates and shar
     assert.equal(plan.shards[0].testFileCount, 6);
     assert.equal(plan.shards[1].testFileCount, 6);
     assert.deepEqual(plan.shards[2].testFiles, [
+      path.join('tests', 'contentScript-overlay-bridge.test.js'),
       path.join('tests', 'overlay-panel.test.js'),
       path.join('tests', 'react-overlay-layout.test.js'),
       path.join('tests', 'react-ui-contract.test.js'),

@@ -47,6 +47,7 @@ test('test ui entry contract: run-ui-tests should select only ui contract files'
     fs.mkdirSync(testsDir, { recursive: true });
     fs.writeFileSync(path.join(testsDir, 'popup.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'popup-live-preview-sync.test.js'), '', 'utf8');
+    fs.writeFileSync(path.join(testsDir, 'contentScript-overlay-bridge.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'react-overlay-layout.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'react-ui-contract.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'renderer.test.js'), '', 'utf8');
@@ -59,6 +60,7 @@ test('test ui entry contract: run-ui-tests should select only ui contract files'
     const testFiles = collectUiTestFiles(testsDir);
 
     assert.deepEqual(testFiles, [
+      path.join('tests', 'contentScript-overlay-bridge.test.js'),
       path.join('tests', 'overlay-panel.test.js'),
       path.join('tests', 'react-overlay-layout.test.js'),
       path.join('tests', 'react-ui-contract.test.js'),
@@ -77,6 +79,7 @@ test('test ui entry contract: run-ui-tests should execute node test with explici
   try {
     fs.mkdirSync(testsDir, { recursive: true });
     fs.writeFileSync(path.join(testsDir, 'popup.test.js'), '', 'utf8');
+    fs.writeFileSync(path.join(testsDir, 'contentScript-overlay-bridge.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'react-ui-contract.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'settings-layout.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'renderer.test.js'), '', 'utf8');
@@ -99,6 +102,7 @@ test('test ui entry contract: run-ui-tests should execute node test with explici
         command: 'node',
         args: [
           '--test',
+          path.join('tests', 'contentScript-overlay-bridge.test.js'),
           path.join('tests', 'react-ui-contract.test.js'),
           path.join('tests', 'settings-layout.test.js'),
         ],

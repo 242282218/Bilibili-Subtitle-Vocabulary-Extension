@@ -9,6 +9,7 @@ const testsDir = path.join(projectRoot, 'tests');
 
 const uiTestPatterns = [
   /^background-overlay(?:-.*)?\.test\.js$/,
+  /^contentScript-overlay-bridge\.test\.js$/,
   /^contentScript-overlay-loader\.test\.js$/,
   /^overlay-panel(?:-.*)?\.test\.js$/,
   /^react-overlay-.*\.test\.js$/,
