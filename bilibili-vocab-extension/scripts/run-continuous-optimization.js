@@ -14,6 +14,7 @@ const DEFAULT_REPORT_DIR = path.join(
   'continuous-optimization'
 );
 const DEFAULT_MAX_LOG_CHARS = 4000;
+const LEGACY_DEFERRED_TEST_PATTERNS = [/^options-.*\.test\.js$/, /^popup(?:-.*)?\.test\.js$/];
 
 const STATIC_OPTIMIZATION_GAPS = [
   {
@@ -133,6 +134,28 @@ function collectMatchingTestFiles(targetTestsDir = DEFAULT_TESTS_DIR, patterns =
   return listTestFiles(targetTestsDir)
     .filter((name) => patterns.some((pattern) => pattern.test(name)))
     .map((name) => path.join('tests', name));
+}
+
+function collectUnassignedTests(targetTestsDir = DEFAULT_TESTS_DIR, shards = []) {
+  const assigned = new Set(
+    (shards || []).flatMap((shard) =>
+      Array.isArray(shard && shard.testFiles)
+        ? shard.testFiles.map((file) => path.basename(file))
+        : []
+    )
+  );
+
+  return listTestFiles(targetTestsDir).filter((name) => !assigned.has(name));
+}
+
+function isLegacyDeferredTest(testFileName) {
+  return LEGACY_DEFERRED_TEST_PATTERNS.some((pattern) => pattern.test(String(testFileName || '')));
+}
+
+function buildNodeTestCommand(testFiles = []) {
+  return testFiles.length > 0
+    ? [`node --test ${testFiles.map((name) => `tests/${name}`).join(' ')}`]
+    : [];
 }
 
 function quoteCommandPart(value) {
@@ -307,6 +330,42 @@ function selectOptimizationCandidates(summary) {
     return candidates;
   }
 
+  const extraCandidates = [];
+
+  if (Array.isArray(summary.unassignedTests) && summary.unassignedTests.length > 0) {
+    extraCandidates.push({
+      id: 'unassigned-tests',
+      priority: extraCandidates.length,
+      title: '补齐未进入 continuous optimization 的现有测试',
+      rationale: `当前有 ${summary.unassignedTests.length} 个测试文件未匹配任何 shard，持续优化对这些文件会产生假绿覆盖。`,
+      files: summary.unassignedTests.slice(),
+      suggestedCommands: buildNodeTestCommand(summary.unassignedTests),
+    });
+  }
+
+  if (Array.isArray(summary.deferredLegacyTests) && summary.deferredLegacyTests.length > 0) {
+    extraCandidates.push({
+      id: 'legacy-deferred-tests',
+      priority: extraCandidates.length,
+      title: '复核 legacy popup/options 测试是否继续留在 optimize lane 外',
+      rationale: `当前有 ${summary.deferredLegacyTests.length} 个测试文件锁定 legacy popup/options 入口，报告已显式暴露，但默认 optimize lane 仍未纳入它们。`,
+      files: summary.deferredLegacyTests.slice(),
+      suggestedCommands: buildNodeTestCommand(summary.deferredLegacyTests),
+    });
+  }
+
+  if (extraCandidates.length > 0) {
+    return [
+      ...extraCandidates,
+      ...STATIC_OPTIMIZATION_GAPS.map((item, index) => ({
+        ...item,
+        priority: index + extraCandidates.length,
+        files: item.files.slice(),
+        suggestedCommands: item.suggestedCommands.slice(),
+      })),
+    ];
+  }
+
   return STATIC_OPTIMIZATION_GAPS.map((item) => ({
     ...item,
     files: item.files.slice(),
@@ -362,6 +421,26 @@ function renderMarkdownReport(summary) {
     }
     if (candidate.suggestedCommands.length > 0) {
       lines.push(`   - Commands: ${candidate.suggestedCommands.join(' | ')}`);
+    }
+  }
+
+  lines.push('', '## Unassigned Tests', '');
+
+  if (summary.unassignedTests.length === 0) {
+    lines.push('- None');
+  } else {
+    for (const testFile of summary.unassignedTests) {
+      lines.push(`- ${testFile}`);
+    }
+  }
+
+  lines.push('', '## Legacy Deferred Tests', '');
+
+  if (summary.deferredLegacyTests.length === 0) {
+    lines.push('- None');
+  } else {
+    for (const testFile of summary.deferredLegacyTests) {
+      lines.push(`- ${testFile}`);
     }
   }
 
@@ -540,6 +619,8 @@ async function runContinuousOptimization(options = {}) {
     parallelShards,
     gates: gateResults,
     shards: shardResults,
+    unassignedTests: [],
+    deferredLegacyTests: [],
     knownBlindSpots: STATIC_OPTIMIZATION_GAPS.map((item) => ({
       id: item.id,
       title: item.title,
@@ -547,6 +628,12 @@ async function runContinuousOptimization(options = {}) {
       files: item.files.slice(),
     })),
   };
+
+  const rawUnassignedTests = collectUnassignedTests(plan.testsDir, plan.shards);
+  summary.deferredLegacyTests = rawUnassignedTests.filter(isLegacyDeferredTest);
+  summary.unassignedTests = rawUnassignedTests.filter(
+    (testFile) => !isLegacyDeferredTest(testFile)
+  );
 
   summary.nextFocusCandidates = selectOptimizationCandidates(summary);
   summary.reportFiles = writeReports(reportDir, summary);
@@ -628,6 +715,7 @@ module.exports = {
   STATIC_OPTIMIZATION_GAPS,
   TEST_SHARD_DEFINITIONS,
   collectMatchingTestFiles,
+  collectUnassignedTests,
   createExecutionPlan,
   createSpawnSpec,
   createRunId,

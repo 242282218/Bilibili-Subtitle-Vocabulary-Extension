@@ -248,6 +248,79 @@ test('continuous optimization: runContinuousOptimization should write reports an
   }
 });
 
+test('continuous optimization: runContinuousOptimization should classify legacy popup/options tests separately', async () => {
+  const workspace = createWorkspace();
+  const testsDir = path.join(workspace, 'tests');
+  const reportDir = path.join(workspace, 'reports');
+
+  try {
+    createTestFiles(testsDir, [
+      'adaptive-tuning.test.js',
+      'background.test.js',
+      'experience-metrics.test.js',
+      'learning-state.test.js',
+      'shared-settings.test.js',
+      'vocabulary.test.js',
+      'contentScript-hit-tracking.test.js',
+      'subtitleParser.test.js',
+      'renderer.test.js',
+      'segmenter.test.js',
+      'translator.test.js',
+      'tooltip.test.js',
+      'react-ui-contract.test.js',
+      'react-overlay-layout.test.js',
+      'overlay-panel.test.js',
+      'settings-layout.test.js',
+      'test-ui-entry-contract.test.js',
+      'build-entry-contract.test.js',
+      'lint-entry-contract.test.js',
+      'workflow-lockfile-contract.test.js',
+      'continuous-optimization.test.js',
+      'open-vocab-data.test.js',
+      'scheduler.test.js',
+      'danmaku.test.js',
+      'standalone-init.test.js',
+      'check-overlay-size.test.js',
+      'refresh-overlay-size-baseline.test.js',
+      'pack-extension.test.js',
+      'test-coverage-entry-contract.test.js',
+      'settings-ui-state-machine.test.js',
+      'popup.test.js',
+    ]);
+
+    const summary = await runContinuousOptimization({
+      projectRoot: workspace,
+      testsDir,
+      reportDir,
+      runId: 'RUN-UNASSIGNED',
+      executeCommand() {
+        return Promise.resolve({
+          status: 0,
+          durationMs: 25,
+          stdout: '',
+          stderr: '',
+        });
+      },
+    });
+
+    assert.equal(summary.overallStatus, 'pass');
+    assert.deepEqual(summary.unassignedTests, []);
+    assert.deepEqual(summary.deferredLegacyTests, ['popup.test.js']);
+    assert.equal(summary.nextFocusCandidates[0].id, 'legacy-deferred-tests');
+    assert.deepEqual(summary.nextFocusCandidates[0].files, ['popup.test.js']);
+
+    const latestReport = JSON.parse(fs.readFileSync(path.join(reportDir, 'latest.json'), 'utf8'));
+    assert.deepEqual(latestReport.unassignedTests, []);
+    assert.deepEqual(latestReport.deferredLegacyTests, ['popup.test.js']);
+
+    const markdown = fs.readFileSync(path.join(reportDir, 'latest.md'), 'utf8');
+    assert.match(markdown, /Legacy Deferred Tests/);
+    assert.match(markdown, /popup\.test\.js/);
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test('continuous optimization contract: package should expose shard and cycle scripts', () => {
   const scripts = readPackageScripts();
 
