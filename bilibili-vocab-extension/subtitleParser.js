@@ -680,6 +680,10 @@
     return `${bvid || `aid:${normalizedAid}`}:cid:${normalizedCid}`;
   }
 
+  function getCurrentSubtitleTimelineCacheKey() {
+    return buildSubtitleTimelineCacheKey(extractVideoIdentifiers());
+  }
+
   function resetSubtitleTimelineCache(nextCacheKey = '') {
     subtitleTimeline = [];
     subtitleTimelineCacheKey = nextCacheKey;
@@ -781,7 +785,7 @@
   }
 
   function getSubtitleFromTimelineAtCurrentTime() {
-    const cacheKey = buildSubtitleTimelineCacheKey(extractVideoIdentifiers());
+    const cacheKey = getCurrentSubtitleTimelineCacheKey();
     if (
       !cacheKey ||
       cacheKey !== subtitleTimelineCacheKey ||
@@ -828,6 +832,7 @@
     pickPreferredSubtitleTrack,
     findSubtitleByTime,
     extractVideoIdentifiers,
+    getCurrentSubtitleTimelineCacheKey,
     loadSubtitleTimeline,
     getSubtitleFromTimelineAtCurrentTime,
   };

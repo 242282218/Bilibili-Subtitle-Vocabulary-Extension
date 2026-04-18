@@ -47,6 +47,19 @@ interface SubtitleNavigationApi {
   ) => number | null;
 }
 
+export interface OverlaySubtitleNavigationPayload {
+  videoKey: string;
+  state: SubtitleNavigationState;
+}
+
+interface OverlaySubtitleNavigationBridge {
+  read?: () => OverlaySubtitleNavigationPayload;
+  refresh?: () => Promise<OverlaySubtitleNavigationPayload>;
+  subscribe?: (
+    listener: (payload: OverlaySubtitleNavigationPayload) => void
+  ) => (() => void) | void;
+}
+
 function readSubtitleNavigationApi(): SubtitleNavigationApi {
   const scope = globalThis as typeof globalThis & {
     SubtitleNavigationShared?: SubtitleNavigationApi;
@@ -55,6 +68,13 @@ function readSubtitleNavigationApi(): SubtitleNavigationApi {
     return scope.SubtitleNavigationShared;
   }
   throw new Error('Missing subtitle navigation runtime');
+}
+
+function readOverlaySubtitleNavigationBridge(): OverlaySubtitleNavigationBridge | null {
+  const scope = globalThis as typeof globalThis & {
+    BiliVocabOverlaySubtitleNavigationBridge?: OverlaySubtitleNavigationBridge;
+  };
+  return scope.BiliVocabOverlaySubtitleNavigationBridge || null;
 }
 
 export function isSubtitleTimelineHostSupported(hostname: string): boolean {
@@ -91,4 +111,34 @@ export function seekVideoToSubtitle(
   targetIndex: number | null
 ): number | null {
   return readSubtitleNavigationApi().seekVideoToSubtitle(video, timeline, targetIndex);
+}
+
+export function readOverlaySubtitleNavigationState(): OverlaySubtitleNavigationPayload {
+  const bridge = readOverlaySubtitleNavigationBridge();
+  if (!bridge || typeof bridge.read !== 'function') {
+    return {
+      videoKey: '',
+      state: buildSubtitleNavigationState({}),
+    };
+  }
+  return bridge.read();
+}
+
+export async function refreshOverlaySubtitleNavigationState(): Promise<OverlaySubtitleNavigationPayload> {
+  const bridge = readOverlaySubtitleNavigationBridge();
+  if (!bridge || typeof bridge.refresh !== 'function') {
+    return readOverlaySubtitleNavigationState();
+  }
+  return bridge.refresh();
+}
+
+export function subscribeOverlaySubtitleNavigationState(
+  listener: (payload: OverlaySubtitleNavigationPayload) => void
+): () => void {
+  const bridge = readOverlaySubtitleNavigationBridge();
+  if (!bridge || typeof bridge.subscribe !== 'function') {
+    return () => {};
+  }
+  const unsubscribe = bridge.subscribe(listener);
+  return typeof unsubscribe === 'function' ? unsubscribe : () => {};
 }

@@ -15,9 +15,11 @@ test('react overlay subtitle navigation contract: overlay entry should render su
   assert.match(source, /上一句/);
   assert.match(source, /重播本句/);
   assert.match(source, /下一句/);
-  assert.match(source, /buildSubtitleNavigationState/);
+  assert.match(source, /readOverlaySubtitleNavigationState/);
+  assert.match(source, /refreshOverlaySubtitleNavigationState/);
+  assert.match(source, /subscribeOverlaySubtitleNavigationState/);
   assert.match(source, /seekVideoToSubtitle/);
   assert.match(source, /loadSubtitleTimeline\(\)/);
-  assert.match(source, /location\.href/);
-  assert.match(source, /subtitlePageUrlRef/);
+  assert.doesNotMatch(source, /window\.setInterval/);
+  assert.doesNotMatch(source, /location\.href/);
 });

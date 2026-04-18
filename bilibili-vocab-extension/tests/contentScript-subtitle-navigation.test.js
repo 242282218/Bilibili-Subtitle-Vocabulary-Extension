@@ -51,6 +51,9 @@ global.SubtitleParser = {
   isBilibiliHost(hostname) {
     return hostname === 'www.bilibili.com';
   },
+  getCurrentSubtitleTimelineCacheKey() {
+    return '';
+  },
 };
 
 const contentScriptPath = require.resolve('../contentScript.js');
@@ -154,6 +157,42 @@ test('contentScript subtitle navigation: should stream initial snapshot over a c
   assert.equal(messages[0].payload.supported, true);
   assert.equal(messages[0].payload.progressLabel, '2 / 2');
   assert.equal(messages[0].payload.currentText, '第二句');
+});
+
+test('contentScript subtitle navigation: should expose overlay bridge payload without polling', async () => {
+  const video = { currentTime: 2.5 };
+  global.location = {
+    hostname: 'www.bilibili.com',
+  };
+  global.document.querySelector = (selector) => {
+    if (selector === 'video') {
+      return video;
+    }
+    return null;
+  };
+  global.SubtitleParser.getCurrentSubtitleTimelineCacheKey = () => 'BV1xx411x7xN:cid:42';
+  global.SubtitleParser.loadSubtitleTimeline = async () => [
+    { from: 0, to: 1.5, content: '第一句' },
+    { from: 2.2, to: 3.7, content: '第二句' },
+  ];
+
+  assert.ok(global.BiliVocabOverlaySubtitleNavigationBridge);
+
+  const payload = await global.BiliVocabOverlaySubtitleNavigationBridge.refresh();
+
+  assert.equal(payload.videoKey, 'BV1xx411x7xN:cid:42');
+  assert.equal(payload.state.supported, true);
+  assert.equal(payload.state.progressLabel, '2 / 2');
+  assert.equal(payload.state.currentIndex, 1);
+
+  let pushed = null;
+  const unsubscribe = global.BiliVocabOverlaySubtitleNavigationBridge.subscribe((next) => {
+    pushed = cloneValue(next);
+  });
+  unsubscribe();
+
+  assert.equal(pushed.videoKey, 'BV1xx411x7xN:cid:42');
+  assert.equal(pushed.state.nextIndex, null);
 });
 
 test.after(() => {

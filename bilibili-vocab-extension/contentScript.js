@@ -62,6 +62,7 @@
     'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE';
   const ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE =
     'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE';
+  const OVERLAY_SUBTITLE_NAVIGATION_BRIDGE_KEY = 'BiliVocabOverlaySubtitleNavigationBridge';
 
   let observer = null;
   let observerTarget = null;
@@ -81,9 +82,12 @@
   const translationCache = new LRUCacheCtor(TRANSLATION_CACHE_LIMIT);
   let boundVideo = null;
   const subtitleNavigationPorts = new Set();
+  const overlaySubtitleNavigationListeners = new Set();
   let subtitleNavigationBroadcastPromise = null;
   let subtitleNavigationBroadcastQueued = false;
   let subtitleNavigationSnapshotSignature = '';
+  let overlaySubtitleNavigationSignature = '';
+  let overlaySubtitleNavigationPayload = null;
   let webTextProcessTimer = null;
   let webTextProcessing = false;
   let lastWebTextProcessAt = 0;
@@ -1062,6 +1066,91 @@
     ].join('::');
   }
 
+  function getCurrentSubtitleNavigationVideoKey() {
+    if (
+      globalThis.SubtitleParser &&
+      typeof globalThis.SubtitleParser.getCurrentSubtitleTimelineCacheKey === 'function'
+    ) {
+      return String(globalThis.SubtitleParser.getCurrentSubtitleTimelineCacheKey() || '');
+    }
+    return '';
+  }
+
+  function createOverlaySubtitleNavigationPayload(
+    state,
+    videoKey = getCurrentSubtitleNavigationVideoKey()
+  ) {
+    return {
+      videoKey: String(videoKey || ''),
+      state:
+        state && typeof state === 'object'
+          ? { ...state }
+          : buildSubtitleNavigationContext(null, []).state,
+    };
+  }
+
+  function cloneOverlaySubtitleNavigationPayload(payload) {
+    const source =
+      payload && typeof payload === 'object'
+        ? payload
+        : createOverlaySubtitleNavigationPayload(buildSubtitleNavigationContext(null, []).state);
+    return {
+      videoKey: String(source.videoKey || ''),
+      state:
+        source.state && typeof source.state === 'object'
+          ? { ...source.state }
+          : buildSubtitleNavigationContext(null, []).state,
+    };
+  }
+
+  function createOverlaySubtitleNavigationSignature(payload) {
+    const normalized =
+      payload && typeof payload === 'object'
+        ? payload
+        : createOverlaySubtitleNavigationPayload(buildSubtitleNavigationContext(null, []).state);
+    const state = normalized.state && typeof normalized.state === 'object' ? normalized.state : {};
+    return [
+      String(normalized.videoKey || ''),
+      state.supported === true ? '1' : '0',
+      state.loading === true ? '1' : '0',
+      String(state.progressLabel || ''),
+      String(state.headline || ''),
+      String(state.description || ''),
+      String(state.currentText || ''),
+      state.previousIndex != null ? String(state.previousIndex) : '',
+      state.replayIndex != null ? String(state.replayIndex) : '',
+      state.nextIndex != null ? String(state.nextIndex) : '',
+    ].join('::');
+  }
+
+  function publishOverlaySubtitleNavigationPayload(payload) {
+    const nextPayload = cloneOverlaySubtitleNavigationPayload(payload);
+    overlaySubtitleNavigationPayload = nextPayload;
+    overlaySubtitleNavigationSignature = createOverlaySubtitleNavigationSignature(nextPayload);
+    overlaySubtitleNavigationListeners.forEach((listener) => {
+      try {
+        listener(cloneOverlaySubtitleNavigationPayload(nextPayload));
+      } catch (error) {
+        logError('Overlay subtitle navigation bridge update failed', error);
+      }
+    });
+  }
+
+  function buildPendingOverlaySubtitleNavigationPayload(
+    videoKey = getCurrentSubtitleNavigationVideoKey()
+  ) {
+    const video = document.querySelector('video');
+    const hasVideo = isSubtitleNavigationVideo(video);
+    const state = buildSharedSubtitleNavigationState({
+      hostname: getSubtitleNavigationHostname(),
+      loading: isSubtitleNavigationSupportedHost() && hasVideo,
+      hasVideo,
+      currentTime: hasVideo ? Number(video.currentTime) : Number.NaN,
+      timeline: [],
+    });
+    return createOverlaySubtitleNavigationPayload(state, videoKey);
+  }
+
   function postSubtitleNavigationSnapshot(port, snapshot) {
     if (!isSubtitleNavigationStreamPort(port) || typeof port.postMessage !== 'function') {
       return;
@@ -1085,8 +1174,22 @@
   }
 
   function queueSubtitleNavigationBroadcast() {
-    if (subtitleNavigationPorts.size === 0) {
+    if (subtitleNavigationPorts.size === 0 && overlaySubtitleNavigationListeners.size === 0) {
       return;
+    }
+
+    const pendingOverlayPayload = buildPendingOverlaySubtitleNavigationPayload();
+    const pendingOverlaySignature = createOverlaySubtitleNavigationSignature(pendingOverlayPayload);
+    if (
+      pendingOverlaySignature !== overlaySubtitleNavigationSignature &&
+      pendingOverlayPayload.videoKey !==
+        String(
+          overlaySubtitleNavigationPayload && overlaySubtitleNavigationPayload.videoKey
+            ? overlaySubtitleNavigationPayload.videoKey
+            : ''
+        )
+    ) {
+      publishOverlaySubtitleNavigationPayload(pendingOverlayPayload);
     }
 
     if (subtitleNavigationBroadcastPromise) {
@@ -1094,13 +1197,26 @@
       return;
     }
 
-    subtitleNavigationBroadcastPromise = readSubtitleNavigationSnapshot()
-      .then((snapshot) => {
-        const nextSignature = createSubtitleNavigationSnapshotSignature(snapshot);
-        if (nextSignature === subtitleNavigationSnapshotSignature) {
+    subtitleNavigationBroadcastPromise = readSubtitleNavigationRuntimePayload()
+      .then((runtimePayload) => {
+        const nextSnapshotSignature = createSubtitleNavigationSnapshotSignature(
+          runtimePayload.snapshot
+        );
+        if (nextSnapshotSignature !== subtitleNavigationSnapshotSignature) {
+          broadcastSubtitleNavigationSnapshot(runtimePayload.snapshot);
+        }
+
+        const nextOverlaySignature = createOverlaySubtitleNavigationSignature(
+          runtimePayload.overlayPayload
+        );
+        if (nextOverlaySignature !== overlaySubtitleNavigationSignature) {
+          publishOverlaySubtitleNavigationPayload(runtimePayload.overlayPayload);
           return;
         }
-        broadcastSubtitleNavigationSnapshot(snapshot);
+        overlaySubtitleNavigationPayload = cloneOverlaySubtitleNavigationPayload(
+          runtimePayload.overlayPayload
+        );
+        overlaySubtitleNavigationSignature = nextOverlaySignature;
       })
       .catch((error) => {
         logError('Subtitle navigation stream refresh failed', error);
@@ -1156,6 +1272,69 @@
   async function readSubtitleNavigationSnapshot() {
     const context = await readSubtitleNavigationContext();
     return context.snapshot;
+  }
+
+  async function readSubtitleNavigationRuntimePayload() {
+    const context = await readSubtitleNavigationContext();
+    const videoKey = getCurrentSubtitleNavigationVideoKey();
+    return {
+      context,
+      videoKey,
+      snapshot: context.snapshot,
+      overlayPayload: createOverlaySubtitleNavigationPayload(context.state, videoKey),
+    };
+  }
+
+  function readOverlaySubtitleNavigationPayload() {
+    if (overlaySubtitleNavigationPayload) {
+      return cloneOverlaySubtitleNavigationPayload(overlaySubtitleNavigationPayload);
+    }
+    const initialPayload = buildPendingOverlaySubtitleNavigationPayload();
+    overlaySubtitleNavigationPayload = cloneOverlaySubtitleNavigationPayload(initialPayload);
+    overlaySubtitleNavigationSignature = createOverlaySubtitleNavigationSignature(initialPayload);
+    return cloneOverlaySubtitleNavigationPayload(initialPayload);
+  }
+
+  function subscribeOverlaySubtitleNavigation(listener) {
+    if (typeof listener !== 'function') {
+      return () => {};
+    }
+
+    overlaySubtitleNavigationListeners.add(listener);
+    listener(readOverlaySubtitleNavigationPayload());
+    return () => {
+      overlaySubtitleNavigationListeners.delete(listener);
+    };
+  }
+
+  async function refreshOverlaySubtitleNavigation() {
+    const runtimePayload = await readSubtitleNavigationRuntimePayload();
+    const nextOverlaySignature = createOverlaySubtitleNavigationSignature(
+      runtimePayload.overlayPayload
+    );
+    if (nextOverlaySignature !== overlaySubtitleNavigationSignature) {
+      publishOverlaySubtitleNavigationPayload(runtimePayload.overlayPayload);
+    } else {
+      overlaySubtitleNavigationPayload = cloneOverlaySubtitleNavigationPayload(
+        runtimePayload.overlayPayload
+      );
+      overlaySubtitleNavigationSignature = nextOverlaySignature;
+    }
+    return cloneOverlaySubtitleNavigationPayload(runtimePayload.overlayPayload);
+  }
+
+  function ensureOverlaySubtitleNavigationBridge() {
+    globalThis[OVERLAY_SUBTITLE_NAVIGATION_BRIDGE_KEY] = {
+      read() {
+        return readOverlaySubtitleNavigationPayload();
+      },
+      refresh() {
+        return refreshOverlaySubtitleNavigation();
+      },
+      subscribe(listener) {
+        return subscribeOverlaySubtitleNavigation(listener);
+      },
+    };
   }
 
   async function navigateSubtitleByAction(action) {
@@ -1446,6 +1625,8 @@
     console.log('[BiliVocab] Running with settings:', settings);
   }
 
+  ensureOverlaySubtitleNavigationBridge();
+
   if (document.readyState === 'loading') {
     watchRuntimePorts();
     watchRuntimeMessages();
@@ -1486,7 +1667,11 @@
       findSubtitleNavigationIndices,
       buildSubtitleNavigationSnapshot,
       createSubtitleNavigationSnapshotSignature,
+      createOverlaySubtitleNavigationSignature,
       isSubtitleNavigationStreamPort,
+      readOverlaySubtitleNavigationPayload,
+      refreshOverlaySubtitleNavigation,
+      subscribeOverlaySubtitleNavigation,
       __readFromCacheForTest: readFromCache,
       __writeToCacheForTest: writeToCache,
       __clearTranslationCacheForTest: clearTranslationCache,

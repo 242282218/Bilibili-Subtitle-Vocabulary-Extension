@@ -181,6 +181,31 @@ test('subtitleParser timeline cache: should retry once identifiers become availa
   assert.equal(fetchCalls.length, 2);
 });
 
+test('subtitleParser timeline cache: should expose the current video cache key helper', () => {
+  global.location = {
+    hostname: 'www.bilibili.com',
+  };
+  global.document = {
+    querySelector() {
+      return null;
+    },
+  };
+  global.__INITIAL_STATE__ = {
+    videoData: {
+      bvid: 'BV1helper',
+      cid: 404,
+    },
+  };
+
+  const subtitleParser = loadSubtitleParser();
+  assert.equal(subtitleParser.getCurrentSubtitleTimelineCacheKey(), 'BV1helper:cid:404');
+
+  global.__INITIAL_STATE__ = {
+    videoData: {},
+  };
+  assert.equal(subtitleParser.getCurrentSubtitleTimelineCacheKey(), '');
+});
+
 test.after(() => {
   global.fetch = previousFetch;
   global.document = previousDocument;
