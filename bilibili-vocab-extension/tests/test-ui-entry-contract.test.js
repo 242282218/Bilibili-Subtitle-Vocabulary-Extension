@@ -71,6 +71,27 @@ test('test ui entry contract: run-ui-tests should select only ui contract files'
   }
 });
 
+test('test ui entry contract: current workspace should include runtime bridge and lightweight adapter direct ui tests', () => {
+  const testFiles = collectUiTestFiles(path.join(__dirname));
+
+  assert.deepEqual(
+    testFiles.filter((file) =>
+      [
+        'contentScript-overlay-bridge.test.js',
+        'react-ui-runtime-messaging.test.js',
+        'react-ui-study-preview.test.js',
+        'react-ui-use-overlay-settings.test.js',
+      ].includes(path.basename(file))
+    ),
+    [
+      path.join('tests', 'contentScript-overlay-bridge.test.js'),
+      path.join('tests', 'react-ui-runtime-messaging.test.js'),
+      path.join('tests', 'react-ui-study-preview.test.js'),
+      path.join('tests', 'react-ui-use-overlay-settings.test.js'),
+    ]
+  );
+});
+
 test('test ui entry contract: run-ui-tests should execute node test with explicit file list', () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'run-ui-tests-runner-'));
   const testsDir = path.join(workspace, 'tests');

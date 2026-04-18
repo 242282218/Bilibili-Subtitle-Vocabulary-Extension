@@ -10,6 +10,7 @@ const previousSubtitleParser = global.SubtitleParser;
 const previousReactOverlayModule = global.ReactOverlayModule;
 const previousOverlayPanelModule = global.OverlayPanelModule;
 let runtimeConnectListener = null;
+let runtimeMessageListener = null;
 
 function cloneValue(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -32,6 +33,11 @@ global.chrome = {
     onConnect: {
       addListener(listener) {
         runtimeConnectListener = listener;
+      },
+    },
+    onMessage: {
+      addListener(listener) {
+        runtimeMessageListener = listener;
       },
     },
   },
@@ -59,6 +65,17 @@ global.SubtitleParser = {
 const contentScriptPath = require.resolve('../contentScript.js');
 delete require.cache[contentScriptPath];
 const contentScript = require('../contentScript.js');
+
+function dispatchRuntimeMessage(message) {
+  return new Promise((resolve) => {
+    const keepChannelOpen = runtimeMessageListener(message, {}, (response) => {
+      resolve({
+        keepChannelOpen,
+        response: cloneValue(response),
+      });
+    });
+  });
+}
 
 test('contentScript subtitle navigation: should normalize only supported actions', () => {
   assert.equal(contentScript.normalizeSubtitleNavigationAction(' previous '), 'previous');
@@ -193,6 +210,77 @@ test('contentScript subtitle navigation: should expose overlay bridge payload wi
 
   assert.equal(pushed.videoKey, 'BV1xx411x7xN:cid:42');
   assert.equal(pushed.state.nextIndex, null);
+});
+
+test('contentScript subtitle navigation: should answer runtime read requests with current snapshot', async () => {
+  global.location = {
+    hostname: 'www.bilibili.com',
+  };
+  global.document.querySelector = (selector) => {
+    if (selector === 'video') {
+      return { currentTime: 2.5 };
+    }
+    return null;
+  };
+  global.SubtitleParser.loadSubtitleTimeline = async () => [
+    { from: 0, to: 1.5, content: '第一句' },
+    { from: 2.2, to: 3.7, content: '第二句' },
+  ];
+
+  const result = await dispatchRuntimeMessage({
+    type: 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_READ',
+  });
+
+  assert.equal(result.keepChannelOpen, true);
+  assert.equal(result.response.ok, true);
+  assert.equal(result.response.payload.supported, true);
+  assert.equal(result.response.payload.progressLabel, '2 / 2');
+  assert.equal(result.response.payload.currentText, '第二句');
+});
+
+test('contentScript subtitle navigation: should navigate to next subtitle via runtime message', async () => {
+  const video = { currentTime: 2.5 };
+  global.location = {
+    hostname: 'www.bilibili.com',
+  };
+  global.document.querySelector = (selector) => {
+    if (selector === 'video') {
+      return video;
+    }
+    return null;
+  };
+  global.SubtitleParser.loadSubtitleTimeline = async () => [
+    { from: 0, to: 1.5, content: '第一句' },
+    { from: 2.2, to: 3.7, content: '第二句' },
+    { from: 4, to: 5, content: '第三句' },
+  ];
+
+  const result = await dispatchRuntimeMessage({
+    type: 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE',
+    payload: {
+      action: 'next',
+    },
+  });
+
+  assert.equal(result.keepChannelOpen, true);
+  assert.equal(result.response.ok, true);
+  assert.equal(video.currentTime, 4.02);
+  assert.equal(result.response.payload.progressLabel, '3 / 3');
+  assert.equal(result.response.payload.currentText, '第三句');
+  assert.equal(result.response.payload.canGoNext, false);
+});
+
+test('contentScript subtitle navigation: should reject invalid runtime navigate actions', async () => {
+  const result = await dispatchRuntimeMessage({
+    type: 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE',
+    payload: {
+      action: 'jump',
+    },
+  });
+
+  assert.equal(result.keepChannelOpen, true);
+  assert.equal(result.response.ok, false);
+  assert.match(result.response.error, /Invalid subtitle navigation action/);
 });
 
 test.after(() => {

@@ -175,6 +175,53 @@ test('continuous optimization: current shard plan should not duplicate test file
   assert.deepEqual(collectDuplicateAssignments(plan.shards), []);
 });
 
+test('continuous optimization: current shard plan should route runtime bridge and lightweight adapter direct tests', () => {
+  const plan = createExecutionPlan({
+    projectRoot: path.join(__dirname, '..'),
+    testsDir: path.join(__dirname),
+  });
+  const runtimeState = plan.shards.find((shard) => shard.name === 'runtime-state');
+  const subtitleContent = plan.shards.find((shard) => shard.name === 'subtitle-content');
+  const uiOverlay = plan.shards.find((shard) => shard.name === 'ui-overlay');
+
+  assert.ok(runtimeState);
+  assert.ok(subtitleContent);
+  assert.ok(uiOverlay);
+
+  assert.deepEqual(
+    runtimeState.testFiles.filter((file) =>
+      ['config.test.js', 'runtime-messaging.test.js', 'utils.test.js'].includes(path.basename(file))
+    ),
+    [
+      path.join('tests', 'config.test.js'),
+      path.join('tests', 'runtime-messaging.test.js'),
+      path.join('tests', 'utils.test.js'),
+    ]
+  );
+  assert.deepEqual(
+    subtitleContent.testFiles.filter(
+      (file) => path.basename(file) === 'contentScript-subtitle-navigation.test.js'
+    ),
+    [path.join('tests', 'contentScript-subtitle-navigation.test.js')]
+  );
+  assert.deepEqual(
+    uiOverlay.testFiles.filter((file) =>
+      [
+        'contentScript-overlay-bridge.test.js',
+        'react-ui-runtime-messaging.test.js',
+        'react-ui-study-preview.test.js',
+        'react-ui-use-overlay-settings.test.js',
+      ].includes(path.basename(file))
+    ),
+    [
+      path.join('tests', 'contentScript-overlay-bridge.test.js'),
+      path.join('tests', 'react-ui-runtime-messaging.test.js'),
+      path.join('tests', 'react-ui-study-preview.test.js'),
+      path.join('tests', 'react-ui-use-overlay-settings.test.js'),
+    ]
+  );
+});
+
 test('continuous optimization: selectOptimizationCandidates should prioritize failures', () => {
   const candidates = selectOptimizationCandidates({
     gates: [
