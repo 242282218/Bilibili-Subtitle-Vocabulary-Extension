@@ -60,6 +60,8 @@
   const ACTIVE_TAB_SUBTITLE_NAVIGATION_READ = 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_READ';
   const ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE =
     'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE';
+  const ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE =
+    'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE';
 
   let observer = null;
   let observerTarget = null;
@@ -78,6 +80,10 @@
         };
   const translationCache = new LRUCacheCtor(TRANSLATION_CACHE_LIMIT);
   let boundVideo = null;
+  const subtitleNavigationPorts = new Set();
+  let subtitleNavigationBroadcastPromise = null;
+  let subtitleNavigationBroadcastQueued = false;
+  let subtitleNavigationSnapshotSignature = '';
   let webTextProcessTimer = null;
   let webTextProcessing = false;
   let lastWebTextProcessAt = 0;
@@ -563,10 +569,21 @@
   }
 
   function onVideoPlay() {
+    queueSubtitleNavigationBroadcast();
     syncEngineWithPlayback();
   }
 
   function onVideoPauseOrEnd() {
+    queueSubtitleNavigationBroadcast();
+    syncEngineWithPlayback();
+  }
+
+  function onVideoTimeUpdate() {
+    queueSubtitleNavigationBroadcast();
+  }
+
+  function onVideoSeeked() {
+    queueSubtitleNavigationBroadcast();
     syncEngineWithPlayback();
   }
 
@@ -577,6 +594,9 @@
     video.removeEventListener('play', onVideoPlay);
     video.removeEventListener('pause', onVideoPauseOrEnd);
     video.removeEventListener('ended', onVideoPauseOrEnd);
+    video.removeEventListener('timeupdate', onVideoTimeUpdate);
+    video.removeEventListener('seeked', onVideoSeeked);
+    video.removeEventListener('loadedmetadata', onVideoSeeked);
   }
 
   function bindVideoPlaybackEvents() {
@@ -584,6 +604,7 @@
     if (!(video instanceof HTMLVideoElement)) {
       unbindVideoPlaybackEvents(boundVideo);
       boundVideo = null;
+      queueSubtitleNavigationBroadcast();
       return;
     }
 
@@ -597,6 +618,10 @@
     boundVideo.addEventListener('play', onVideoPlay);
     boundVideo.addEventListener('pause', onVideoPauseOrEnd);
     boundVideo.addEventListener('ended', onVideoPauseOrEnd);
+    boundVideo.addEventListener('timeupdate', onVideoTimeUpdate);
+    boundVideo.addEventListener('seeked', onVideoSeeked);
+    boundVideo.addEventListener('loadedmetadata', onVideoSeeked);
+    queueSubtitleNavigationBroadcast();
   }
 
   function syncEngineWithPlayback() {
@@ -847,6 +872,7 @@
         // Why: keep observer target aligned with SPA DOM changes (body <-> subtitle container).
         observeSubtitleChanges();
       }
+      queueSubtitleNavigationBroadcast();
       scheduleProcess();
     });
 
@@ -879,6 +905,7 @@
         observeSubtitleChanges();
       }
       ensureRuntimeBindings();
+      queueSubtitleNavigationBroadcast();
       scheduleProcess();
     }, TIMELINE_POLL_MS);
   }
@@ -1011,6 +1038,77 @@
     return createSubtitleNavigationSnapshotFromState(state);
   }
 
+  function isSubtitleNavigationStreamPort(port) {
+    return Boolean(port && port.name === ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE);
+  }
+
+  function createSubtitleNavigationSnapshotSignature(snapshot) {
+    const normalized = snapshot && typeof snapshot === 'object' ? snapshot : {};
+    return [
+      normalized.supported === true ? '1' : '0',
+      String(normalized.progressLabel || ''),
+      String(normalized.headline || ''),
+      String(normalized.description || ''),
+      String(normalized.currentText || ''),
+      normalized.canGoPrevious === true ? '1' : '0',
+      normalized.canReplay === true ? '1' : '0',
+      normalized.canGoNext === true ? '1' : '0',
+    ].join('::');
+  }
+
+  function postSubtitleNavigationSnapshot(port, snapshot) {
+    if (!isSubtitleNavigationStreamPort(port) || typeof port.postMessage !== 'function') {
+      return;
+    }
+
+    port.postMessage({
+      type: ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE,
+      payload: snapshot,
+    });
+  }
+
+  function broadcastSubtitleNavigationSnapshot(snapshot) {
+    subtitleNavigationSnapshotSignature = createSubtitleNavigationSnapshotSignature(snapshot);
+    subtitleNavigationPorts.forEach((port) => {
+      try {
+        postSubtitleNavigationSnapshot(port, snapshot);
+      } catch (error) {
+        logError('Subtitle navigation stream update failed', error);
+      }
+    });
+  }
+
+  function queueSubtitleNavigationBroadcast() {
+    if (subtitleNavigationPorts.size === 0) {
+      return;
+    }
+
+    if (subtitleNavigationBroadcastPromise) {
+      subtitleNavigationBroadcastQueued = true;
+      return;
+    }
+
+    subtitleNavigationBroadcastPromise = readSubtitleNavigationSnapshot()
+      .then((snapshot) => {
+        const nextSignature = createSubtitleNavigationSnapshotSignature(snapshot);
+        if (nextSignature === subtitleNavigationSnapshotSignature) {
+          return;
+        }
+        broadcastSubtitleNavigationSnapshot(snapshot);
+      })
+      .catch((error) => {
+        logError('Subtitle navigation stream refresh failed', error);
+      })
+      .finally(() => {
+        subtitleNavigationBroadcastPromise = null;
+        if (!subtitleNavigationBroadcastQueued) {
+          return;
+        }
+        subtitleNavigationBroadcastQueued = false;
+        queueSubtitleNavigationBroadcast();
+      });
+  }
+
   function isSubtitleNavigationVideo(value) {
     return Boolean(value && typeof value.currentTime === 'number');
   }
@@ -1079,7 +1177,45 @@
       return context.snapshot;
     }
 
-    return buildSubtitleNavigationSnapshot(context.timeline, context.video.currentTime);
+    const snapshot = buildSubtitleNavigationSnapshot(context.timeline, context.video.currentTime);
+    queueSubtitleNavigationBroadcast();
+    return snapshot;
+  }
+
+  function watchRuntimePorts() {
+    if (
+      typeof chrome === 'undefined' ||
+      !chrome.runtime ||
+      !chrome.runtime.onConnect ||
+      typeof chrome.runtime.onConnect.addListener !== 'function'
+    ) {
+      return;
+    }
+
+    chrome.runtime.onConnect.addListener((port) => {
+      if (!isSubtitleNavigationStreamPort(port)) {
+        return;
+      }
+
+      subtitleNavigationPorts.add(port);
+      port.onDisconnect.addListener(() => {
+        subtitleNavigationPorts.delete(port);
+      });
+
+      Promise.resolve()
+        .then(() => readSubtitleNavigationSnapshot())
+        .then((snapshot) => {
+          postSubtitleNavigationSnapshot(port, snapshot);
+        })
+        .catch((error) => {
+          logError('Subtitle navigation stream init failed', error);
+          try {
+            postSubtitleNavigationSnapshot(port, buildSubtitleNavigationContext(null, []).snapshot);
+          } catch (fallbackError) {
+            logError('Subtitle navigation stream fallback failed', fallbackError);
+          }
+        });
+    });
   }
 
   function watchRuntimeMessages() {
@@ -1305,11 +1441,13 @@
   }
 
   if (document.readyState === 'loading') {
+    watchRuntimePorts();
     watchRuntimeMessages();
     document.addEventListener('DOMContentLoaded', () => {
       init().catch((error) => logError('Initialization failed', error));
     });
   } else {
+    watchRuntimePorts();
     watchRuntimeMessages();
     init().catch((error) => logError('Initialization failed', error));
   }
@@ -1341,6 +1479,8 @@
       normalizeSubtitleNavigationAction,
       findSubtitleNavigationIndices,
       buildSubtitleNavigationSnapshot,
+      createSubtitleNavigationSnapshotSignature,
+      isSubtitleNavigationStreamPort,
       __readFromCacheForTest: readFromCache,
       __writeToCacheForTest: writeToCache,
       __clearTranslationCacheForTest: clearTranslationCache,

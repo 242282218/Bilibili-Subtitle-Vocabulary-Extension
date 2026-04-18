@@ -5,9 +5,15 @@ const path = require('node:path');
 
 const previousDocument = global.document;
 const previousChrome = global.chrome;
+const previousLocation = global.location;
 const previousSubtitleParser = global.SubtitleParser;
 const previousReactOverlayModule = global.ReactOverlayModule;
 const previousOverlayPanelModule = global.OverlayPanelModule;
+let runtimeConnectListener = null;
+
+function cloneValue(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
 
 global.document = {
   readyState: 'loading',
@@ -22,6 +28,11 @@ global.chrome = {
   runtime: {
     getURL() {
       return 'data:text/javascript,export%20function%20mountOverlayPanel(){}';
+    },
+    onConnect: {
+      addListener(listener) {
+        runtimeConnectListener = listener;
+      },
     },
   },
   storage: {
@@ -109,9 +120,46 @@ test('contentScript subtitle navigation: manifest should load shared runtime bef
   assert.ok(runtimeIndex < contentScriptIndex);
 });
 
+test('contentScript subtitle navigation: should stream initial snapshot over a connected port', async () => {
+  const messages = [];
+  global.location = {
+    hostname: 'www.bilibili.com',
+  };
+  global.document.querySelector = (selector) => {
+    if (selector === 'video') {
+      return { currentTime: 2.5 };
+    }
+    return null;
+  };
+  global.SubtitleParser.loadSubtitleTimeline = async () => [
+    { from: 0, to: 1.5, content: '第一句' },
+    { from: 2.2, to: 3.7, content: '第二句' },
+  ];
+
+  const port = {
+    name: 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE',
+    onDisconnect: {
+      addListener() {},
+    },
+    postMessage(message) {
+      messages.push(cloneValue(message));
+    },
+  };
+
+  runtimeConnectListener(port);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].type, 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE');
+  assert.equal(messages[0].payload.supported, true);
+  assert.equal(messages[0].payload.progressLabel, '2 / 2');
+  assert.equal(messages[0].payload.currentText, '第二句');
+});
+
 test.after(() => {
   global.document = previousDocument;
   global.chrome = previousChrome;
+  global.location = previousLocation;
   global.SubtitleParser = previousSubtitleParser;
   global.ReactOverlayModule = previousReactOverlayModule;
   global.OverlayPanelModule = previousOverlayPanelModule;

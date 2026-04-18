@@ -27,6 +27,7 @@ import {
 import { ShortcutGuide } from './shortcut-guide';
 import { StudyPreview } from './study-preview';
 import {
+  ActiveTabSubtitleStatus,
   ActiveTabSubtitleNavigation,
   ActiveTabSubtitleNavigationAction,
   AdaptiveTuningState,
@@ -50,13 +51,13 @@ import {
   navigateActiveTabSubtitle,
   openOptionsPage,
   readActiveTabSubtitleStatus,
+  subscribeActiveTabSubtitleStatus,
   subscribeQuickReviewSource,
 } from './storage';
 import { getThemeModeLabel, useDocumentTheme } from './ui-theme';
 import { useV3Settings } from './use-v3-settings';
 
 const HIGH_RISK_UNDO_WINDOW_MS = 6 * 1000;
-const ACTIVE_TAB_SUBTITLE_REFRESH_MS = 1000;
 const EMPTY_SUMMARY: LearningSummary = {
   todayCount: 0,
   newCount: 0,
@@ -202,11 +203,7 @@ function PopupApp() {
     setExperienceMetrics(nextMetrics);
   }
 
-  async function refreshActiveTabSubtitleStatus(shouldSkip: () => boolean = () => false) {
-    const activeTabStatus = await readActiveTabSubtitleStatus();
-    if (shouldSkip()) {
-      return;
-    }
+  function applyActiveTabSubtitleStatus(activeTabStatus: ActiveTabSubtitleStatus) {
     const normalizedHostname = normalizeHostname(activeTabStatus.hostname);
     setHostname((current) => (current === normalizedHostname ? current : normalizedHostname));
     setSubtitleNavigation((current) =>
@@ -214,6 +211,14 @@ function PopupApp() {
         ? current
         : activeTabStatus.subtitleNavigation
     );
+  }
+
+  async function refreshActiveTabSubtitleStatus(shouldSkip: () => boolean = () => false) {
+    const activeTabStatus = await readActiveTabSubtitleStatus();
+    if (shouldSkip()) {
+      return;
+    }
+    applyActiveTabSubtitleStatus(activeTabStatus);
   }
 
   useEffect(() => {
@@ -240,32 +245,19 @@ function PopupApp() {
 
   useEffect(() => {
     let cancelled = false;
-    let refreshing = false;
-
-    async function refreshSilently() {
-      if (cancelled || refreshing || subtitleNavigating) {
+    void refreshActiveTabSubtitleStatus(() => cancelled);
+    const unsubscribeSubtitle = subscribeActiveTabSubtitleStatus((next) => {
+      if (cancelled) {
         return;
       }
-      refreshing = true;
-      try {
-        await refreshActiveTabSubtitleStatus(() => cancelled);
-      } catch {
-        // Ignore polling failures to keep popup actions responsive.
-      } finally {
-        refreshing = false;
-      }
-    }
-
-    void refreshSilently();
-    const timer = window.setInterval(() => {
-      void refreshSilently();
-    }, ACTIVE_TAB_SUBTITLE_REFRESH_MS);
+      applyActiveTabSubtitleStatus(next);
+    });
 
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      unsubscribeSubtitle();
     };
-  }, [subtitleNavigating]);
+  }, []);
 
   useEffect(() => {
     const unsubscribeQuickReview = subscribeQuickReviewSource(() => {

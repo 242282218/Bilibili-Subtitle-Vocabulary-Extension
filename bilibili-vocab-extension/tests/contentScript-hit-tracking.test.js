@@ -149,7 +149,14 @@ test('bindVideoPlaybackEvents: should unbind stale video when current page has n
       paused: true,
       ended: true,
     });
-    assert.deepEqual(video.removedListeners.sort(), ['ended', 'pause', 'play']);
+    assert.deepEqual(video.removedListeners.sort(), [
+      'ended',
+      'loadedmetadata',
+      'pause',
+      'play',
+      'seeked',
+      'timeupdate',
+    ]);
   } finally {
     global.document.querySelector = previousQuerySelector;
   }

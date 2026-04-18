@@ -26,6 +26,8 @@ const EXPERIENCE_METRICS_STORAGE_KEY = 'bili_vocab_experience_metrics_v1';
 const ACTIVE_TAB_SUBTITLE_NAVIGATION_READ = 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_READ';
 const ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE =
   'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE';
+const ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE =
+  'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE';
 const METRIC_COUNTER_KEYS = [
   'contextMisreplaceReported',
   'contextMisreplaceHigh',
@@ -248,6 +250,10 @@ function hasChromeTabs(): boolean {
 
 function hasChromeTabMessaging(): boolean {
   return hasChromeTabs() && typeof chrome.tabs.sendMessage === 'function';
+}
+
+function hasChromeTabConnections(): boolean {
+  return hasChromeTabs() && typeof chrome.tabs.connect === 'function';
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -954,6 +960,18 @@ async function sendActiveTabMessage<T>(type: string, payload: Record<string, unk
   return sendTabMessage(await queryActiveTab(), type, payload);
 }
 
+function connectTabPort(activeTab: chrome.tabs.Tab | null, name: string): chrome.runtime.Port {
+  if (!hasChromeTabConnections()) {
+    throw new Error('chrome.tabs.connect unavailable');
+  }
+
+  if (!activeTab || typeof activeTab.id !== 'number') {
+    throw new Error('active tab unavailable');
+  }
+
+  return chrome.tabs.connect(activeTab.id, { name });
+}
+
 function buildEmptyActiveTabSubtitleStatus(hostname: string): ActiveTabSubtitleStatus {
   return {
     hostname,
@@ -994,6 +1012,155 @@ export async function navigateActiveTabSubtitle(
     { action }
   );
   return normalizeActiveTabSubtitleNavigation(payload);
+}
+
+function subscribeChromeTabActivation(onUpdate: () => void): () => void {
+  if (
+    typeof chrome === 'undefined' ||
+    !chrome.tabs ||
+    !chrome.tabs.onActivated ||
+    typeof chrome.tabs.onActivated.addListener !== 'function'
+  ) {
+    return () => {};
+  }
+
+  const listener = () => {
+    onUpdate();
+  };
+  chrome.tabs.onActivated.addListener(listener);
+  return () => {
+    chrome.tabs.onActivated.removeListener(listener);
+  };
+}
+
+function subscribeChromeTabUpdates(onUpdate: () => void): () => void {
+  if (
+    typeof chrome === 'undefined' ||
+    !chrome.tabs ||
+    !chrome.tabs.onUpdated ||
+    typeof chrome.tabs.onUpdated.addListener !== 'function'
+  ) {
+    return () => {};
+  }
+
+  const listener = (
+    _tabId: number,
+    changeInfo: { status?: string; url?: string },
+    tab: chrome.tabs.Tab
+  ) => {
+    if (tab && tab.active === false) {
+      return;
+    }
+    if (typeof changeInfo.url === 'string' || changeInfo.status === 'complete') {
+      onUpdate();
+    }
+  };
+  chrome.tabs.onUpdated.addListener(listener);
+  return () => {
+    chrome.tabs.onUpdated.removeListener(listener);
+  };
+}
+
+export function subscribeActiveTabSubtitleStatus(
+  onUpdate: (status: ActiveTabSubtitleStatus) => void
+): () => void {
+  if (!hasChromeTabs()) {
+    return () => {};
+  }
+
+  let disposed = false;
+  let currentPort: chrome.runtime.Port | null = null;
+  let currentTabKey = '';
+
+  const disconnectCurrentPort = () => {
+    const port = currentPort;
+    currentPort = null;
+    currentTabKey = '';
+    if (!port) {
+      return;
+    }
+    try {
+      port.disconnect();
+    } catch {
+      // Ignore disconnect races when the tab navigates away mid-cleanup.
+    }
+  };
+
+  const reconnect = async () => {
+    const activeTab = await queryActiveTab().catch(() => null);
+    if (disposed) {
+      return;
+    }
+
+    const hostname = resolveHostnameFromTabUrl(activeTab && activeTab.url);
+    const nextTabKey =
+      activeTab && typeof activeTab.id === 'number'
+        ? `${activeTab.id}:${String(activeTab.url || '')}`
+        : '';
+
+    if (!nextTabKey) {
+      disconnectCurrentPort();
+      onUpdate(buildEmptyActiveTabSubtitleStatus(hostname));
+      return;
+    }
+
+    if (currentPort && currentTabKey === nextTabKey) {
+      return;
+    }
+
+    disconnectCurrentPort();
+    currentTabKey = nextTabKey;
+
+    let port: chrome.runtime.Port;
+    try {
+      port = connectTabPort(activeTab, ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE);
+    } catch {
+      currentTabKey = '';
+      onUpdate(buildEmptyActiveTabSubtitleStatus(hostname));
+      return;
+    }
+
+    currentPort = port;
+    port.onMessage.addListener((message: unknown) => {
+      if (disposed || currentPort !== port) {
+        return;
+      }
+      const payload =
+        isObjectRecord(message) && Object.prototype.hasOwnProperty.call(message, 'payload')
+          ? message.payload
+          : message;
+      onUpdate({
+        hostname,
+        subtitleNavigation: normalizeActiveTabSubtitleNavigation(payload),
+      });
+    });
+    port.onDisconnect.addListener(() => {
+      if (currentPort !== port) {
+        return;
+      }
+      currentPort = null;
+      currentTabKey = '';
+      if (!disposed) {
+        onUpdate(buildEmptyActiveTabSubtitleStatus(hostname));
+      }
+    });
+  };
+
+  const unsubscribeTabActivation = subscribeChromeTabActivation(() => {
+    void reconnect();
+  });
+  const unsubscribeTabUpdates = subscribeChromeTabUpdates(() => {
+    void reconnect();
+  });
+
+  void reconnect();
+
+  return () => {
+    disposed = true;
+    unsubscribeTabActivation();
+    unsubscribeTabUpdates();
+    disconnectCurrentPort();
+  };
 }
 
 function sanitizeAnkiField(value: unknown): string {

@@ -107,6 +107,8 @@ function createStorageModule(options = {}) {
   const moduleRef = { exports: {} };
   const MockDate = createMockDate(options.now || 1700000000000);
   const storageChangeListeners = new Set();
+  const tabActivatedListeners = new Set();
+  const tabUpdatedListeners = new Set();
   const chrome = {
     storage: {
       local: {
@@ -155,6 +157,28 @@ function createStorageModule(options = {}) {
           callback(undefined);
         }
         runtime.lastError = null;
+      },
+      connect(tabId, connectInfo) {
+        if (typeof options.tabsConnectImpl === 'function') {
+          return options.tabsConnectImpl({ tabId, connectInfo, runtime });
+        }
+        throw new Error('tabs.connect unavailable');
+      },
+      onActivated: {
+        addListener(listener) {
+          tabActivatedListeners.add(listener);
+        },
+        removeListener(listener) {
+          tabActivatedListeners.delete(listener);
+        },
+      },
+      onUpdated: {
+        addListener(listener) {
+          tabUpdatedListeners.add(listener);
+        },
+        removeListener(listener) {
+          tabUpdatedListeners.delete(listener);
+        },
       },
     },
     runtime,
@@ -227,6 +251,65 @@ function createStorageModule(options = {}) {
     emitStorageChange(changes, areaName = 'local') {
       storageChangeListeners.forEach((listener) => {
         listener(changes, areaName);
+      });
+    },
+    emitTabActivated(activeInfo) {
+      tabActivatedListeners.forEach((listener) => {
+        listener(activeInfo);
+      });
+    },
+    emitTabUpdated(tabId, changeInfo, tab) {
+      tabUpdatedListeners.forEach((listener) => {
+        listener(tabId, changeInfo, tab);
+      });
+    },
+  };
+}
+
+function flushAsyncWork() {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
+function createMockPort(name) {
+  const messageListeners = new Set();
+  const disconnectListeners = new Set();
+  let disconnected = false;
+
+  return {
+    name,
+    get disconnected() {
+      return disconnected;
+    },
+    onMessage: {
+      addListener(listener) {
+        messageListeners.add(listener);
+      },
+      removeListener(listener) {
+        messageListeners.delete(listener);
+      },
+    },
+    onDisconnect: {
+      addListener(listener) {
+        disconnectListeners.add(listener);
+      },
+      removeListener(listener) {
+        disconnectListeners.delete(listener);
+      },
+    },
+    emitMessage(message) {
+      messageListeners.forEach((listener) => {
+        listener(message);
+      });
+    },
+    disconnect() {
+      if (disconnected) {
+        return;
+      }
+      disconnected = true;
+      disconnectListeners.forEach((listener) => {
+        listener();
       });
     },
   };
@@ -597,6 +680,111 @@ test('react ui storage resilience: readActiveTabSubtitleStatus should keep hostn
       canGoNext: true,
     },
   });
+});
+
+test('react ui storage resilience: subscribeActiveTabSubtitleStatus should stream updates, reconnect on tab switch, and fallback on disconnect', async () => {
+  let activeTab = {
+    id: 70,
+    url: 'https://www.bilibili.com/video/BV1shared',
+  };
+  const ports = [];
+  const updates = [];
+  const { module: storageModule, emitTabActivated } = createStorageModule({
+    tabsQueryImpl({ callback }) {
+      callback([cloneValue(activeTab)]);
+    },
+    tabsConnectImpl({ tabId, connectInfo }) {
+      assert.equal(connectInfo.name, 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE');
+      const port = createMockPort(connectInfo.name);
+      ports.push({ tabId, port });
+      return port;
+    },
+  });
+
+  const unsubscribe = storageModule.subscribeActiveTabSubtitleStatus((status) => {
+    updates.push(cloneValue(status));
+  });
+
+  await flushAsyncWork();
+  assert.equal(ports.length, 1);
+  assert.equal(ports[0].tabId, 70);
+
+  ports[0].port.emitMessage({
+    type: 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE',
+    payload: {
+      supported: true,
+      progressLabel: '5 / 18',
+      headline: '当前字幕',
+      description: '00:08.2 - 00:10.4 · 可直接回看上一句或跳到下一句。',
+      currentText: '共享快照',
+      canGoPrevious: true,
+      canReplay: true,
+      canGoNext: true,
+    },
+  });
+
+  assert.deepEqual(updates[0], {
+    hostname: 'www.bilibili.com',
+    subtitleNavigation: {
+      supported: true,
+      progressLabel: '5 / 18',
+      headline: '当前字幕',
+      description: '00:08.2 - 00:10.4 · 可直接回看上一句或跳到下一句。',
+      currentText: '共享快照',
+      canGoPrevious: true,
+      canReplay: true,
+      canGoNext: true,
+    },
+  });
+
+  activeTab = {
+    id: 71,
+    url: 'https://www.bilibili.com/video/BV1next',
+  };
+  emitTabActivated({ tabId: 71, windowId: 3 });
+
+  await flushAsyncWork();
+  assert.equal(ports.length, 2);
+  assert.equal(ports[0].port.disconnected, true);
+  assert.equal(ports[1].tabId, 71);
+
+  ports[1].port.emitMessage({
+    payload: {
+      supported: true,
+      progressLabel: '9 / 18',
+      headline: '当前字幕',
+      description: '00:18.2 - 00:20.4 · 已重连到新的活动标签页。',
+      currentText: '新的活动标签页字幕',
+      canGoPrevious: true,
+      canReplay: true,
+      canGoNext: false,
+    },
+  });
+
+  assert.deepEqual(updates[1], {
+    hostname: 'www.bilibili.com',
+    subtitleNavigation: {
+      supported: true,
+      progressLabel: '9 / 18',
+      headline: '当前字幕',
+      description: '00:18.2 - 00:20.4 · 已重连到新的活动标签页。',
+      currentText: '新的活动标签页字幕',
+      canGoPrevious: true,
+      canReplay: true,
+      canGoNext: false,
+    },
+  });
+
+  ports[1].port.disconnect();
+
+  assert.equal(updates[2].hostname, 'www.bilibili.com');
+  assert.equal(updates[2].subtitleNavigation.supported, false);
+  assert.match(
+    updates[2].subtitleNavigation.description,
+    /www\.bilibili\.com 当前还没有可用字幕导航/
+  );
+
+  unsubscribe();
 });
 
 test('react ui storage resilience: readActiveTabSubtitleNavigation should fallback when tab bridge is unavailable', async () => {

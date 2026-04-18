@@ -13,8 +13,10 @@ test('react ui popup subtitle navigation contract: storage should expose active 
   assert.match(source, /export async function readActiveTabSubtitleStatus/);
   assert.match(source, /export async function readActiveTabSubtitleNavigation/);
   assert.match(source, /export async function navigateActiveTabSubtitle/);
+  assert.match(source, /export function subscribeActiveTabSubtitleStatus/);
   assert.match(source, /ACTIVE_TAB_SUBTITLE_NAVIGATION_READ/);
   assert.match(source, /ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE/);
+  assert.match(source, /ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE/);
 });
 
 test('react ui popup subtitle navigation contract: popup should render current subtitle controls', () => {
@@ -28,10 +30,10 @@ test('react ui popup subtitle navigation contract: popup should render current s
   assert.match(source, /下一句/);
 });
 
-test('react ui popup subtitle navigation contract: popup should poll active tab subtitle state while open', () => {
+test('react ui popup subtitle navigation contract: popup should subscribe to active tab subtitle state while open', () => {
   const source = readProjectFile('react-ui/src/popup-main.tsx');
 
   assert.match(source, /refreshActiveTabSubtitleStatus/);
-  assert.match(source, /ACTIVE_TAB_SUBTITLE_REFRESH_MS/);
-  assert.match(source, /window\.setInterval/);
+  assert.match(source, /subscribeActiveTabSubtitleStatus/);
+  assert.doesNotMatch(source, /window\.setInterval/);
 });
