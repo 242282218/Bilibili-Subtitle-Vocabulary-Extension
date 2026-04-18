@@ -27,6 +27,8 @@ import {
 import { ShortcutGuide } from './shortcut-guide';
 import { StudyPreview } from './study-preview';
 import {
+  ActiveTabSubtitleNavigation,
+  ActiveTabSubtitleNavigationAction,
   AdaptiveTuningState,
   ExperienceMetricsSnapshot,
   LearningSummary,
@@ -46,7 +48,9 @@ import {
   subscribeLearningStreak,
   exportVocabularyBook,
   getCurrentTabHostname,
+  navigateActiveTabSubtitle,
   openOptionsPage,
+  readActiveTabSubtitleNavigation,
   subscribeQuickReviewSource,
 } from './storage';
 import { getThemeModeLabel, useDocumentTheme } from './ui-theme';
@@ -62,6 +66,16 @@ const EMPTY_SUMMARY: LearningSummary = {
 const EMPTY_REVIEW_DASHBOARD: QuickReviewDashboard = {
   summary: EMPTY_SUMMARY,
   items: [],
+};
+const EMPTY_TAB_SUBTITLE_NAVIGATION: ActiveTabSubtitleNavigation = {
+  supported: false,
+  progressLabel: '未连接',
+  headline: '当前标签页暂无字幕导航',
+  description: '请先打开支持字幕的 Bilibili 视频页。',
+  currentText: '还没有可直接跳转的字幕句段。',
+  canGoPrevious: false,
+  canReplay: false,
+  canGoNext: false,
 };
 const EMPTY_STREAK: LearningStreak = {
   currentStreak: 0,
@@ -153,6 +167,11 @@ function PopupApp() {
   const [rankingItems, setRankingItems] = useState<EncounteredWordRankingItem[]>([]);
   const [learningStreak, setLearningStreak] = useState<LearningStreak>(EMPTY_STREAK);
   const [hostname, setHostname] = useState('');
+  const [subtitleNavigation, setSubtitleNavigation] = useState<ActiveTabSubtitleNavigation>(
+    EMPTY_TAB_SUBTITLE_NAVIGATION
+  );
+  const [subtitleNavigating, setSubtitleNavigating] =
+    useState<ActiveTabSubtitleNavigationAction | null>(null);
   const [adaptiveState, setAdaptiveState] = useState<AdaptiveTuningState | null>(null);
   const [experienceMetrics, setExperienceMetrics] = useState<ExperienceMetricsSnapshot | null>(
     null
@@ -171,9 +190,10 @@ function PopupApp() {
     let cancelled = false;
     void (async () => {
       try {
-        const [dashboardPayload, currentHostname] = await Promise.all([
+        const [dashboardPayload, currentHostname, nextSubtitleNavigation] = await Promise.all([
           readQuickReviewDashboard(),
           getCurrentTabHostname(),
+          readActiveTabSubtitleNavigation(),
         ]);
         if (cancelled) {
           return;
@@ -181,6 +201,7 @@ function PopupApp() {
         setSummary(dashboardPayload.summary);
         setQuickReview(dashboardPayload);
         setHostname(normalizeHostname(currentHostname));
+        setSubtitleNavigation(nextSubtitleNavigation);
         setStatus('已加载当前策略，可快速调整后手动保存。');
       } catch {
         if (!cancelled) {
@@ -238,6 +259,20 @@ function PopupApp() {
       window.clearTimeout(timeout);
     };
   }, [pendingUndo]);
+
+  async function onNavigateSubtitle(action: ActiveTabSubtitleNavigationAction) {
+    setSubtitleNavigating(action);
+    try {
+      const next = await navigateActiveTabSubtitle(action);
+      setSubtitleNavigation(next);
+      const label = action === 'previous' ? '上一句' : action === 'replay' ? '当前句' : '下一句';
+      setStatus(next.supported ? `已同步当前标签页${label}字幕。` : next.description);
+    } catch {
+      setStatus('字幕导航失败，请刷新视频页后重试。');
+    } finally {
+      setSubtitleNavigating((current) => (current === action ? null : current));
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -608,6 +643,52 @@ function PopupApp() {
       <section className="panel stack stagger-enter" data-index="2">
         <div className="inline wrap">
           <div>
+            <h3>当前字幕导航</h3>
+            <p className="panel-subtitle">直接控制当前标签页的上一句、重播和下一句。</p>
+          </div>
+          <span className={`badge ${subtitleNavigation.supported ? 'good' : ''}`}>
+            {subtitleNavigation.progressLabel}
+          </span>
+        </div>
+        <div className={`review-card${subtitleNavigation.canReplay ? '' : ' review-card--empty'}`}>
+          <div className="review-card__head">
+            <strong>{subtitleNavigation.headline}</strong>
+            <span>{hostname || '当前标签页'}</span>
+          </div>
+          <p className="review-card__meta">{subtitleNavigation.description}</p>
+          <p className="review-card__description">{subtitleNavigation.currentText}</p>
+        </div>
+        <div className="btn-row">
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => void onNavigateSubtitle('previous')}
+            disabled={!subtitleNavigation.canGoPrevious || !!subtitleNavigating}
+          >
+            {subtitleNavigating === 'previous' ? '跳转中...' : '上一句'}
+          </button>
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => void onNavigateSubtitle('replay')}
+            disabled={!subtitleNavigation.canReplay || !!subtitleNavigating}
+          >
+            {subtitleNavigating === 'replay' ? '跳转中...' : '重播本句'}
+          </button>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => void onNavigateSubtitle('next')}
+            disabled={!subtitleNavigation.canGoNext || !!subtitleNavigating}
+          >
+            {subtitleNavigating === 'next' ? '跳转中...' : '下一句'}
+          </button>
+        </div>
+      </section>
+
+      <section className="panel stack stagger-enter" data-index="3">
+        <div className="inline wrap">
+          <div>
             <h3>快速复习</h3>
             <p className="panel-subtitle">把刚积累的待复习词直接在真实 popup 里处理掉。</p>
           </div>
@@ -663,7 +744,7 @@ function PopupApp() {
         </div>
       </section>
 
-      <section className="panel stack stagger-enter" data-index="3">
+      <section className="panel stack stagger-enter" data-index="4">
         <div className="inline wrap">
           <div>
             <h3>生词排行</h3>
@@ -748,7 +829,7 @@ function PopupApp() {
         </section>
       )}
 
-      <section className="panel stack stagger-enter" data-index="4">
+      <section className="panel stack stagger-enter" data-index="5">
         <h3>全局开关</h3>
         <label className="switch-row">
           <span>

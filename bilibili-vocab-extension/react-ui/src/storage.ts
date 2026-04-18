@@ -23,6 +23,9 @@ const REVIEW_QUEUE_STORAGE_KEY = 'bili_vocab_review_queue_v1';
 const LEARNING_STREAK_STORAGE_KEY = 'bili_vocab_learning_streak_v1';
 const ADAPTIVE_TUNING_STORAGE_KEY = 'bili_vocab_adaptive_tuning_v1';
 const EXPERIENCE_METRICS_STORAGE_KEY = 'bili_vocab_experience_metrics_v1';
+const ACTIVE_TAB_SUBTITLE_NAVIGATION_READ = 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_READ';
+const ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE =
+  'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE';
 const METRIC_COUNTER_KEYS = [
   'contextMisreplaceReported',
   'contextMisreplaceHigh',
@@ -114,6 +117,18 @@ export interface VocabularyWord {
 }
 
 export type VocabularyExportFormat = 'json' | 'csv' | 'anki';
+export type ActiveTabSubtitleNavigationAction = 'previous' | 'replay' | 'next';
+
+export interface ActiveTabSubtitleNavigation {
+  supported: boolean;
+  progressLabel: string;
+  headline: string;
+  description: string;
+  currentText: string;
+  canGoPrevious: boolean;
+  canReplay: boolean;
+  canGoNext: boolean;
+}
 
 function normalizeVocabularyWord(input: unknown): VocabularyWord | null {
   if (!input || typeof input !== 'object') {
@@ -224,6 +239,14 @@ function hasChromeTabs(): boolean {
   return (
     typeof chrome !== 'undefined' && Boolean(chrome.tabs) && typeof chrome.tabs.query === 'function'
   );
+}
+
+function hasChromeTabMessaging(): boolean {
+  return hasChromeTabs() && typeof chrome.tabs.sendMessage === 'function';
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object';
 }
 
 function normalizeTimestamp(value: unknown): number | null {
@@ -839,6 +862,122 @@ export async function getCurrentTabHostname(): Promise<string> {
       }
     });
   });
+}
+
+function createEmptyActiveTabSubtitleNavigation(
+  description = '请先打开支持字幕的 Bilibili 视频页。'
+): ActiveTabSubtitleNavigation {
+  return {
+    supported: false,
+    progressLabel: '未连接',
+    headline: '当前标签页暂无字幕导航',
+    description,
+    currentText: '还没有可直接跳转的字幕句段。',
+    canGoPrevious: false,
+    canReplay: false,
+    canGoNext: false,
+  };
+}
+
+function normalizeActiveTabSubtitleNavigation(value: unknown): ActiveTabSubtitleNavigation {
+  const source = isObjectRecord(value) ? value : {};
+  return {
+    supported: source.supported === true,
+    progressLabel: String(source.progressLabel || '未连接').trim() || '未连接',
+    headline:
+      String(source.headline || '当前标签页暂无字幕导航').trim() || '当前标签页暂无字幕导航',
+    description:
+      String(source.description || '请先打开支持字幕的 Bilibili 视频页。').trim() ||
+      '请先打开支持字幕的 Bilibili 视频页。',
+    currentText:
+      String(source.currentText || '还没有可直接跳转的字幕句段。').trim() ||
+      '还没有可直接跳转的字幕句段。',
+    canGoPrevious: source.canGoPrevious === true,
+    canReplay: source.canReplay === true,
+    canGoNext: source.canGoNext === true,
+  };
+}
+
+function resolveHostnameFromTabUrl(rawUrl: unknown): string {
+  try {
+    return rawUrl ? new URL(String(rawUrl)).hostname : '';
+  } catch {
+    return '';
+  }
+}
+
+async function queryActiveTab(): Promise<chrome.tabs.Tab | null> {
+  if (!hasChromeTabs()) {
+    return null;
+  }
+  return new Promise<chrome.tabs.Tab | null>((resolve, reject) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const runtimeError = getChromeRuntimeError('chrome.tabs.query failed');
+      if (runtimeError) {
+        reject(runtimeError);
+        return;
+      }
+      resolve(Array.isArray(tabs) && tabs.length ? tabs[0] : null);
+    });
+  });
+}
+
+async function sendActiveTabMessage<T>(type: string, payload: Record<string, unknown>): Promise<T> {
+  if (!hasChromeTabMessaging()) {
+    return Promise.reject(new Error('chrome.tabs.sendMessage unavailable'));
+  }
+
+  const activeTab = await queryActiveTab();
+  if (!activeTab || typeof activeTab.id !== 'number') {
+    return Promise.reject(new Error('active tab unavailable'));
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    try {
+      chrome.tabs.sendMessage(activeTab.id as number, { type, payload }, (response) => {
+        const runtimeError = getChromeRuntimeError('chrome.tabs.sendMessage failed');
+        if (runtimeError) {
+          reject(runtimeError);
+          return;
+        }
+        if (!response || response.ok !== true) {
+          reject(
+            new Error(String(response && response.error ? response.error : 'tab message failed'))
+          );
+          return;
+        }
+        resolve(response.payload as T);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+export async function readActiveTabSubtitleNavigation(): Promise<ActiveTabSubtitleNavigation> {
+  try {
+    const payload = await sendActiveTabMessage<Record<string, unknown>>(
+      ACTIVE_TAB_SUBTITLE_NAVIGATION_READ,
+      {}
+    );
+    return normalizeActiveTabSubtitleNavigation(payload);
+  } catch {
+    const activeTab = await queryActiveTab().catch(() => null);
+    const hostname = resolveHostnameFromTabUrl(activeTab && activeTab.url);
+    return createEmptyActiveTabSubtitleNavigation(
+      hostname ? `${hostname} 当前还没有可用字幕导航。` : '当前标签页暂不支持字幕导航。'
+    );
+  }
+}
+
+export async function navigateActiveTabSubtitle(
+  action: ActiveTabSubtitleNavigationAction
+): Promise<ActiveTabSubtitleNavigation> {
+  const payload = await sendActiveTabMessage<Record<string, unknown>>(
+    ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE,
+    { action }
+  );
+  return normalizeActiveTabSubtitleNavigation(payload);
 }
 
 function sanitizeAnkiField(value: unknown): string {

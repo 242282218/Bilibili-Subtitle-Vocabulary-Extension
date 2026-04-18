@@ -138,8 +138,23 @@ function createStorageModule(options = {}) {
       },
     },
     tabs: {
-      query(_query, callback) {
+      query(query, callback) {
+        if (typeof options.tabsQueryImpl === 'function') {
+          options.tabsQueryImpl({ query, callback, runtime });
+          return;
+        }
         callback([]);
+      },
+      sendMessage(tabId, message, callback) {
+        if (typeof options.tabsSendMessageImpl === 'function') {
+          options.tabsSendMessageImpl({ tabId, message, callback, runtime });
+          return;
+        }
+        runtime.lastError = { message: 'tabs.sendMessage unavailable' };
+        if (typeof callback === 'function') {
+          callback(undefined);
+        }
+        runtime.lastError = null;
       },
     },
     runtime,
@@ -487,4 +502,110 @@ test('react ui storage resilience: clearVocabularyBook should keep storage uncha
 
   await assert.rejects(storageModule.clearVocabularyBook(), /storage write failed/);
   assert.deepEqual(storageState, initialState);
+});
+
+test('react ui storage resilience: readActiveTabSubtitleNavigation should normalize tab snapshot payload', async () => {
+  const { module: storageModule } = createStorageModule({
+    tabsQueryImpl({ callback }) {
+      callback([
+        {
+          id: 7,
+          url: 'https://www.bilibili.com/video/BV1xx411c7mD',
+        },
+      ]);
+    },
+    tabsSendMessageImpl({ message, callback, runtime }) {
+      runtime.lastError = null;
+      assert.equal(message.type, 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_READ');
+      callback({
+        ok: true,
+        payload: {
+          supported: true,
+          progressLabel: '12 / 48',
+          headline: '当前字幕',
+          description: '00:15.2 - 00:18.4 · 可直接回看上一句或跳到下一句。',
+          currentText: '这就是当前字幕内容',
+          canGoPrevious: true,
+          canReplay: true,
+          canGoNext: false,
+        },
+      });
+    },
+  });
+
+  const snapshot = cloneValue(await storageModule.readActiveTabSubtitleNavigation());
+
+  assert.deepEqual(snapshot, {
+    supported: true,
+    progressLabel: '12 / 48',
+    headline: '当前字幕',
+    description: '00:15.2 - 00:18.4 · 可直接回看上一句或跳到下一句。',
+    currentText: '这就是当前字幕内容',
+    canGoPrevious: true,
+    canReplay: true,
+    canGoNext: false,
+  });
+});
+
+test('react ui storage resilience: readActiveTabSubtitleNavigation should fallback when tab bridge is unavailable', async () => {
+  const { module: storageModule } = createStorageModule({
+    tabsQueryImpl({ callback }) {
+      callback([
+        {
+          id: 8,
+          url: 'https://www.youtube.com/watch?v=demo',
+        },
+      ]);
+    },
+    tabsSendMessageImpl({ callback, runtime }) {
+      runtime.lastError = {
+        message: 'Could not establish connection. Receiving end does not exist.',
+      };
+      callback(undefined);
+      runtime.lastError = null;
+    },
+  });
+
+  const snapshot = cloneValue(await storageModule.readActiveTabSubtitleNavigation());
+
+  assert.equal(snapshot.supported, false);
+  assert.equal(snapshot.progressLabel, '未连接');
+  assert.match(snapshot.description, /youtube\.com 当前还没有可用字幕导航/);
+});
+
+test('react ui storage resilience: navigateActiveTabSubtitle should relay action to active tab', async () => {
+  const { module: storageModule } = createStorageModule({
+    tabsQueryImpl({ callback }) {
+      callback([
+        {
+          id: 9,
+          url: 'https://www.bilibili.com/video/BV1demo',
+        },
+      ]);
+    },
+    tabsSendMessageImpl({ message, callback, runtime }) {
+      runtime.lastError = null;
+      assert.equal(message.type, 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE');
+      assert.equal(message.payload.action, 'next');
+      callback({
+        ok: true,
+        payload: {
+          supported: true,
+          progressLabel: '13 / 48',
+          headline: '当前字幕',
+          description: '00:18.5 - 00:20.1 · 可直接回看上一句或跳到下一句。',
+          currentText: '下一句字幕',
+          canGoPrevious: true,
+          canReplay: true,
+          canGoNext: true,
+        },
+      });
+    },
+  });
+
+  const snapshot = cloneValue(await storageModule.navigateActiveTabSubtitle('next'));
+
+  assert.equal(snapshot.progressLabel, '13 / 48');
+  assert.equal(snapshot.currentText, '下一句字幕');
+  assert.equal(snapshot.canGoNext, true);
 });

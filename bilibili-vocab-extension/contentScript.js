@@ -54,6 +54,9 @@
     sharedSettings && sharedSettings.SETTINGS_STORAGE_KEY_V3
       ? sharedSettings.SETTINGS_STORAGE_KEY_V3
       : 'bili_vocab_settings_v3';
+  const ACTIVE_TAB_SUBTITLE_NAVIGATION_READ = 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_READ';
+  const ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE =
+    'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE';
 
   let observer = null;
   let observerTarget = null;
@@ -877,6 +880,270 @@
     }, TIMELINE_POLL_MS);
   }
 
+  function toMessageError(error, fallbackMessage) {
+    if (!error) {
+      return fallbackMessage;
+    }
+    const message = String(error.message || error).trim();
+    return message || fallbackMessage;
+  }
+
+  function normalizeSubtitleNavigationAction(value) {
+    const normalized = String(value || '')
+      .trim()
+      .toLowerCase();
+    return ['previous', 'replay', 'next'].includes(normalized) ? normalized : '';
+  }
+
+  function isSubtitleNavigationSupportedHost() {
+    return Boolean(
+      globalThis.SubtitleParser &&
+      typeof globalThis.SubtitleParser.isBilibiliHost === 'function' &&
+      globalThis.SubtitleParser.isBilibiliHost(globalThis.location && globalThis.location.hostname)
+    );
+  }
+
+  function createEmptySubtitleNavigationSnapshot(description, currentText, supported) {
+    return {
+      supported: supported === true,
+      progressLabel: supported === true ? '0 / 0' : '未支持',
+      headline: supported === true ? '当前标签页暂无字幕导航' : '当前站点暂不支持字幕导航',
+      description,
+      currentText: currentText || '还没有可直接跳转的字幕句段。',
+      canGoPrevious: false,
+      canReplay: false,
+      canGoNext: false,
+    };
+  }
+
+  function findSubtitleNavigationIndices(timeline, currentTime) {
+    if (!Array.isArray(timeline) || timeline.length === 0 || !Number.isFinite(currentTime)) {
+      return {
+        currentIndex: -1,
+        previousIndex: null,
+        replayIndex: null,
+        nextIndex: null,
+      };
+    }
+
+    let currentIndex = -1;
+    for (let index = 0; index < timeline.length; index += 1) {
+      const item = timeline[index];
+      if (currentTime >= Number(item && item.from) && currentTime <= Number(item && item.to)) {
+        currentIndex = index;
+        break;
+      }
+    }
+
+    if (currentIndex >= 0) {
+      return {
+        currentIndex,
+        previousIndex: currentIndex > 0 ? currentIndex - 1 : null,
+        replayIndex: currentIndex,
+        nextIndex: currentIndex < timeline.length - 1 ? currentIndex + 1 : null,
+      };
+    }
+
+    let previousIndex = null;
+    let nextIndex = null;
+    for (let index = timeline.length - 1; index >= 0; index -= 1) {
+      if (Number(timeline[index] && timeline[index].from) < currentTime) {
+        previousIndex = index;
+        break;
+      }
+    }
+    for (let index = 0; index < timeline.length; index += 1) {
+      if (Number(timeline[index] && timeline[index].from) > currentTime) {
+        nextIndex = index;
+        break;
+      }
+    }
+
+    return {
+      currentIndex: -1,
+      previousIndex,
+      replayIndex: previousIndex != null ? previousIndex : nextIndex,
+      nextIndex,
+    };
+  }
+
+  function formatSubtitleNavigationTime(value) {
+    const time = Number(value);
+    if (!Number.isFinite(time) || time < 0) {
+      return '--:--.-';
+    }
+    const totalTenths = Math.round(time * 10);
+    const minutes = Math.floor(totalTenths / 600);
+    const seconds = Math.floor((totalTenths % 600) / 10);
+    const tenths = totalTenths % 10;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${tenths}`;
+  }
+
+  function buildSubtitleNavigationSnapshot(timeline, currentTime) {
+    const indices = findSubtitleNavigationIndices(timeline, currentTime);
+    if (!Array.isArray(timeline) || timeline.length === 0) {
+      return createEmptySubtitleNavigationSnapshot(
+        '当前视频暂无可用字幕时间轴。',
+        '还没有可直接跳转的字幕句段。',
+        true
+      );
+    }
+
+    if (indices.currentIndex >= 0) {
+      const currentItem = timeline[indices.currentIndex];
+      return {
+        supported: true,
+        progressLabel: `${indices.currentIndex + 1} / ${timeline.length}`,
+        headline: '当前字幕',
+        description: `${formatSubtitleNavigationTime(currentItem.from)} - ${formatSubtitleNavigationTime(currentItem.to)} · 可直接回看上一句或跳到下一句。`,
+        currentText: normalizeText(currentItem.content),
+        canGoPrevious: indices.previousIndex != null,
+        canReplay: indices.replayIndex != null,
+        canGoNext: indices.nextIndex != null,
+      };
+    }
+
+    const anchorIndex = indices.nextIndex != null ? indices.nextIndex : indices.replayIndex;
+    const anchorItem = anchorIndex != null ? timeline[anchorIndex] : null;
+    return {
+      supported: true,
+      progressLabel: '待定位',
+      headline: indices.nextIndex != null ? '下一句字幕' : '最近字幕',
+      description: anchorItem
+        ? `${formatSubtitleNavigationTime(anchorItem.from)} - ${formatSubtitleNavigationTime(anchorItem.to)} · 当前不在句段内，可直接跳转定位。`
+        : '当前不在字幕句段内，可等待下一句出现或手动跳转。',
+      currentText: anchorItem ? normalizeText(anchorItem.content) : '等待字幕出现...',
+      canGoPrevious: indices.previousIndex != null,
+      canReplay: indices.replayIndex != null,
+      canGoNext: indices.nextIndex != null,
+    };
+  }
+
+  async function readSubtitleNavigationContext() {
+    if (!isSubtitleNavigationSupportedHost()) {
+      return {
+        timeline: [],
+        currentTime: Number.NaN,
+        indices: {
+          currentIndex: -1,
+          previousIndex: null,
+          replayIndex: null,
+          nextIndex: null,
+        },
+        video: null,
+        snapshot: createEmptySubtitleNavigationSnapshot(
+          '现阶段先在 Bilibili 字幕时间轴上提供 popup 句级导航。',
+          '请先切到支持的 Bilibili 视频页。',
+          false
+        ),
+      };
+    }
+
+    const video = document.querySelector('video');
+    if (!(video instanceof HTMLVideoElement)) {
+      return {
+        timeline: [],
+        currentTime: Number.NaN,
+        indices: {
+          currentIndex: -1,
+          previousIndex: null,
+          replayIndex: null,
+          nextIndex: null,
+        },
+        video: null,
+        snapshot: createEmptySubtitleNavigationSnapshot(
+          '当前页面还没有可控制的视频元素。',
+          '打开带字幕的视频后即可在 popup 内按句跳转。',
+          true
+        ),
+      };
+    }
+
+    const timeline = hasMethod(globalThis.SubtitleParser, 'loadSubtitleTimeline')
+      ? await globalThis.SubtitleParser.loadSubtitleTimeline()
+      : [];
+    const currentTime = Number(video.currentTime);
+    const indices = findSubtitleNavigationIndices(timeline, currentTime);
+    return {
+      timeline,
+      currentTime,
+      indices,
+      video,
+      snapshot: buildSubtitleNavigationSnapshot(timeline, currentTime),
+    };
+  }
+
+  async function readSubtitleNavigationSnapshot() {
+    const context = await readSubtitleNavigationContext();
+    return context.snapshot;
+  }
+
+  async function navigateSubtitleByAction(action) {
+    const normalizedAction = normalizeSubtitleNavigationAction(action);
+    if (!normalizedAction) {
+      throw new Error('Invalid subtitle navigation action');
+    }
+
+    const context = await readSubtitleNavigationContext();
+    if (!context.video) {
+      return context.snapshot;
+    }
+
+    const targetIndex =
+      normalizedAction === 'previous'
+        ? context.indices.previousIndex
+        : normalizedAction === 'replay'
+          ? context.indices.replayIndex
+          : context.indices.nextIndex;
+    if (targetIndex == null || !context.timeline[targetIndex]) {
+      return context.snapshot;
+    }
+
+    context.video.currentTime = Math.max(0, Number(context.timeline[targetIndex].from) + 0.02);
+    return buildSubtitleNavigationSnapshot(context.timeline, context.video.currentTime);
+  }
+
+  function watchRuntimeMessages() {
+    if (
+      typeof chrome === 'undefined' ||
+      !chrome.runtime ||
+      !chrome.runtime.onMessage ||
+      typeof chrome.runtime.onMessage.addListener !== 'function'
+    ) {
+      return;
+    }
+
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      const messageType = String(message && message.type ? message.type : '').trim();
+      let task = null;
+
+      if (messageType === ACTIVE_TAB_SUBTITLE_NAVIGATION_READ) {
+        task = () => readSubtitleNavigationSnapshot();
+      } else if (messageType === ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE) {
+        task = () => navigateSubtitleByAction(message && message.payload && message.payload.action);
+      }
+
+      if (!task) {
+        return false;
+      }
+
+      Promise.resolve()
+        .then(task)
+        .then(
+          (payload) => {
+            sendResponse({ ok: true, payload });
+          },
+          (error) => {
+            sendResponse({
+              ok: false,
+              error: toMessageError(error, `Failed to process ${messageType}`),
+            });
+          }
+        );
+      return true;
+    });
+  }
+
   function hasTranslationSettingChange(changes) {
     if (changes && changes[SETTINGS_STORAGE_KEY_V3]) {
       return true;
@@ -1059,10 +1326,12 @@
   }
 
   if (document.readyState === 'loading') {
+    watchRuntimeMessages();
     document.addEventListener('DOMContentLoaded', () => {
       init().catch((error) => logError('Initialization failed', error));
     });
   } else {
+    watchRuntimeMessages();
     init().catch((error) => logError('Initialization failed', error));
   }
 
@@ -1090,6 +1359,9 @@
       shouldRunLegacyWebTextPipeline,
       shouldReplaceWebTextNode,
       renderWebTextReplacementHtml,
+      normalizeSubtitleNavigationAction,
+      findSubtitleNavigationIndices,
+      buildSubtitleNavigationSnapshot,
       __readFromCacheForTest: readFromCache,
       __writeToCacheForTest: writeToCache,
       __clearTranslationCacheForTest: clearTranslationCache,
