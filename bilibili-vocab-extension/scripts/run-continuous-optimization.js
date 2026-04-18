@@ -15,6 +15,13 @@ const DEFAULT_REPORT_DIR = path.join(
 );
 const DEFAULT_MAX_LOG_CHARS = 4000;
 const LEGACY_DEFERRED_TEST_PATTERNS = [/^options-.*\.test\.js$/, /^popup(?:-.*)?\.test\.js$/];
+const LEGACY_COMPAT_TESTS_IN_OPTIMIZE_LANE = [
+  'shared-settings-integration.test.js',
+  'standalone-init.test.js',
+];
+const LEGACY_DEFERRED_REASON = `manifest / pack 真实交付入口是 dist/popup.html / dist/options.html；root popup.js / options.js 仍是 legacy popup/options 入口，因此默认只在报告中显式暴露，不并入 shipped optimize shard。共享默认值与 fallback 兼容仍通过 ${LEGACY_COMPAT_TESTS_IN_OPTIMIZE_LANE.join(
+  ' / '
+)} 留在 optimize lane；剩余 legacy shell tests 的后续动作应是迁移可复用逻辑到 shared helper 或单独 legacy lane，而不是直接并入 shipped shard。`;
 
 const STATIC_OPTIMIZATION_GAPS = [
   {
@@ -347,8 +354,8 @@ function selectOptimizationCandidates(summary) {
     extraCandidates.push({
       id: 'legacy-deferred-tests',
       priority: extraCandidates.length,
-      title: '复核 legacy popup/options 测试是否继续留在 optimize lane 外',
-      rationale: `当前有 ${summary.deferredLegacyTests.length} 个测试文件锁定 legacy popup/options 入口，报告已显式暴露，但默认 optimize lane 仍未纳入它们。`,
+      title: '迁移或淘汰 legacy popup/options shell 测试',
+      rationale: `当前有 ${summary.deferredLegacyTests.length} 个测试文件锁定 legacy popup/options 入口；${LEGACY_DEFERRED_REASON}`,
       files: summary.deferredLegacyTests.slice(),
       suggestedCommands: buildNodeTestCommand(summary.deferredLegacyTests),
     });
@@ -439,6 +446,12 @@ function renderMarkdownReport(summary) {
   if (summary.deferredLegacyTests.length === 0) {
     lines.push('- None');
   } else {
+    lines.push(
+      `- 说明: manifest / pack 真实交付入口是 \`dist/popup.html\` / \`dist/options.html\`；以下测试直接锁定 root \`popup.js\` / \`options.js\`，因此默认只在报告中显式暴露，不并入 shipped optimize shard。共享默认值与 fallback 兼容仍通过 \`${LEGACY_COMPAT_TESTS_IN_OPTIMIZE_LANE[0]}\` / \`${LEGACY_COMPAT_TESTS_IN_OPTIMIZE_LANE[1]}\` 留在 optimize lane。`
+    );
+    lines.push(
+      '- 后续: 迁移可复用逻辑到 shared helper 或单独 legacy lane，再决定是否保留这些 legacy shell tests。'
+    );
     for (const testFile of summary.deferredLegacyTests) {
       lines.push(`- ${testFile}`);
     }
