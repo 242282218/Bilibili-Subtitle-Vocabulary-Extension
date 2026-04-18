@@ -17,4 +17,7 @@ test('react overlay subtitle navigation contract: overlay entry should render su
   assert.match(source, /下一句/);
   assert.match(source, /buildSubtitleNavigationState/);
   assert.match(source, /seekVideoToSubtitle/);
+  assert.match(source, /loadSubtitleTimeline\(\)/);
+  assert.match(source, /location\.href/);
+  assert.match(source, /subtitlePageUrlRef/);
 });

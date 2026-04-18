@@ -143,6 +143,8 @@
 
   let subtitleTimeline = [];
   let subtitleTimelinePromise = null;
+  let subtitleTimelineCacheKey = '';
+  let subtitleTimelineLoaded = false;
 
   const normalizeText =
     (globalThis.Utils && globalThis.Utils.normalizeText) ||
@@ -663,12 +665,46 @@
     return `${PLAYER_API_ENDPOINT}?${params.toString()}`;
   }
 
+  function buildSubtitleTimelineCacheKey(identifiers) {
+    const source = identifiers && typeof identifiers === 'object' ? identifiers : {};
+    const cid = Number(source.cid);
+    const aid = Number(source.aid);
+    const bvid = String(source.bvid || '').trim();
+    const normalizedCid = Number.isFinite(cid) && cid > 0 ? Math.floor(cid) : 0;
+    const normalizedAid = Number.isFinite(aid) && aid > 0 ? Math.floor(aid) : 0;
+
+    if (!normalizedCid || (!bvid && !normalizedAid)) {
+      return '';
+    }
+
+    return `${bvid || `aid:${normalizedAid}`}:cid:${normalizedCid}`;
+  }
+
+  function resetSubtitleTimelineCache(nextCacheKey = '') {
+    subtitleTimeline = [];
+    subtitleTimelineCacheKey = nextCacheKey;
+    subtitleTimelineLoaded = false;
+    subtitleTimelinePromise = null;
+  }
+
   async function loadSubtitleTimeline() {
     if (!isBilibiliHost(globalScope.location && globalScope.location.hostname)) {
+      resetSubtitleTimelineCache();
       return [];
     }
 
-    if (subtitleTimeline.length > 0) {
+    const identifiers = extractVideoIdentifiers();
+    const cacheKey = buildSubtitleTimelineCacheKey(identifiers);
+    if (!cacheKey) {
+      resetSubtitleTimelineCache();
+      return [];
+    }
+
+    if (subtitleTimelineCacheKey !== cacheKey) {
+      resetSubtitleTimelineCache(cacheKey);
+    }
+
+    if (subtitleTimelineLoaded) {
       return subtitleTimeline;
     }
 
@@ -676,12 +712,7 @@
       return subtitleTimelinePromise;
     }
 
-    subtitleTimelinePromise = (async () => {
-      const identifiers = extractVideoIdentifiers();
-      if (!identifiers.cid || (!identifiers.bvid && !identifiers.aid)) {
-        return [];
-      }
-
+    const requestPromise = (async () => {
       const response = await fetch(buildPlayerApiUrl(identifiers), { credentials: 'include' });
       if (!response.ok) {
         return [];
@@ -705,7 +736,7 @@
       const body = Array.isArray(subtitlePayload && subtitlePayload.body)
         ? subtitlePayload.body
         : [];
-      subtitleTimeline = body
+      return body
         .map((item) => ({
           from: Number(item.from),
           to: Number(item.to),
@@ -715,26 +746,48 @@
           (item) => Number.isFinite(item.from) && Number.isFinite(item.to) && Boolean(item.content)
         )
         .sort((left, right) => left.from - right.from);
-
-      return subtitleTimeline;
     })()
+      .then((nextTimeline) => {
+        if (subtitleTimelineCacheKey !== cacheKey) {
+          return subtitleTimeline;
+        }
+
+        subtitleTimeline = nextTimeline;
+        subtitleTimelineLoaded = true;
+        return subtitleTimeline;
+      })
       .catch((error) => {
         if (globalThis.Utils && globalThis.Utils.logError) {
           globalThis.Utils.logError('Subtitle timeline load failed', error);
         } else {
           console.error('[BiliVocab] Subtitle timeline load failed:', error);
         }
+        if (subtitleTimelineCacheKey === cacheKey) {
+          subtitleTimeline = [];
+          subtitleTimelineLoaded = true;
+          return subtitleTimeline;
+        }
+
         return [];
       })
       .finally(() => {
-        subtitleTimelinePromise = null;
+        if (subtitleTimelinePromise === requestPromise) {
+          subtitleTimelinePromise = null;
+        }
       });
 
+    subtitleTimelinePromise = requestPromise;
     return subtitleTimelinePromise;
   }
 
   function getSubtitleFromTimelineAtCurrentTime() {
-    if (!Array.isArray(subtitleTimeline) || subtitleTimeline.length === 0) {
+    const cacheKey = buildSubtitleTimelineCacheKey(extractVideoIdentifiers());
+    if (
+      !cacheKey ||
+      cacheKey !== subtitleTimelineCacheKey ||
+      !Array.isArray(subtitleTimeline) ||
+      subtitleTimeline.length === 0
+    ) {
       return '';
     }
 

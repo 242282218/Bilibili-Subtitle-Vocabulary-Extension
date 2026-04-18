@@ -87,6 +87,9 @@ function OverlayApp() {
   });
   const subtitleTimelineRef = useRef<SubtitleTimelineItem[]>([]);
   const subtitleLoadingRef = useRef(isSubtitleTimelineHostSupported(hostname));
+  const subtitlePageUrlRef = useRef(
+    typeof globalThis.location !== 'undefined' ? String(globalThis.location.href || '') : ''
+  );
   const [subtitleNavigation, setSubtitleNavigation] = useState<SubtitleNavigationState>(() => {
     const video = readVideoElement();
     return buildSubtitleNavigationState({
@@ -137,12 +140,57 @@ function OverlayApp() {
 
   useEffect(() => {
     let cancelled = false;
-    const timer = window.setInterval(() => {
-      if (!cancelled) {
-        syncSubtitleNavigation();
-      }
-    }, 450);
     const subtitleParser = readSubtitleParser();
+
+    async function refreshSubtitleTimeline() {
+      if (
+        !isSubtitleTimelineHostSupported(hostname) ||
+        !subtitleParser ||
+        typeof subtitleParser.loadSubtitleTimeline !== 'function'
+      ) {
+        subtitleTimelineRef.current = [];
+        subtitleLoadingRef.current = false;
+        syncSubtitleNavigation();
+        return;
+      }
+
+      try {
+        const timeline = await subtitleParser.loadSubtitleTimeline();
+        if (cancelled) {
+          return;
+        }
+        subtitleTimelineRef.current = normalizeSubtitleTimeline(timeline);
+      } catch {
+        if (cancelled) {
+          return;
+        }
+        subtitleTimelineRef.current = [];
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      subtitleLoadingRef.current = false;
+      syncSubtitleNavigation();
+    }
+
+    const timer = window.setInterval(() => {
+      if (cancelled) {
+        return;
+      }
+
+      const nextPageUrl =
+        typeof globalThis.location !== 'undefined' ? String(globalThis.location.href || '') : '';
+      if (nextPageUrl !== subtitlePageUrlRef.current) {
+        subtitlePageUrlRef.current = nextPageUrl;
+        subtitleTimelineRef.current = [];
+        subtitleLoadingRef.current = isSubtitleTimelineHostSupported(hostname);
+      }
+
+      syncSubtitleNavigation();
+      void refreshSubtitleTimeline();
+    }, 450);
 
     syncSubtitleNavigation();
     if (
@@ -159,24 +207,7 @@ function OverlayApp() {
     }
 
     subtitleLoadingRef.current = true;
-    void subtitleParser
-      .loadSubtitleTimeline()
-      .then((timeline) => {
-        if (cancelled) {
-          return;
-        }
-        subtitleTimelineRef.current = normalizeSubtitleTimeline(timeline);
-        subtitleLoadingRef.current = false;
-        syncSubtitleNavigation();
-      })
-      .catch(() => {
-        if (cancelled) {
-          return;
-        }
-        subtitleTimelineRef.current = [];
-        subtitleLoadingRef.current = false;
-        syncSubtitleNavigation();
-      });
+    void refreshSubtitleTimeline();
 
     return () => {
       cancelled = true;

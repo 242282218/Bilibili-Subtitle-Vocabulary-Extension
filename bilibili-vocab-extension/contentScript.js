@@ -653,6 +653,12 @@
   async function processSubtitles() {
     const subtitleItems = SubtitleParser.getCurrentSubtitleItems();
     if (subtitleItems.length === 0) {
+      if (hasMethod(SubtitleParser, 'loadSubtitleTimeline')) {
+        await SubtitleParser.loadSubtitleTimeline().catch((error) => {
+          logError('Subtitle timeline refresh failed', error);
+          return [];
+        });
+      }
       const fallbackText = normalizeText(SubtitleParser.getSubtitleFromTimelineAtCurrentTime());
       const fallbackElement = SubtitleParser.getPrimarySubtitleElement();
       if (fallbackElement && fallbackText) {
