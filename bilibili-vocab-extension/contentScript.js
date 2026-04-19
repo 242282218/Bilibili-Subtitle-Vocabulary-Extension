@@ -1054,6 +1054,14 @@
     return Boolean(port && port.name === ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE);
   }
 
+  function isActiveSubtitleNavigationStreamPort(port) {
+    return (
+      isSubtitleNavigationStreamPort(port) &&
+      typeof port.postMessage === 'function' &&
+      subtitleNavigationPorts.has(port)
+    );
+  }
+
   function createSubtitleNavigationSnapshotSignature(snapshot) {
     const normalized = snapshot && typeof snapshot === 'object' ? snapshot : {};
     return [
@@ -1193,13 +1201,13 @@
     snapshot,
     videoKey = getCurrentSubtitleNavigationVideoKey()
   ) {
-    if (!isSubtitleNavigationStreamPort(port) || typeof port.postMessage !== 'function') {
-      return;
+    if (!isActiveSubtitleNavigationStreamPort(port)) {
+      return false;
     }
 
     const nextSnapshotKey = createSubtitleNavigationPortSnapshotKey(snapshot, videoKey);
     if (subtitleNavigationPortSnapshotKeys.get(port) === nextSnapshotKey) {
-      return;
+      return false;
     }
 
     port.postMessage({
@@ -1207,6 +1215,7 @@
       payload: snapshot,
     });
     subtitleNavigationPortSnapshotKeys.set(port, nextSnapshotKey);
+    return true;
   }
 
   function rememberSubtitleNavigationSnapshot(snapshot, videoKey) {
@@ -1486,18 +1495,29 @@
       Promise.resolve()
         .then(() => readSubtitleNavigationRuntimePayload())
         .then((runtimePayload) => {
-          postSubtitleNavigationSnapshot(port, runtimePayload.snapshot, runtimePayload.videoKey);
+          if (
+            !postSubtitleNavigationSnapshot(port, runtimePayload.snapshot, runtimePayload.videoKey)
+          ) {
+            return;
+          }
           rememberSubtitleNavigationSnapshot(runtimePayload.snapshot, runtimePayload.videoKey);
         })
         .catch((error) => {
+          if (!subtitleNavigationPorts.has(port)) {
+            return;
+          }
           logError('Subtitle navigation stream init failed', error);
           try {
             const pendingRuntimePayload = buildPendingSubtitleNavigationRuntimePayload();
-            postSubtitleNavigationSnapshot(
-              port,
-              pendingRuntimePayload.snapshot,
-              pendingRuntimePayload.videoKey
-            );
+            if (
+              !postSubtitleNavigationSnapshot(
+                port,
+                pendingRuntimePayload.snapshot,
+                pendingRuntimePayload.videoKey
+              )
+            ) {
+              return;
+            }
             rememberSubtitleNavigationSnapshot(
               pendingRuntimePayload.snapshot,
               pendingRuntimePayload.videoKey

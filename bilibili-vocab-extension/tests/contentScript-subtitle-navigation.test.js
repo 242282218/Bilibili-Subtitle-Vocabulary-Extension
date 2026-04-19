@@ -184,6 +184,111 @@ test('contentScript subtitle navigation: should stream initial snapshot over a c
   }
 });
 
+test('contentScript subtitle navigation: should fallback to pending snapshot when initial stream delivery fails', async () => {
+  const messages = [];
+  let disconnectListener = null;
+  let postAttempts = 0;
+  global.location = {
+    hostname: 'www.bilibili.com',
+  };
+  global.document.querySelector = (selector) => {
+    if (selector === 'video') {
+      return { currentTime: 2.5 };
+    }
+    return null;
+  };
+  global.SubtitleParser.loadSubtitleTimeline = async () => [
+    { from: 0, to: 1.5, content: '第一句' },
+    { from: 2.2, to: 3.7, content: '第二句' },
+  ];
+
+  const port = {
+    name: 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE',
+    onDisconnect: {
+      addListener(listener) {
+        disconnectListener = listener;
+      },
+    },
+    postMessage(message) {
+      postAttempts += 1;
+      if (postAttempts === 1) {
+        throw new Error('stream delivery failed');
+      }
+      messages.push(cloneValue(message));
+    },
+  };
+
+  runtimeConnectListener(port);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(postAttempts, 2);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].type, 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE');
+  assert.equal(messages[0].payload.supported, true);
+  assert.equal(messages[0].payload.progressLabel, '加载中');
+  assert.equal(messages[0].payload.headline, '正在加载字幕时间轴');
+  assert.equal(messages[0].payload.currentText, 'Bilibili 字幕轨道正在准备中。');
+
+  if (typeof disconnectListener === 'function') {
+    disconnectListener();
+  }
+});
+
+test('contentScript subtitle navigation: should ignore init resolution after subscribed port disconnects', async () => {
+  let disconnectListener = null;
+  let resolveTimeline = null;
+  let disconnected = false;
+  let postAttempts = 0;
+  const messages = [];
+  global.location = {
+    hostname: 'www.bilibili.com',
+  };
+  global.document.querySelector = (selector) => {
+    if (selector === 'video') {
+      return { currentTime: 2.5 };
+    }
+    return null;
+  };
+  global.SubtitleParser.getCurrentSubtitleTimelineCacheKey = () => 'BV1disconnect:cid:77';
+  global.SubtitleParser.loadSubtitleTimeline = async () =>
+    new Promise((resolve) => {
+      resolveTimeline = resolve;
+    });
+
+  const port = {
+    name: 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE',
+    onDisconnect: {
+      addListener(listener) {
+        disconnectListener = listener;
+      },
+    },
+    postMessage(message) {
+      postAttempts += 1;
+      if (disconnected) {
+        throw new Error('port disconnected');
+      }
+      messages.push(cloneValue(message));
+    },
+  };
+
+  runtimeConnectListener(port);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(messages.length, 0);
+  assert.equal(typeof disconnectListener, 'function');
+
+  disconnected = true;
+  disconnectListener();
+  resolveTimeline([
+    { from: 0, to: 1.5, content: '第一句' },
+    { from: 2.2, to: 3.7, content: '第二句' },
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(messages.length, 0);
+  assert.equal(postAttempts, 0);
+});
+
 test('contentScript subtitle navigation: should push pending snapshot to subscribed port immediately when video key changes', async () => {
   class MockVideoElement {
     constructor(currentTime) {
