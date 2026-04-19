@@ -86,6 +86,34 @@ test('shared settings: should clamp zero values to lower bounds instead of defau
   assert.equal(sharedSettings.getHeroMetricMeta('maxReplace', 0), '轻量点状');
 });
 
+test('shared settings: should expose popup metric labels through shared helper', () => {
+  assert.equal(
+    loadError,
+    null,
+    loadError ? loadError.message : 'sharedSettings.js should be loadable'
+  );
+
+  assert.equal(sharedSettings.getHeroMetricMeta('ratio', 0.1), '轻量低扰');
+  assert.equal(sharedSettings.getHeroMetricMeta('ratio', 0.2), '均衡曝光');
+  assert.equal(sharedSettings.getHeroMetricMeta('ratio', 0.3), '强化输入');
+  assert.equal(sharedSettings.getHeroMetricMeta('reviewSpeed', 'slow'), '低压慢复习');
+  assert.equal(sharedSettings.getHeroMetricMeta('reviewSpeed', 'normal'), '稳定推进');
+  assert.equal(sharedSettings.getHeroMetricMeta('reviewSpeed', 'fast'), '冲刺高频');
+});
+
+test('shared settings: should fallback to default active levels when selection is empty', () => {
+  assert.equal(
+    loadError,
+    null,
+    loadError ? loadError.message : 'sharedSettings.js should be loadable'
+  );
+
+  assert.deepEqual(
+    sharedSettings.normalizeActiveLevels([]),
+    sharedSettings.DEFAULT_SETTINGS.activeLevels
+  );
+});
+
 test('shared settings: should normalize vocabulary mode and exam preference', () => {
   assert.equal(
     loadError,

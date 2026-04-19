@@ -63,6 +63,36 @@ test('test ui entry contract: workspace should not keep legacy-only import/reset
   assert.equal(fs.existsSync(legacyContractPath), false);
 });
 
+test('test ui entry contract: workspace should not keep legacy-only popup metric contract', () => {
+  const legacyContractPath = path.join(__dirname, 'popup-expressive-ui.test.js');
+
+  assert.equal(fs.existsSync(legacyContractPath), false);
+});
+
+test('test ui entry contract: workspace should not keep legacy-only popup active-level fallback contract', () => {
+  const legacyContractPath = path.join(__dirname, 'popup-live-preview-sync.test.js');
+
+  assert.equal(fs.existsSync(legacyContractPath), false);
+});
+
+test('test ui entry contract: workspace should not keep legacy-only popup quick-review robustness contract', () => {
+  const legacyContractPath = path.join(__dirname, 'popup-quick-review-robustness.test.js');
+
+  assert.equal(fs.existsSync(legacyContractPath), false);
+});
+
+test('test ui entry contract: workspace should not keep legacy-only popup helper contract bundle', () => {
+  const legacyContractPath = path.join(__dirname, 'popup.test.js');
+
+  assert.equal(fs.existsSync(legacyContractPath), false);
+});
+
+test('test ui entry contract: workspace should not keep legacy-only popup storage error guard contract', () => {
+  const legacyContractPath = path.join(__dirname, 'popup-storage-error-guard.test.js');
+
+  assert.equal(fs.existsSync(legacyContractPath), false);
+});
+
 test('test ui entry contract: run-ui-tests should select only ui contract files', () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'run-ui-tests-'));
   const testsDir = path.join(workspace, 'tests');

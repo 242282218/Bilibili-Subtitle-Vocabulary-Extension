@@ -104,3 +104,98 @@ test('react ui learning dashboard: sortEncounteredWords should support descendin
     ['vocabulary', 'system', 'context']
   );
 });
+
+test('react ui learning dashboard: sortQuickReviewItems should ignore malformed entries and keep stable ordering', () => {
+  const dashboard = loadModule();
+  const sorted = dashboard.sortQuickReviewItems([
+    null,
+    undefined,
+    'invalid',
+    123,
+    {
+      word: 'laterWord',
+      translation: '稍后',
+      level: 'CET4',
+      status: 'seen',
+      dueBucket: 'later',
+      nextReviewAt: 1700000005000,
+      intervalDays: 3,
+      easeFactor: 2.1,
+      updatedAt: 1700000001000,
+    },
+    {
+      word: 'todayWord',
+      translation: '今天',
+      level: 'CET6',
+      status: 'saved',
+      dueBucket: 'today',
+      nextReviewAt: 1700000003000,
+      intervalDays: 1,
+      easeFactor: 2.3,
+      updatedAt: 1700000002000,
+    },
+    {
+      word: 'soonWord',
+      translation: '即将',
+      level: 'IELTS',
+      status: 'learning',
+      dueBucket: 'soon',
+      nextReviewAt: 1700000004000,
+      intervalDays: 2,
+      easeFactor: 2.2,
+      updatedAt: 1700000003000,
+    },
+  ]);
+
+  assert.deepEqual(
+    sorted.map((item) => item.word),
+    ['todayWord', 'soonWord', 'laterWord']
+  );
+});
+
+test('react ui learning dashboard: normalizeEncounteredWord should normalize missing fields', () => {
+  const dashboard = loadModule();
+  const normalized = dashboard.normalizeEncounteredWord({
+    word: '  optimize ',
+    meaning: '优化',
+    hitCount: '3',
+    lastSeen: '1700000000000',
+  });
+
+  assert.equal(normalized.word, 'optimize');
+  assert.equal(normalized.translation, '优化');
+  assert.equal(normalized.hitCount, 3);
+  assert.equal(normalized.lastSeen, 1700000000000);
+});
+
+test('react ui learning dashboard: sortEncounteredWords should support ascending ranking view', () => {
+  const dashboard = loadModule();
+  const sorted = dashboard.sortEncounteredWords(
+    [
+      { word: 'b', translation: '乙', hitCount: 2, lastSeen: 9, level: 'CET4' },
+      { word: 'a', translation: '甲', hitCount: 1, lastSeen: 10, level: 'CET6' },
+      { word: 'c', translation: '丙', hitCount: 2, lastSeen: 4, level: 'IELTS' },
+    ],
+    'asc'
+  );
+
+  assert.deepEqual(
+    sorted.map((item) => item.word),
+    ['a', 'c', 'b']
+  );
+});
+
+test('react ui learning dashboard: quick-review helpers should expose shipped empty state and due text copy', () => {
+  const dashboard = loadModule();
+  const now = 1700000000000;
+  const emptyState = JSON.parse(JSON.stringify(dashboard.getQuickReviewEmptyState()));
+
+  assert.deepEqual(emptyState, {
+    title: '当前没有待复习词',
+    description: '继续看一段带字幕的视频，系统会把新命中的词汇自动加入复习池。',
+    meta: '继续观看带字幕的视频后，这里会出现本轮优先回顾词。',
+  });
+  assert.equal(dashboard.formatReviewCountText({ todayCount: 5, newCount: 2 }), '今日待复习 5');
+  assert.equal(dashboard.formatReviewDueText(now + 2 * 60 * 60 * 1000, now), '2 小时后');
+  assert.equal(dashboard.formatReviewDueText(now - 1000, now), '现在复习');
+});
