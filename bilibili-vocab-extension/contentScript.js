@@ -340,18 +340,45 @@
     return `${normalizedText}::${normalized.replaceRatio.toFixed(2)}|${normalized.maxReplaceCount}|${sortedLevels}`;
   }
 
+  function createTranslationRuntimeFingerprint(runtimeSettings) {
+    const normalized = normalizeSettings(runtimeSettings);
+    const translationFingerprint = hasMethod(
+      globalThis.SubtitleTranslator,
+      'createSettingsFingerprint'
+    )
+      ? globalThis.SubtitleTranslator.createSettingsFingerprint(normalized)
+      : [
+          normalized.replaceRatio.toFixed(2),
+          normalized.maxReplaceCount,
+          normalized.targetCefr,
+          normalized.vocabularyMode,
+          normalized.examPreference,
+          normalized.activeLevels.slice().sort().join(','),
+        ].join('|');
+    const mode = normalized.enabled ? 'enabled' : 'disabled';
+    const pageMode = normalized.webPageEnabled ? 'page-on' : 'page-off';
+    const siteMode = isCurrentSiteEnabled(normalized) ? 'site-on' : 'site-off';
+    return `${mode}::${pageMode}::${siteMode}::${normalized.bilingualMode}::${translationFingerprint}`;
+  }
+
   function createRenderSignature(text, runtimeSettings) {
     const normalizedText = normalizeText(text);
     if (!normalizedText) {
       return '';
     }
 
-    const normalized = normalizeSettings(runtimeSettings);
-    const mode = normalized.enabled ? 'enabled' : 'disabled';
-    const pageMode = normalized.webPageEnabled ? 'page-on' : 'page-off';
-    const siteMode = isCurrentSiteEnabled(normalized) ? 'site-on' : 'site-off';
-    const cacheKey = createCacheKey(normalizedText, normalized);
-    return `${mode}::${pageMode}::${siteMode}::${cacheKey}`;
+    return `${createTranslationRuntimeFingerprint(runtimeSettings)}::${normalizedText}`;
+  }
+
+  function classifyRuntimeSettingsChange(previousSettings, nextSettings) {
+    const previous = normalizeSettings(previousSettings);
+    const next = normalizeSettings(nextSettings);
+    return {
+      translationChanged:
+        createTranslationRuntimeFingerprint(previous) !== createTranslationRuntimeFingerprint(next),
+      reviewDanmakuChanged: previous.reviewDanmakuEnabled !== next.reviewDanmakuEnabled,
+      reviewDanmakuSpeedChanged: previous.reviewDanmakuSpeed !== next.reviewDanmakuSpeed,
+    };
   }
 
   function isRenderUpToDate(element, sourceText, runtimeSettings) {
@@ -1570,11 +1597,11 @@
     });
   }
 
-  function hasTranslationSettingChange(changes) {
+  function hasRuntimeSettingsChange(changes) {
     if (changes && changes[SETTINGS_STORAGE_KEY_V3]) {
       return true;
     }
-    return TRANSLATION_SETTINGS_KEYS.some((key) => Boolean(changes && changes[key]));
+    return RUNTIME_SETTINGS_KEYS.some((key) => Boolean(changes && changes[key]));
   }
 
   function watchStorageChanges() {
@@ -1584,23 +1611,17 @@
       }
 
       const v3Changed = Boolean(changes[SETTINGS_STORAGE_KEY_V3]);
-      const reviewDanmakuChanged = v3Changed || Boolean(changes.reviewDanmakuEnabled);
-      const reviewDanmakuSpeedChanged = v3Changed || Boolean(changes.reviewDanmakuSpeed);
       const learningStateChanged = Boolean(
         changes[LEARNING_WORD_STATS_STORAGE_KEY] ||
         changes[REVIEW_QUEUE_STORAGE_KEY] ||
         changes[LEARNING_SUMMARY_STORAGE_KEY]
       );
-      const hasTranslationChange = hasTranslationSettingChange(changes);
-      if (
-        !reviewDanmakuChanged &&
-        !reviewDanmakuSpeedChanged &&
-        !hasTranslationChange &&
-        !learningStateChanged
-      ) {
+      if (!hasRuntimeSettingsChange(changes) && !learningStateChanged) {
         return;
       }
 
+      const previousSettings = settings;
+      let nextSettings = previousSettings;
       if (
         v3Changed &&
         sharedSettings &&
@@ -1610,7 +1631,7 @@
         const nextV3 = sharedSettings.normalizeSettingsV3(
           changes[SETTINGS_STORAGE_KEY_V3].newValue
         );
-        settings = sharedSettings.resolveEffectiveRuntime(nextV3, {
+        nextSettings = sharedSettings.resolveEffectiveRuntime(nextV3, {
           hostname: globalThis.location && globalThis.location.hostname,
         });
       } else {
@@ -1621,7 +1642,23 @@
           }
           updates[key] = changes[key].newValue;
         });
-        settings = buildRuntimeSettings(settings, updates);
+        nextSettings = buildRuntimeSettings(previousSettings, updates);
+      }
+
+      const {
+        translationChanged: hasTranslationChange,
+        reviewDanmakuChanged,
+        reviewDanmakuSpeedChanged,
+      } = classifyRuntimeSettingsChange(previousSettings, nextSettings);
+      settings = nextSettings;
+
+      if (
+        !reviewDanmakuChanged &&
+        !reviewDanmakuSpeedChanged &&
+        !hasTranslationChange &&
+        !learningStateChanged
+      ) {
+        return;
       }
 
       renderGeneration += 1;
@@ -1769,12 +1806,14 @@
     module.exports = {
       TRANSLATION_SETTINGS_KEYS,
       buildRuntimeSettings,
+      classifyRuntimeSettingsChange,
       createRenderSignature,
       createHitTrackingSignature,
-      hasTranslationSettingChange,
+      hasRuntimeSettingsChange,
       isRenderUpToDate,
       shouldRunReviewDanmaku,
       getPlaybackState,
+      watchStorageChanges,
       bindVideoPlaybackEvents,
       resetHitTrackingIfSourceChanged,
       recordRenderedHits,

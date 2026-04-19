@@ -219,6 +219,177 @@ test('createRenderSignature: should include web page mode so page toggle trigger
   assert.notEqual(enabledSignature, disabledSignature);
 });
 
+test('createRenderSignature: should include bilingual mode and ignore theme-only changes', () => {
+  global.location = { hostname: 'www.bilibili.com' };
+  const baseSettings = {
+    enabled: true,
+    webPageEnabled: true,
+    activeLevels: ['CET4', 'IELTS'],
+    replaceRatio: 0.2,
+    maxReplaceCount: 2,
+    targetCefr: 'B2',
+    vocabularyMode: 'core',
+    examPreference: 'balanced',
+    bilingualMode: 'default',
+    themeMode: 'auto',
+  };
+
+  const defaultSignature = contentScript.createRenderSignature('source subtitle', baseSettings);
+  const bilingualSignature = contentScript.createRenderSignature('source subtitle', {
+    ...baseSettings,
+    bilingualMode: 'bilingual',
+  });
+  const themeOnlySignature = contentScript.createRenderSignature('source subtitle', {
+    ...baseSettings,
+    themeMode: 'dark',
+  });
+
+  assert.notEqual(defaultSignature, bilingualSignature);
+  assert.equal(defaultSignature, themeOnlySignature);
+});
+
+test('classifyRuntimeSettingsChange: should ignore theme-only changes and keep danmaku flags separate', () => {
+  global.location = { hostname: 'www.bilibili.com' };
+  const baseSettings = {
+    enabled: true,
+    webPageEnabled: true,
+    activeLevels: ['CET4', 'IELTS'],
+    replaceRatio: 0.2,
+    maxReplaceCount: 2,
+    targetCefr: 'B2',
+    vocabularyMode: 'core',
+    examPreference: 'balanced',
+    bilingualMode: 'default',
+    themeMode: 'auto',
+    reviewDanmakuEnabled: false,
+    reviewDanmakuSpeed: 'normal',
+  };
+
+  assert.deepEqual(
+    contentScript.classifyRuntimeSettingsChange(baseSettings, {
+      ...baseSettings,
+      themeMode: 'dark',
+    }),
+    {
+      translationChanged: false,
+      reviewDanmakuChanged: false,
+      reviewDanmakuSpeedChanged: false,
+    }
+  );
+
+  assert.deepEqual(
+    contentScript.classifyRuntimeSettingsChange(baseSettings, {
+      ...baseSettings,
+      bilingualMode: 'bilingual',
+    }),
+    {
+      translationChanged: true,
+      reviewDanmakuChanged: false,
+      reviewDanmakuSpeedChanged: false,
+    }
+  );
+
+  assert.deepEqual(
+    contentScript.classifyRuntimeSettingsChange(baseSettings, {
+      ...baseSettings,
+      reviewDanmakuEnabled: true,
+      reviewDanmakuSpeed: 'fast',
+    }),
+    {
+      translationChanged: false,
+      reviewDanmakuChanged: true,
+      reviewDanmakuSpeedChanged: true,
+    }
+  );
+});
+
+test('watchStorageChanges: should keep cache on theme-only v3 saves and clear it on bilingual changes', async () => {
+  const sharedSettings = require('../sharedSettings.js');
+  const previousAddListener = global.chrome.storage.onChanged.addListener;
+  const previousMutationObserver = global.MutationObserver;
+  const previousSubtitleParser = global.SubtitleParser;
+  let changeListener = null;
+  const baseV3 = sharedSettings.migrateToV3({});
+  const balancedProfile = baseV3.profilesBuiltin.balanced;
+
+  global.location = { hostname: 'www.bilibili.com' };
+  global.SubtitleParser = {
+    getCurrentSubtitleItems() {
+      return [];
+    },
+    async loadSubtitleTimeline() {
+      return [];
+    },
+    getSubtitleFromTimelineAtCurrentTime() {
+      return '';
+    },
+    getPrimarySubtitleElement() {
+      return null;
+    },
+  };
+  global.chrome.storage.onChanged.addListener = (listener) => {
+    changeListener = listener;
+  };
+  global.MutationObserver = class MutationObserver {
+    disconnect() {}
+
+    observe() {}
+  };
+
+  try {
+    contentScript.watchStorageChanges();
+    assert.equal(typeof changeListener, 'function');
+
+    contentScript.__clearTranslationCacheForTest();
+    contentScript.__writeToCacheForTest('theme-only', { ok: true });
+    changeListener(
+      {
+        [sharedSettings.SETTINGS_STORAGE_KEY_V3]: {
+          newValue: {
+            ...baseV3,
+            profilesBuiltin: {
+              ...baseV3.profilesBuiltin,
+              balanced: {
+                ...balancedProfile,
+                themeMode: 'dark',
+              },
+            },
+          },
+        },
+      },
+      'local'
+    );
+    assert.deepEqual(contentScript.__readFromCacheForTest('theme-only'), { ok: true });
+
+    contentScript.__clearTranslationCacheForTest();
+    contentScript.__writeToCacheForTest('bilingual', { ok: true });
+    changeListener(
+      {
+        [sharedSettings.SETTINGS_STORAGE_KEY_V3]: {
+          newValue: {
+            ...baseV3,
+            profilesBuiltin: {
+              ...baseV3.profilesBuiltin,
+              balanced: {
+                ...balancedProfile,
+                bilingualMode: 'bilingual',
+              },
+            },
+          },
+        },
+      },
+      'local'
+    );
+    assert.equal(contentScript.__readFromCacheForTest('bilingual'), null);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  } finally {
+    global.MutationObserver = previousMutationObserver;
+    global.SubtitleParser = previousSubtitleParser;
+    global.chrome.storage.onChanged.addListener = previousAddListener;
+    contentScript.__clearTranslationCacheForTest();
+  }
+});
+
 test('shouldReplaceWebTextNode: should skip no-op replacements after normalization', () => {
   assert.equal(
     contentScript.shouldReplaceWebTextNode(
