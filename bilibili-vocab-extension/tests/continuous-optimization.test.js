@@ -391,9 +391,11 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
     assert.deepEqual(summary.unassignedTests, []);
     assert.deepEqual(summary.outOfBandSmokeTests, ['browser-extension-smoke.test.js']);
     assert.deepEqual(summary.deferredLegacyTests, ['popup.test.js']);
-    assert.equal(summary.nextFocusCandidates[0].id, 'runtime-bridge-coverage');
-    assert.equal(summary.nextFocusCandidates[1].id, 'legacy-react-drift');
-    assert.equal(summary.nextFocusCandidates[2].id, 'content-script-decomposition');
+    assert.equal(summary.nextFocusCandidates[0].id, 'legacy-react-drift');
+    assert.equal(summary.nextFocusCandidates[1].id, 'content-script-decomposition');
+    assert.ok(
+      !summary.nextFocusCandidates.some((candidate) => candidate.id === 'runtime-bridge-coverage')
+    );
 
     const deferredCandidate = summary.nextFocusCandidates.at(-1);
     assert.equal(deferredCandidate.id, 'legacy-deferred-tests');
@@ -410,6 +412,13 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
     assert.deepEqual(latestReport.unassignedTests, []);
     assert.deepEqual(latestReport.outOfBandSmokeTests, ['browser-extension-smoke.test.js']);
     assert.deepEqual(latestReport.deferredLegacyTests, ['popup.test.js']);
+    assert.equal(latestReport.nextFocusCandidates[0].id, 'legacy-react-drift');
+    assert.equal(latestReport.nextFocusCandidates[1].id, 'content-script-decomposition');
+    assert.ok(
+      !latestReport.nextFocusCandidates.some(
+        (candidate) => candidate.id === 'runtime-bridge-coverage'
+      )
+    );
 
     const markdown = fs.readFileSync(path.join(reportDir, 'latest.md'), 'utf8');
     assert.match(markdown, /Out-of-Band Browser Smoke Tests/);
