@@ -39,8 +39,8 @@ const STATIC_OPTIMIZATION_GAPS = [
     priority: 1,
     title: '继续压低 React 与 legacy 双栈漂移风险',
     rationale:
-      'manifest 已切到 React 入口，但根目录 legacy popup/options shell 仍存在，后续优化需要持续防止目标漂移。',
-    files: ['manifest.json', 'popup.js', 'options.js'],
+      'shipped popup/options 入口与 pack 已锁定到 React dist，但根目录 legacy popup/options shell 文件仍存在，后续优化需要持续防止目标漂移。',
+    files: ['popup.html', 'popup.js', 'options.html', 'options.js'],
     suggestedCommands: ['pnpm run test:ui', 'pnpm run build:extension'],
   },
 ];

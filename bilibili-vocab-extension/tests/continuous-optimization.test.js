@@ -393,18 +393,20 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
     assert.deepEqual(summary.deferredLegacyTests, ['popup.test.js']);
     assert.equal(summary.nextFocusCandidates[0].id, 'content-script-decomposition');
     assert.deepEqual(summary.nextFocusCandidates[1].files, [
-      'manifest.json',
+      'popup.html',
       'popup.js',
+      'options.html',
       'options.js',
     ]);
     assert.doesNotMatch(summary.nextFocusCandidates[1].rationale, /overlay/i);
+    assert.doesNotMatch(summary.nextFocusCandidates[1].rationale, /manifest/i);
     assert.equal(summary.nextFocusCandidates[1].id, 'legacy-react-drift');
     assert.ok(
       !summary.nextFocusCandidates.some((candidate) => candidate.id === 'runtime-bridge-coverage')
     );
     assert.deepEqual(
       summary.knownBlindSpots.find((item) => item.id === 'legacy-react-drift').files,
-      ['manifest.json', 'popup.js', 'options.js']
+      ['popup.html', 'popup.js', 'options.html', 'options.js']
     );
 
     const deferredCandidate = summary.nextFocusCandidates.at(-1);
@@ -424,11 +426,13 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
     assert.deepEqual(latestReport.deferredLegacyTests, ['popup.test.js']);
     assert.equal(latestReport.nextFocusCandidates[0].id, 'content-script-decomposition');
     assert.deepEqual(latestReport.nextFocusCandidates[1].files, [
-      'manifest.json',
+      'popup.html',
       'popup.js',
+      'options.html',
       'options.js',
     ]);
     assert.doesNotMatch(latestReport.nextFocusCandidates[1].rationale, /overlay/i);
+    assert.doesNotMatch(latestReport.nextFocusCandidates[1].rationale, /manifest/i);
     assert.equal(latestReport.nextFocusCandidates[1].id, 'legacy-react-drift');
     assert.ok(
       !latestReport.nextFocusCandidates.some(
@@ -437,7 +441,7 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
     );
     assert.deepEqual(
       latestReport.knownBlindSpots.find((item) => item.id === 'legacy-react-drift').files,
-      ['manifest.json', 'popup.js', 'options.js']
+      ['popup.html', 'popup.js', 'options.html', 'options.js']
     );
 
     const markdown = fs.readFileSync(path.join(reportDir, 'latest.md'), 'utf8');
