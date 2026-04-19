@@ -204,6 +204,58 @@ test('contentScript overlay bridge: refresh should fallback to current pending p
   assert.equal(latestPayload.state.progressLabel, '加载中');
 });
 
+test('contentScript overlay bridge: refresh should keep the latest video key when a stale timeline read rejects after switching videos', async () => {
+  const contentScript = loadContentScript();
+  const video = { currentTime: 2.5 };
+  let currentVideoKey = 'BV1staleOld:cid:10';
+  let rejectOldTimeline = null;
+
+  global.location = { hostname: 'www.bilibili.com' };
+  global.document.querySelector = (selector) => {
+    if (selector === 'video') {
+      return video;
+    }
+    return null;
+  };
+
+  global.SubtitleParser.getCurrentSubtitleTimelineCacheKey = () => currentVideoKey;
+  global.SubtitleParser.loadSubtitleTimeline = async () => {
+    const requestedVideoKey = currentVideoKey;
+    if (requestedVideoKey === 'BV1staleOld:cid:10') {
+      return new Promise((_resolve, reject) => {
+        rejectOldTimeline = reject;
+      });
+    }
+    return [];
+  };
+
+  const refreshPromise = contentScript.refreshOverlaySubtitleNavigation();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  currentVideoKey = 'BV1staleNew:cid:20';
+  video.currentTime = 0.4;
+
+  const originalConsoleError = console.error;
+  let payload = null;
+  console.error = () => {};
+  try {
+    rejectOldTimeline(new Error('timeline exploded'));
+    payload = await refreshPromise;
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.equal(payload.videoKey, 'BV1staleNew:cid:20');
+  assert.equal(payload.state.supported, true);
+  assert.equal(payload.state.loading, true);
+  assert.equal(payload.state.progressLabel, '加载中');
+  assert.equal(payload.state.currentText, 'Bilibili 字幕轨道正在准备中。');
+
+  const latestPayload = contentScript.readOverlaySubtitleNavigationPayload();
+  assert.equal(latestPayload.videoKey, 'BV1staleNew:cid:20');
+  assert.equal(latestPayload.state.progressLabel, '加载中');
+});
+
 test('contentScript overlay bridge: refresh should not re-publish identical payloads', async () => {
   const contentScript = loadContentScript();
   const video = { currentTime: 2.5 };

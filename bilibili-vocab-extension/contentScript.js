@@ -1364,7 +1364,7 @@
     } catch (error) {
       // Why: bridge consumers should fall back to the current page pending state, not stale data.
       logError('Subtitle navigation runtime payload read failed', error);
-      return buildPendingSubtitleNavigationRuntimePayload(requestedVideoKey);
+      return buildPendingSubtitleNavigationRuntimePayload(getCurrentSubtitleNavigationVideoKey());
     }
   }
 
