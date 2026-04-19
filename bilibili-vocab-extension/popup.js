@@ -1438,8 +1438,11 @@ function normalizeWordStat(item) {
   return {
     word,
     translation: String(item.translation || item.meaning || '').trim(),
-    hitCount: Math.max(0, Math.floor(Number(item.hitCount) || 0)),
-    lastSeen: Number.isFinite(Number(item.lastSeen)) ? Number(item.lastSeen) : null,
+    hitCount: Math.max(
+      0,
+      Math.floor(Number(item.hitCount ?? item.exposureCount ?? item.seenCount) || 0)
+    ),
+    lastSeen: normalizeReviewTimestamp(item.lastSeenAt ?? item.lastSeen ?? item.updatedAt),
     level: String(item.level || '')
       .trim()
       .toUpperCase(),

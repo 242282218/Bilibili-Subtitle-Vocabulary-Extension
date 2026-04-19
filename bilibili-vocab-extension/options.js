@@ -157,6 +157,62 @@ function getWordStatRecords(wordStats) {
   return Object.values(wordStats).filter((item) => item && typeof item === 'object');
 }
 
+function normalizeExportText(value) {
+  return String(value || '').trim();
+}
+
+function normalizeExportSourceTimeSeconds(value) {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return null;
+  }
+  return Math.floor(seconds);
+}
+
+function formatExportSourceTimeLabel(value) {
+  const totalSeconds = normalizeExportSourceTimeSeconds(value);
+  if (totalSeconds == null) {
+    return '';
+  }
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return [hours, minutes, seconds]
+      .map((part, index) => (index === 0 ? String(part) : String(part).padStart(2, '0')))
+      .join(':');
+  }
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function normalizeExportSource(source) {
+  if (!source || typeof source !== 'object') {
+    return undefined;
+  }
+
+  const normalized = {
+    title: normalizeExportText(source.title),
+    url: normalizeExportText(source.url),
+    timeSeconds: normalizeExportSourceTimeSeconds(source.timeSeconds),
+    timeLabel: normalizeExportText(source.timeLabel),
+  };
+  if (!normalized.timeLabel && normalized.timeSeconds != null) {
+    normalized.timeLabel = formatExportSourceTimeLabel(normalized.timeSeconds);
+  }
+
+  if (
+    !normalized.title &&
+    !normalized.url &&
+    normalized.timeSeconds == null &&
+    !normalized.timeLabel
+  ) {
+    return undefined;
+  }
+
+  return normalized;
+}
+
 function normalizeExportWordRecord(word) {
   if (!word || typeof word !== 'object') {
     return null;
@@ -173,14 +229,17 @@ function normalizeExportWordRecord(word) {
 
   return {
     word: normalizedWord,
-    translation: String(word.translation || '').trim(),
-    level: String(word.level || '').trim(),
+    status: normalizeExportText(word.status).toLowerCase(),
+    translation: normalizeExportText(word.translation),
+    level: normalizeExportText(word.level),
     savedAt: Number.isFinite(savedAt) && savedAt > 0 ? Math.floor(savedAt) : null,
     exposures: Number.isFinite(exposures) && exposures > 0 ? Math.floor(exposures) : 0,
+    context: normalizeExportText(word.context || word.example || ''),
+    source: normalizeExportSource(word.source),
     details: {
-      meaning: String(details.meaning || '').trim(),
-      level: String(details.level || '').trim(),
-      phonetic: String(details.phonetic || '').trim(),
+      meaning: normalizeExportText(details.meaning),
+      level: normalizeExportText(details.level),
+      phonetic: normalizeExportText(details.phonetic),
     },
   };
 }
@@ -233,12 +292,27 @@ function normalizeTsvCell(value) {
 function buildVocabularyExportPayload(savedWords, format = 'json') {
   const safeWords = normalizeExportWordRecords(savedWords);
   if (format === 'csv') {
-    const headers = ['单词', '释义', '难度等级', '音标', '收藏时间', '遇见次数'];
+    const headers = [
+      '单词',
+      '释义',
+      '难度等级',
+      '音标',
+      '原句上下文',
+      '来源标题',
+      '来源链接',
+      '来源时间点',
+      '收藏时间',
+      '遇见次数',
+    ];
     const rows = safeWords.map((word) => [
       word.word,
       word.details?.meaning || '',
       word.details?.level || '',
       word.details?.phonetic || '',
+      word.context || '',
+      word.source?.title || '',
+      word.source?.url || '',
+      word.source?.timeLabel || '',
       word.savedAt ? new Date(word.savedAt).toLocaleString() : '',
       word.exposures || 0,
     ]);
@@ -254,13 +328,27 @@ function buildVocabularyExportPayload(savedWords, format = 'json') {
   }
 
   if (format === 'anki') {
-    const headers = ['Front', 'Back', 'Level', 'Phonetic', 'SavedAt'];
+    const headers = [
+      'Front',
+      'Back',
+      'Example',
+      'Level',
+      'Phonetic',
+      'SavedAt',
+      'SourceTitle',
+      'SourceUrl',
+      'SourceTime',
+    ];
     const rows = safeWords.map((word) => [
       normalizeTsvCell(word.word),
       normalizeTsvCell(word.details?.meaning || word.translation || ''),
+      normalizeTsvCell(word.context || ''),
       normalizeTsvCell(word.details?.level || word.level || ''),
       normalizeTsvCell(word.details?.phonetic || ''),
       normalizeTsvCell(word.savedAt ? new Date(word.savedAt).toISOString() : ''),
+      normalizeTsvCell(word.source?.title || ''),
+      normalizeTsvCell(word.source?.url || ''),
+      normalizeTsvCell(word.source?.timeLabel || ''),
     ]);
 
     return {
