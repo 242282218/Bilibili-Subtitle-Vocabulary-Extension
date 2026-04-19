@@ -1178,6 +1178,10 @@
     };
   }
 
+  function buildPendingSubtitleNavigationSnapshot() {
+    return buildPendingSubtitleNavigationRuntimePayload().snapshot;
+  }
+
   function postSubtitleNavigationSnapshot(port, snapshot) {
     if (!isSubtitleNavigationStreamPort(port) || typeof port.postMessage !== 'function') {
       return;
@@ -1297,8 +1301,14 @@
   }
 
   async function readSubtitleNavigationSnapshot() {
-    const context = await readSubtitleNavigationContext();
-    return context.snapshot;
+    try {
+      const context = await readSubtitleNavigationContext();
+      return context.snapshot;
+    } catch (error) {
+      // Why: passive subtitle readers should keep the current-page loading state, not drop to empty UI.
+      logError('Subtitle navigation snapshot read failed', error);
+      return buildPendingSubtitleNavigationSnapshot();
+    }
   }
 
   async function readSubtitleNavigationRuntimePayload() {
@@ -1423,7 +1433,7 @@
         .catch((error) => {
           logError('Subtitle navigation stream init failed', error);
           try {
-            postSubtitleNavigationSnapshot(port, buildSubtitleNavigationContext(null, []).snapshot);
+            postSubtitleNavigationSnapshot(port, buildPendingSubtitleNavigationSnapshot());
           } catch (fallbackError) {
             logError('Subtitle navigation stream fallback failed', fallbackError);
           }
