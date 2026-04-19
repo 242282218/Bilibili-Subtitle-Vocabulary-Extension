@@ -1151,6 +1151,33 @@
     return createOverlaySubtitleNavigationPayload(state, videoKey);
   }
 
+  function createSubtitleNavigationRuntimePayload(context, videoKey) {
+    return {
+      context,
+      videoKey: String(videoKey || ''),
+      snapshot: context.snapshot,
+      overlayPayload: createOverlaySubtitleNavigationPayload(context.state, videoKey),
+    };
+  }
+
+  function buildPendingSubtitleNavigationRuntimePayload(
+    videoKey = getCurrentSubtitleNavigationVideoKey()
+  ) {
+    const overlayPayload = buildPendingOverlaySubtitleNavigationPayload(videoKey);
+    const snapshot = createSubtitleNavigationSnapshotFromState(overlayPayload.state);
+    return {
+      context: {
+        timeline: [],
+        video: null,
+        state: { ...overlayPayload.state },
+        snapshot,
+      },
+      videoKey: String(overlayPayload.videoKey || ''),
+      snapshot,
+      overlayPayload,
+    };
+  }
+
   function postSubtitleNavigationSnapshot(port, snapshot) {
     if (!isSubtitleNavigationStreamPort(port) || typeof port.postMessage !== 'function') {
       return;
@@ -1275,14 +1302,15 @@
   }
 
   async function readSubtitleNavigationRuntimePayload() {
-    const context = await readSubtitleNavigationContext();
     const videoKey = getCurrentSubtitleNavigationVideoKey();
-    return {
-      context,
-      videoKey,
-      snapshot: context.snapshot,
-      overlayPayload: createOverlaySubtitleNavigationPayload(context.state, videoKey),
-    };
+    try {
+      const context = await readSubtitleNavigationContext();
+      return createSubtitleNavigationRuntimePayload(context, videoKey);
+    } catch (error) {
+      // Why: bridge consumers should fall back to the current page pending state, not stale data.
+      logError('Subtitle navigation runtime payload read failed', error);
+      return buildPendingSubtitleNavigationRuntimePayload(videoKey);
+    }
   }
 
   function readOverlaySubtitleNavigationPayload() {

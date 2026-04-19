@@ -155,6 +155,55 @@ test('contentScript overlay bridge: refresh should replace cached payload when v
   assert.equal(latestPayload.state.currentText, '当前还不能按句跳转。');
 });
 
+test('contentScript overlay bridge: refresh should fallback to current pending payload when timeline read fails after video switch', async () => {
+  const contentScript = loadContentScript();
+  const video = { currentTime: 2.5 };
+
+  global.location = { hostname: 'www.bilibili.com' };
+  global.document.querySelector = (selector) => {
+    if (selector === 'video') {
+      return video;
+    }
+    return null;
+  };
+
+  global.SubtitleParser.getCurrentSubtitleTimelineCacheKey = () => 'BV1xx411x7xN:cid:42';
+  global.SubtitleParser.loadSubtitleTimeline = async () => [
+    { from: 0, to: 1.5, content: '第一句' },
+    { from: 2.2, to: 3.7, content: '第二句' },
+  ];
+
+  const firstPayload = await contentScript.refreshOverlaySubtitleNavigation();
+  assert.equal(firstPayload.videoKey, 'BV1xx411x7xN:cid:42');
+  assert.equal(firstPayload.state.progressLabel, '2 / 2');
+
+  global.SubtitleParser.getCurrentSubtitleTimelineCacheKey = () => 'BV9yy522y8yM:cid:99';
+  global.SubtitleParser.loadSubtitleTimeline = async () => {
+    throw new Error('timeline exploded');
+  };
+  video.currentTime = 5.1;
+
+  const originalConsoleError = console.error;
+  let secondPayload = null;
+  console.error = () => {};
+  try {
+    await assert.doesNotReject(async () => {
+      secondPayload = await contentScript.refreshOverlaySubtitleNavigation();
+    });
+  } finally {
+    console.error = originalConsoleError;
+  }
+  assert.equal(secondPayload.videoKey, 'BV9yy522y8yM:cid:99');
+  assert.equal(secondPayload.state.supported, true);
+  assert.equal(secondPayload.state.loading, true);
+  assert.equal(secondPayload.state.progressLabel, '加载中');
+  assert.equal(secondPayload.state.currentText, 'Bilibili 字幕轨道正在准备中。');
+
+  const latestPayload = contentScript.readOverlaySubtitleNavigationPayload();
+  assert.equal(latestPayload.videoKey, 'BV9yy522y8yM:cid:99');
+  assert.equal(latestPayload.state.progressLabel, '加载中');
+});
+
 test('contentScript overlay bridge: refresh should not re-publish identical payloads', async () => {
   const contentScript = loadContentScript();
   const video = { currentTime: 2.5 };
