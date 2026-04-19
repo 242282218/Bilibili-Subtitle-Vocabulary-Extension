@@ -86,6 +86,7 @@
   let subtitleNavigationBroadcastPromise = null;
   let subtitleNavigationBroadcastQueued = false;
   let subtitleNavigationSnapshotSignature = '';
+  let subtitleNavigationSnapshotVideoKey = '';
   let overlaySubtitleNavigationSignature = '';
   let overlaySubtitleNavigationPayload = null;
   let webTextProcessTimer = null;
@@ -1193,8 +1194,13 @@
     });
   }
 
-  function broadcastSubtitleNavigationSnapshot(snapshot) {
+  function rememberSubtitleNavigationSnapshot(snapshot, videoKey) {
     subtitleNavigationSnapshotSignature = createSubtitleNavigationSnapshotSignature(snapshot);
+    subtitleNavigationSnapshotVideoKey = String(videoKey || '');
+  }
+
+  function broadcastSubtitleNavigationSnapshot(snapshot, videoKey) {
+    rememberSubtitleNavigationSnapshot(snapshot, videoKey);
     subtitleNavigationPorts.forEach((port) => {
       try {
         postSubtitleNavigationSnapshot(port, snapshot);
@@ -1210,6 +1216,7 @@
     }
 
     const pendingOverlayPayload = buildPendingOverlaySubtitleNavigationPayload();
+    const pendingVideoKey = String(pendingOverlayPayload.videoKey || '');
     const pendingOverlaySignature = createOverlaySubtitleNavigationSignature(pendingOverlayPayload);
     if (
       pendingOverlaySignature !== overlaySubtitleNavigationSignature &&
@@ -1223,6 +1230,16 @@
       publishOverlaySubtitleNavigationPayload(pendingOverlayPayload);
     }
 
+    const pendingSnapshot = createSubtitleNavigationSnapshotFromState(pendingOverlayPayload.state);
+    const pendingSnapshotSignature = createSubtitleNavigationSnapshotSignature(pendingSnapshot);
+    if (
+      subtitleNavigationPorts.size > 0 &&
+      pendingSnapshotSignature !== subtitleNavigationSnapshotSignature &&
+      pendingVideoKey !== subtitleNavigationSnapshotVideoKey
+    ) {
+      broadcastSubtitleNavigationSnapshot(pendingSnapshot, pendingVideoKey);
+    }
+
     if (subtitleNavigationBroadcastPromise) {
       subtitleNavigationBroadcastQueued = true;
       return;
@@ -1234,7 +1251,7 @@
           runtimePayload.snapshot
         );
         if (nextSnapshotSignature !== subtitleNavigationSnapshotSignature) {
-          broadcastSubtitleNavigationSnapshot(runtimePayload.snapshot);
+          broadcastSubtitleNavigationSnapshot(runtimePayload.snapshot, runtimePayload.videoKey);
         }
 
         const nextOverlaySignature = createOverlaySubtitleNavigationSignature(
@@ -1436,11 +1453,17 @@
         .then(() => readSubtitleNavigationSnapshot())
         .then((snapshot) => {
           postSubtitleNavigationSnapshot(port, snapshot);
+          rememberSubtitleNavigationSnapshot(snapshot, getCurrentSubtitleNavigationVideoKey());
         })
         .catch((error) => {
           logError('Subtitle navigation stream init failed', error);
           try {
-            postSubtitleNavigationSnapshot(port, buildPendingSubtitleNavigationSnapshot());
+            const pendingSnapshot = buildPendingSubtitleNavigationSnapshot();
+            postSubtitleNavigationSnapshot(port, pendingSnapshot);
+            rememberSubtitleNavigationSnapshot(
+              pendingSnapshot,
+              getCurrentSubtitleNavigationVideoKey()
+            );
           } catch (fallbackError) {
             logError('Subtitle navigation stream fallback failed', fallbackError);
           }
