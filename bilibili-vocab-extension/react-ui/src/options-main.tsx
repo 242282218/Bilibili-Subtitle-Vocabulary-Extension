@@ -20,12 +20,12 @@ import {
   SCENE_PRESETS,
   ScenePresetKey,
   cloneSettingsV3,
-  getDefaultSettingsV3,
+  createResetSettingsSnapshot,
   getPresetKeyFromSettings,
   getReviewDanmakuSpeedLabel,
   LEVELS,
   MAX_CUSTOM_PROFILES,
-  migrateToV3,
+  parseImportedSettingsText,
   PROFILE_META,
   REVIEW_SPEEDS,
   THEME_MODES,
@@ -559,8 +559,7 @@ function OptionsApp() {
 
     setMaintenanceBusy('import');
     try {
-      const importedRaw = JSON.parse(await file.text());
-      const importedSettings = migrateToV3(importedRaw);
+      const importedSettings = parseImportedSettingsText(await file.text());
       setWorkingDirect(importedSettings);
       const saveResult = await save('设置导入并应用到扩展。');
       if (!saveResult) {
@@ -584,7 +583,7 @@ function OptionsApp() {
 
     setMaintenanceBusy('reset');
     try {
-      const defaults = getDefaultSettingsV3();
+      const defaults = createResetSettingsSnapshot();
       setWorkingDirect(defaults);
       const saveResult = await save('已恢复默认设置。');
       if (!saveResult) {

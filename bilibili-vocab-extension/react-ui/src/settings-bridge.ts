@@ -634,6 +634,14 @@ export function getDefaultSettingsV3(): SettingsV3 {
   return cloneSettings(FALLBACK_DEFAULTS);
 }
 
+export function parseImportedSettingsText(rawText: string): SettingsV3 {
+  return cloneSettingsV3(migrateToV3(JSON.parse(String(rawText))));
+}
+
+export function createResetSettingsSnapshot(): SettingsV3 {
+  return cloneSettingsV3(getDefaultSettingsV3());
+}
+
 export function migrateToV3(input: unknown): SettingsV3 {
   if (typeof shared.migrateToV3 === 'function') {
     return shared.migrateToV3(input);

@@ -51,6 +51,18 @@ test('test ui entry contract: workspace should not keep legacy-only clear-vocabu
   assert.equal(fs.existsSync(legacyContractPath), false);
 });
 
+test('test ui entry contract: workspace should not keep legacy-only import-settings contract', () => {
+  const legacyContractPath = path.join(__dirname, 'options-import-reset-behavior.test.js');
+
+  assert.equal(fs.existsSync(legacyContractPath), false);
+});
+
+test('test ui entry contract: workspace should not keep legacy-only import/reset source contract', () => {
+  const legacyContractPath = path.join(__dirname, 'options-import-reset-contract.test.js');
+
+  assert.equal(fs.existsSync(legacyContractPath), false);
+});
+
 test('test ui entry contract: run-ui-tests should select only ui contract files', () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'run-ui-tests-'));
   const testsDir = path.join(workspace, 'tests');

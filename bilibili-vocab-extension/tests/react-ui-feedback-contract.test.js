@@ -52,3 +52,18 @@ test('react ui feedback contract: onSave should keep error feedback when persist
   assert.match(optionsSource, /saveResult\.preservedLocalEdits/);
   assert.match(popupSource, /saveResult\.preservedLocalEdits/);
 });
+
+test('react ui feedback contract: options maintenance flow should use shared import/reset helpers before save', () => {
+  const optionsSource = readProjectFile('react-ui/src/options-main.tsx');
+
+  assert.match(optionsSource, /parseImportedSettingsText/);
+  assert.match(optionsSource, /createResetSettingsSnapshot/);
+  assert.match(
+    optionsSource,
+    /const importedSettings = parseImportedSettingsText\(await file\.text\(\)\);[\s\S]*const saveResult = await save\('设置导入并应用到扩展。'\);/
+  );
+  assert.match(
+    optionsSource,
+    /const defaults = createResetSettingsSnapshot\(\);[\s\S]*const saveResult = await save\('已恢复默认设置。'\);/
+  );
+});

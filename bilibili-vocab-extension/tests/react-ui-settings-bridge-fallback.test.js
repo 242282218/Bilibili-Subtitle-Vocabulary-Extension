@@ -179,3 +179,47 @@ test('react ui settings bridge fallback: should retain theme mode inside normali
   assert.equal(normalized.themeMode, 'dark');
   assert.equal(normalized.bilingualMode, 'english-only');
 });
+
+test('react ui settings bridge fallback: should parse imported settings text into a v3 snapshot', () => {
+  const settingsBridge = createSettingsBridgeModule();
+
+  const imported = settingsBridge.parseImportedSettingsText(
+    JSON.stringify({
+      enabled: false,
+      reviewDanmakuEnabled: true,
+      webPageEnabled: false,
+      activeLevels: ['IELTS'],
+      replaceRatio: 0.3,
+      maxReplaceCount: 4,
+      targetCefr: 'C1',
+      reviewDanmakuSpeed: 'fast',
+      vocabularyMode: 'full',
+      examPreference: 'exam-first',
+      bilingualMode: 'bilingual',
+      themeMode: 'dark',
+    })
+  );
+
+  assert.equal(imported.schemaVersion, 3);
+  assert.equal(imported.activeProfileId, 'legacy-imported');
+  assert.equal(imported.profilesCustom.length, 1);
+  assert.equal(imported.profilesCustom[0].config.enabled, false);
+  assert.equal(imported.profilesCustom[0].config.replaceRatio, 0.3);
+  assert.equal(imported.profilesCustom[0].config.themeMode, 'dark');
+  assert.equal(imported.globalControls.reviewDanmakuEnabled, true);
+  assert.equal(imported.globalControls.webPageEnabled, false);
+});
+
+test('react ui settings bridge fallback: should return isolated reset snapshots for maintenance flows', () => {
+  const settingsBridge = createSettingsBridgeModule();
+
+  const first = settingsBridge.createResetSettingsSnapshot();
+  first.activeProfileId = 'intensive';
+  first.globalControls.reviewDanmakuEnabled = true;
+
+  const second = settingsBridge.createResetSettingsSnapshot();
+
+  assert.equal(second.schemaVersion, 3);
+  assert.equal(second.activeProfileId, 'balanced');
+  assert.equal(second.globalControls.reviewDanmakuEnabled, false);
+});
