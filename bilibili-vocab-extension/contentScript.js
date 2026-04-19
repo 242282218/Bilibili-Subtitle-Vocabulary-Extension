@@ -1381,7 +1381,14 @@
       throw new Error('Invalid subtitle navigation action');
     }
 
-    const context = await readSubtitleNavigationContext();
+    let context;
+    try {
+      context = await readSubtitleNavigationContext();
+    } catch (error) {
+      // Why: actionable navigation errors should be about invalid actions, not transient timeline reads.
+      logError('Subtitle navigation action read failed', error);
+      return buildPendingSubtitleNavigationSnapshot();
+    }
     if (!context.video) {
       return context.snapshot;
     }

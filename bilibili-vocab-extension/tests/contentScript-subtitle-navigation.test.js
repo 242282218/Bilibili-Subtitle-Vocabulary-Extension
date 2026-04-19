@@ -305,6 +305,45 @@ test('contentScript subtitle navigation: should navigate to next subtitle via ru
   assert.equal(result.response.payload.canGoNext, false);
 });
 
+test('contentScript subtitle navigation: should return pending snapshot when navigate hits a timeline error', async () => {
+  const video = { currentTime: 2.5 };
+  global.location = {
+    hostname: 'www.bilibili.com',
+  };
+  global.document.querySelector = (selector) => {
+    if (selector === 'video') {
+      return video;
+    }
+    return null;
+  };
+  global.SubtitleParser.loadSubtitleTimeline = async () => {
+    throw new Error('timeline exploded');
+  };
+
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  try {
+    const result = await dispatchRuntimeMessage({
+      type: 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE',
+      payload: {
+        action: 'next',
+      },
+    });
+
+    assert.equal(result.keepChannelOpen, true);
+    assert.equal(result.response.ok, true);
+    assert.equal(video.currentTime, 2.5);
+    assert.equal(result.response.payload.supported, true);
+    assert.equal(result.response.payload.progressLabel, '加载中');
+    assert.equal(result.response.payload.currentText, 'Bilibili 字幕轨道正在准备中。');
+    assert.equal(result.response.payload.canGoPrevious, false);
+    assert.equal(result.response.payload.canReplay, false);
+    assert.equal(result.response.payload.canGoNext, false);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
 test('contentScript subtitle navigation: should reject invalid runtime navigate actions', async () => {
   const result = await dispatchRuntimeMessage({
     type: 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE',
