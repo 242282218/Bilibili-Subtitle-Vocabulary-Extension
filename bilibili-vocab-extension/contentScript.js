@@ -1336,16 +1336,31 @@
     return (await readSubtitleNavigationRuntimePayload()).snapshot;
   }
 
+  async function readStableSubtitleNavigationContext(
+    requestedVideoKey = getCurrentSubtitleNavigationVideoKey()
+  ) {
+    const context = await readSubtitleNavigationContext();
+    const latestVideoKey = getCurrentSubtitleNavigationVideoKey();
+    return {
+      context,
+      requestedVideoKey: String(requestedVideoKey || ''),
+      latestVideoKey: String(latestVideoKey || ''),
+      isStale: latestVideoKey !== requestedVideoKey,
+    };
+  }
+
   async function readSubtitleNavigationRuntimePayload() {
     const requestedVideoKey = getCurrentSubtitleNavigationVideoKey();
     try {
-      const context = await readSubtitleNavigationContext();
-      const latestVideoKey = getCurrentSubtitleNavigationVideoKey();
-      if (latestVideoKey !== requestedVideoKey) {
+      const stableContext = await readStableSubtitleNavigationContext(requestedVideoKey);
+      if (stableContext.isStale) {
         // Why: async timeline reads must not publish resolved data for a video that has already changed.
-        return buildPendingSubtitleNavigationRuntimePayload(latestVideoKey);
+        return buildPendingSubtitleNavigationRuntimePayload(stableContext.latestVideoKey);
       }
-      return createSubtitleNavigationRuntimePayload(context, requestedVideoKey);
+      return createSubtitleNavigationRuntimePayload(
+        stableContext.context,
+        stableContext.requestedVideoKey
+      );
     } catch (error) {
       // Why: bridge consumers should fall back to the current page pending state, not stale data.
       logError('Subtitle navigation runtime payload read failed', error);
@@ -1411,14 +1426,19 @@
       throw new Error('Invalid subtitle navigation action');
     }
 
-    let context;
+    let stableContext;
     try {
-      context = await readSubtitleNavigationContext();
+      stableContext = await readStableSubtitleNavigationContext();
     } catch (error) {
       // Why: actionable navigation errors should be about invalid actions, not transient timeline reads.
       logError('Subtitle navigation action read failed', error);
       return buildPendingSubtitleNavigationSnapshot();
     }
+    if (stableContext.isStale) {
+      // Why: user actions should never seek a newly-mounted video with the previous video's timeline.
+      return buildPendingSubtitleNavigationRuntimePayload(stableContext.latestVideoKey).snapshot;
+    }
+    const context = stableContext.context;
     if (!context.video) {
       return context.snapshot;
     }

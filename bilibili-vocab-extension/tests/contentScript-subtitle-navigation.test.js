@@ -526,6 +526,61 @@ test('contentScript subtitle navigation: should navigate to next subtitle via ru
   assert.equal(result.response.payload.canGoNext, false);
 });
 
+test('contentScript subtitle navigation: should not seek with a stale timeline after the page switches videos', async () => {
+  const video = { currentTime: 2.5 };
+  let currentVideoKey = 'BV1navigateOld:cid:30';
+  let resolveOldTimeline = null;
+
+  global.location = {
+    hostname: 'www.bilibili.com',
+  };
+  global.document.querySelector = (selector) => {
+    if (selector === 'video') {
+      return video;
+    }
+    return null;
+  };
+  global.SubtitleParser.getCurrentSubtitleTimelineCacheKey = () => currentVideoKey;
+  global.SubtitleParser.loadSubtitleTimeline = async () => {
+    const requestedVideoKey = currentVideoKey;
+    if (requestedVideoKey === 'BV1navigateOld:cid:30') {
+      return new Promise((resolve) => {
+        resolveOldTimeline = resolve;
+      });
+    }
+    return [];
+  };
+
+  const resultPromise = dispatchRuntimeMessage({
+    type: 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE',
+    payload: {
+      action: 'next',
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  currentVideoKey = 'BV1navigateNew:cid:40';
+  video.currentTime = 0.4;
+  resolveOldTimeline([
+    { from: 0, to: 1.5, content: '旧第一句' },
+    { from: 2.2, to: 3.7, content: '旧第二句' },
+    { from: 4, to: 5, content: '旧第三句' },
+  ]);
+
+  const result = await resultPromise;
+
+  assert.equal(result.keepChannelOpen, true);
+  assert.equal(result.response.ok, true);
+  assert.equal(video.currentTime, 0.4);
+  assert.equal(result.response.payload.supported, true);
+  assert.equal(result.response.payload.progressLabel, '加载中');
+  assert.equal(result.response.payload.currentText, 'Bilibili 字幕轨道正在准备中。');
+  assert.equal(result.response.payload.canGoPrevious, false);
+  assert.equal(result.response.payload.canReplay, false);
+  assert.equal(result.response.payload.canGoNext, false);
+});
+
 test('contentScript subtitle navigation: should return pending snapshot when navigate hits a timeline error', async () => {
   const video = { currentTime: 2.5 };
   global.location = {
