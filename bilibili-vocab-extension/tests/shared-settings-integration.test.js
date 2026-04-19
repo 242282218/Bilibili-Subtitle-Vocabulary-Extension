@@ -182,3 +182,83 @@ test('shared settings integration: legacy options export payload should keep shi
     },
   ]);
 });
+
+test('shared settings integration: legacy options clear helper should keep learning summary in sync', async () => {
+  const previousChrome = global.chrome;
+  const previousConfirm = global.confirm;
+  const storageState = {
+    bili_vocab_word_stats_v2: {
+      savedWord: {
+        word: 'beta',
+        status: 'saved',
+        savedAt: 1800000000000,
+        exposureCount: 5,
+        exposures: 5,
+        details: { meaning: 'B', level: 'CET6', phonetic: '/b/' },
+      },
+    },
+    bili_vocab_review_queue_v1: {
+      beta: {
+        word: 'beta',
+        dueBucket: 'today',
+        nextReviewAt: 1800000000000,
+        intervalDays: 1,
+        easeFactor: 2.3,
+        updatedAt: 1800000000000,
+      },
+    },
+    bili_vocab_learning_streak_v1: {
+      currentStreak: 0,
+      maxStreak: 0,
+      lastActiveDate: '',
+      totalActiveDays: 0,
+      activeDays: [],
+    },
+  };
+  const writePayloads = [];
+
+  global.confirm = () => true;
+  global.chrome = {
+    runtime: {
+      lastError: null,
+    },
+    storage: {
+      local: {
+        get(keys, callback) {
+          const requestedKeys = Array.isArray(keys) ? keys : Object.keys(storageState);
+          const payload = {};
+          requestedKeys.forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(storageState, key)) {
+              payload[key] = storageState[key];
+            }
+          });
+          callback(payload);
+        },
+        set(payload, callback) {
+          writePayloads.push(JSON.parse(JSON.stringify(payload)));
+          Object.assign(storageState, payload);
+          callback();
+        },
+      },
+    },
+  };
+
+  try {
+    await options.clearVocabularyBook();
+  } finally {
+    global.chrome = previousChrome;
+    global.confirm = previousConfirm;
+  }
+
+  assert.equal(writePayloads.length, 1);
+  assert.equal(writePayloads[0].bili_vocab_word_stats_v2.savedWord.status, 'seen');
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(
+      writePayloads[0].bili_vocab_word_stats_v2.savedWord,
+      'savedAt'
+    ),
+    false
+  );
+  assert.equal(writePayloads[0].bili_vocab_learning_summary_v1.savedCount, 0);
+  assert.equal(writePayloads[0].bili_vocab_learning_summary_v1.seenCount, 1);
+});

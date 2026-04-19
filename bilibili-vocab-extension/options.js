@@ -1,6 +1,9 @@
 const sharedSettings =
   globalThis.SharedSettings ||
   (typeof require === 'function' ? require('./sharedSettings.js') : null);
+const learningState =
+  globalThis.LearningState ||
+  (typeof require === 'function' ? require('./learningState.js') : null);
 const adaptiveTuning =
   globalThis.AdaptiveTuning ||
   (typeof require === 'function' ? require('./adaptiveTuning.js') : null);
@@ -76,8 +79,18 @@ const exportSettingsButton = doc ? doc.getElementById('exportSettingsButton') : 
 const importSettingsButton = doc ? doc.getElementById('importSettingsButton') : null;
 const resetSettingsButton = doc ? doc.getElementById('resetSettingsButton') : null;
 
-const VOCABULARY_BOOK_STORAGE_KEY = 'bili_vocab_word_stats_v2';
-const LEARNING_STREAK_STORAGE_KEY = 'bili_vocab_learning_streak_v1';
+const VOCABULARY_BOOK_STORAGE_KEY = learningState
+  ? learningState.STORAGE_KEYS.WORD_STATS_V2
+  : 'bili_vocab_word_stats_v2';
+const REVIEW_QUEUE_STORAGE_KEY = learningState
+  ? learningState.STORAGE_KEYS.REVIEW_QUEUE
+  : 'bili_vocab_review_queue_v1';
+const LEARNING_SUMMARY_STORAGE_KEY = learningState
+  ? learningState.STORAGE_KEYS.LEARNING_SUMMARY
+  : 'bili_vocab_learning_summary_v1';
+const LEARNING_STREAK_STORAGE_KEY = learningState
+  ? learningState.STORAGE_KEYS.LEARNING_STREAK
+  : 'bili_vocab_learning_streak_v1';
 let runtimeSettings = sharedSettings
   ? sharedSettings.normalizeSettings(DEFAULT_SETTINGS)
   : { ...DEFAULT_SETTINGS };
@@ -252,6 +265,18 @@ function normalizeExportWordRecords(words) {
   return words.map((word) => normalizeExportWordRecord(word)).filter(Boolean);
 }
 
+function buildLegacyOptionsLearningSummary(wordStats, reviewQueue) {
+  if (!learningState || typeof learningState.buildLearningSummary !== 'function') {
+    return null;
+  }
+
+  const normalizedQueue =
+    typeof learningState.normalizeReviewQueue === 'function'
+      ? learningState.normalizeReviewQueue(reviewQueue)
+      : reviewQueue;
+  return learningState.buildLearningSummary(wordStats, normalizedQueue);
+}
+
 // 加载学习统计数据
 async function loadLearningStats() {
   try {
@@ -375,7 +400,7 @@ async function exportVocabularyBook(format = 'json') {
     }
 
     const payload = await new Promise((resolve) =>
-      chrome.storage.local.get([VOCABULARY_BOOK_STORAGE_KEY], resolve)
+      chrome.storage.local.get([VOCABULARY_BOOK_STORAGE_KEY, REVIEW_QUEUE_STORAGE_KEY], resolve)
     );
     const wordStats = payload[VOCABULARY_BOOK_STORAGE_KEY] || {};
 
@@ -442,8 +467,19 @@ async function clearVocabularyBook() {
       wordStats[wordKey] = nextRecord;
     });
 
+    const nextStoragePayload = {
+      [VOCABULARY_BOOK_STORAGE_KEY]: wordStats,
+    };
+    const nextSummary = buildLegacyOptionsLearningSummary(
+      wordStats,
+      payload[REVIEW_QUEUE_STORAGE_KEY]
+    );
+    if (nextSummary) {
+      nextStoragePayload[LEARNING_SUMMARY_STORAGE_KEY] = nextSummary;
+    }
+
     await new Promise((resolve, reject) => {
-      chrome.storage.local.set({ [VOCABULARY_BOOK_STORAGE_KEY]: wordStats }, () => {
+      chrome.storage.local.set(nextStoragePayload, () => {
         const runtimeError = chrome.runtime && chrome.runtime.lastError;
         if (runtimeError) {
           reject(runtimeError);
