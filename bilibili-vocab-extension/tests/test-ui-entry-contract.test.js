@@ -39,6 +39,18 @@ test('test ui entry contract: workspace should not keep legacy-only settings red
   assert.equal(fs.existsSync(legacyContractPath), false);
 });
 
+test('test ui entry contract: workspace should not keep legacy-only anki export contract', () => {
+  const legacyContractPath = path.join(__dirname, 'options-anki-export.test.js');
+
+  assert.equal(fs.existsSync(legacyContractPath), false);
+});
+
+test('test ui entry contract: workspace should not keep legacy-only clear-vocabulary contract', () => {
+  const legacyContractPath = path.join(__dirname, 'options-clear-vocab-error-guard.test.js');
+
+  assert.equal(fs.existsSync(legacyContractPath), false);
+});
+
 test('test ui entry contract: run-ui-tests should select only ui contract files', () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'run-ui-tests-'));
   const testsDir = path.join(workspace, 'tests');
