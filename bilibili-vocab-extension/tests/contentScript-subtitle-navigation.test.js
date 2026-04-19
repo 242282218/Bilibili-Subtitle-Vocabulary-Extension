@@ -284,6 +284,119 @@ test('contentScript subtitle navigation: should push pending snapshot to subscri
   contentScript.bindVideoPlaybackEvents();
 });
 
+test('contentScript subtitle navigation: should ignore stale pre-switch snapshot reads and only publish the new video result', async () => {
+  class MockVideoElement {
+    constructor(currentTime) {
+      this.currentTime = currentTime;
+      this.paused = false;
+      this.ended = false;
+      this.listeners = new Map();
+    }
+
+    addEventListener(type, listener) {
+      const next = this.listeners.get(type) || [];
+      next.push(listener);
+      this.listeners.set(type, next);
+    }
+
+    removeEventListener(type, listener) {
+      const next = (this.listeners.get(type) || []).filter((item) => item !== listener);
+      this.listeners.set(type, next);
+    }
+
+    emit(type) {
+      for (const listener of this.listeners.get(type) || []) {
+        listener();
+      }
+    }
+  }
+
+  global.HTMLVideoElement = MockVideoElement;
+
+  const video = new MockVideoElement(2.5);
+  let currentVideoKey = 'BV1staleOld:cid:10';
+  let resolveOldTimeline = null;
+  let resolveNewTimeline = null;
+  global.location = {
+    hostname: 'www.bilibili.com',
+  };
+  global.document.querySelector = (selector) => {
+    if (selector === 'video') {
+      return video;
+    }
+    return null;
+  };
+  global.SubtitleParser.getCurrentSubtitleTimelineCacheKey = () => currentVideoKey;
+  global.SubtitleParser.loadSubtitleTimeline = async () => {
+    const requestedVideoKey = currentVideoKey;
+    return new Promise((resolve) => {
+      if (requestedVideoKey === 'BV1staleOld:cid:10') {
+        resolveOldTimeline = resolve;
+        return;
+      }
+      resolveNewTimeline = resolve;
+    });
+  };
+
+  contentScript.bindVideoPlaybackEvents();
+
+  const messages = [];
+  let disconnectListener = null;
+  const port = {
+    name: 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE',
+    onDisconnect: {
+      addListener(listener) {
+        disconnectListener = listener;
+      },
+    },
+    postMessage(message) {
+      messages.push(cloneValue(message));
+    },
+  };
+
+  runtimeConnectListener(port);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(messages.length, 0);
+
+  currentVideoKey = 'BV1staleNew:cid:20';
+  video.currentTime = 0.4;
+  video.emit('timeupdate');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].payload.progressLabel, '加载中');
+  assert.equal(messages[0].payload.currentText, 'Bilibili 字幕轨道正在准备中。');
+
+  resolveOldTimeline([
+    { from: 0, to: 1.5, content: '旧第一句' },
+    { from: 2.2, to: 3.7, content: '旧第二句' },
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(messages.length, 1);
+
+  resolveNewTimeline([
+    { from: 0, to: 0.9, content: '新第一句' },
+    { from: 1.2, to: 2.1, content: '新第二句' },
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(messages.length, 2);
+  assert.equal(messages[1].payload.progressLabel, '1 / 2');
+  assert.equal(messages[1].payload.currentText, '新第一句');
+  assert.equal(messages[1].payload.canGoPrevious, false);
+  assert.equal(messages[1].payload.canReplay, true);
+  assert.equal(messages[1].payload.canGoNext, true);
+
+  if (typeof disconnectListener === 'function') {
+    disconnectListener();
+  }
+
+  global.document.querySelector = () => null;
+  contentScript.bindVideoPlaybackEvents();
+});
+
 test('contentScript subtitle navigation: should expose overlay bridge payload without polling', async () => {
   const video = { currentTime: 2.5 };
   global.location = {

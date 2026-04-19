@@ -82,6 +82,7 @@
   const translationCache = new LRUCacheCtor(TRANSLATION_CACHE_LIMIT);
   let boundVideo = null;
   const subtitleNavigationPorts = new Set();
+  const subtitleNavigationPortSnapshotKeys = new WeakMap();
   const overlaySubtitleNavigationListeners = new Set();
   let subtitleNavigationBroadcastPromise = null;
   let subtitleNavigationBroadcastQueued = false;
@@ -1183,8 +1184,21 @@
     return buildPendingSubtitleNavigationRuntimePayload().snapshot;
   }
 
-  function postSubtitleNavigationSnapshot(port, snapshot) {
+  function createSubtitleNavigationPortSnapshotKey(snapshot, videoKey) {
+    return `${String(videoKey || '')}::${createSubtitleNavigationSnapshotSignature(snapshot)}`;
+  }
+
+  function postSubtitleNavigationSnapshot(
+    port,
+    snapshot,
+    videoKey = getCurrentSubtitleNavigationVideoKey()
+  ) {
     if (!isSubtitleNavigationStreamPort(port) || typeof port.postMessage !== 'function') {
+      return;
+    }
+
+    const nextSnapshotKey = createSubtitleNavigationPortSnapshotKey(snapshot, videoKey);
+    if (subtitleNavigationPortSnapshotKeys.get(port) === nextSnapshotKey) {
       return;
     }
 
@@ -1192,6 +1206,7 @@
       type: ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE,
       payload: snapshot,
     });
+    subtitleNavigationPortSnapshotKeys.set(port, nextSnapshotKey);
   }
 
   function rememberSubtitleNavigationSnapshot(snapshot, videoKey) {
@@ -1203,7 +1218,7 @@
     rememberSubtitleNavigationSnapshot(snapshot, videoKey);
     subtitleNavigationPorts.forEach((port) => {
       try {
-        postSubtitleNavigationSnapshot(port, snapshot);
+        postSubtitleNavigationSnapshot(port, snapshot, videoKey);
       } catch (error) {
         logError('Subtitle navigation stream update failed', error);
       }
@@ -1318,25 +1333,23 @@
   }
 
   async function readSubtitleNavigationSnapshot() {
-    try {
-      const context = await readSubtitleNavigationContext();
-      return context.snapshot;
-    } catch (error) {
-      // Why: passive subtitle readers should keep the current-page loading state, not drop to empty UI.
-      logError('Subtitle navigation snapshot read failed', error);
-      return buildPendingSubtitleNavigationSnapshot();
-    }
+    return (await readSubtitleNavigationRuntimePayload()).snapshot;
   }
 
   async function readSubtitleNavigationRuntimePayload() {
-    const videoKey = getCurrentSubtitleNavigationVideoKey();
+    const requestedVideoKey = getCurrentSubtitleNavigationVideoKey();
     try {
       const context = await readSubtitleNavigationContext();
-      return createSubtitleNavigationRuntimePayload(context, videoKey);
+      const latestVideoKey = getCurrentSubtitleNavigationVideoKey();
+      if (latestVideoKey !== requestedVideoKey) {
+        // Why: async timeline reads must not publish resolved data for a video that has already changed.
+        return buildPendingSubtitleNavigationRuntimePayload(latestVideoKey);
+      }
+      return createSubtitleNavigationRuntimePayload(context, requestedVideoKey);
     } catch (error) {
       // Why: bridge consumers should fall back to the current page pending state, not stale data.
       logError('Subtitle navigation runtime payload read failed', error);
-      return buildPendingSubtitleNavigationRuntimePayload(videoKey);
+      return buildPendingSubtitleNavigationRuntimePayload(requestedVideoKey);
     }
   }
 
@@ -1447,22 +1460,27 @@
       subtitleNavigationPorts.add(port);
       port.onDisconnect.addListener(() => {
         subtitleNavigationPorts.delete(port);
+        subtitleNavigationPortSnapshotKeys.delete(port);
       });
 
       Promise.resolve()
-        .then(() => readSubtitleNavigationSnapshot())
-        .then((snapshot) => {
-          postSubtitleNavigationSnapshot(port, snapshot);
-          rememberSubtitleNavigationSnapshot(snapshot, getCurrentSubtitleNavigationVideoKey());
+        .then(() => readSubtitleNavigationRuntimePayload())
+        .then((runtimePayload) => {
+          postSubtitleNavigationSnapshot(port, runtimePayload.snapshot, runtimePayload.videoKey);
+          rememberSubtitleNavigationSnapshot(runtimePayload.snapshot, runtimePayload.videoKey);
         })
         .catch((error) => {
           logError('Subtitle navigation stream init failed', error);
           try {
-            const pendingSnapshot = buildPendingSubtitleNavigationSnapshot();
-            postSubtitleNavigationSnapshot(port, pendingSnapshot);
+            const pendingRuntimePayload = buildPendingSubtitleNavigationRuntimePayload();
+            postSubtitleNavigationSnapshot(
+              port,
+              pendingRuntimePayload.snapshot,
+              pendingRuntimePayload.videoKey
+            );
             rememberSubtitleNavigationSnapshot(
-              pendingSnapshot,
-              getCurrentSubtitleNavigationVideoKey()
+              pendingRuntimePayload.snapshot,
+              pendingRuntimePayload.videoKey
             );
           } catch (fallbackError) {
             logError('Subtitle navigation stream fallback failed', fallbackError);
