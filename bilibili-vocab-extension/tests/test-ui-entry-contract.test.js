@@ -93,6 +93,20 @@ test('test ui entry contract: workspace should not keep legacy-only popup storag
   assert.equal(fs.existsSync(legacyContractPath), false);
 });
 
+test('test ui entry contract: workspace should not keep legacy-only overlay panel contract bundle', () => {
+  const remainingLegacyContracts = [
+    'overlay-panel.test.js',
+    'overlay-panel-experience.test.js',
+    'overlay-panel-learning.test.js',
+    'overlay-panel-mount-idempotent.test.js',
+    'overlay-panel-position.test.js',
+    'overlay-panel-presets.test.js',
+    'overlay-panel-scroll.test.js',
+  ].filter((fileName) => fs.existsSync(path.join(__dirname, fileName)));
+
+  assert.deepEqual(remainingLegacyContracts, []);
+});
+
 test('test ui entry contract: run-ui-tests should select only ui contract files', () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'run-ui-tests-'));
   const testsDir = path.join(workspace, 'tests');
@@ -102,21 +116,22 @@ test('test ui entry contract: run-ui-tests should select only ui contract files'
     fs.writeFileSync(path.join(testsDir, 'popup.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'popup-live-preview-sync.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'contentScript-overlay-bridge.test.js'), '', 'utf8');
-    fs.writeFileSync(path.join(testsDir, 'react-overlay-layout.test.js'), '', 'utf8');
+    fs.writeFileSync(path.join(testsDir, 'overlay-panel.test.js'), '', 'utf8');
+    fs.writeFileSync(path.join(testsDir, 'react-overlay-layout-contract.test.js'), '', 'utf8');
+    fs.writeFileSync(path.join(testsDir, 'react-overlay-settings-contract.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'react-ui-contract.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'renderer.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'settings-layout.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'settings-redesign.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'shared-settings-integration.test.js'), '', 'utf8');
-    fs.writeFileSync(path.join(testsDir, 'overlay-panel.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'test-ui-entry-contract.test.js'), '', 'utf8');
 
     const testFiles = collectUiTestFiles(testsDir);
 
     assert.deepEqual(testFiles, [
       path.join('tests', 'contentScript-overlay-bridge.test.js'),
-      path.join('tests', 'overlay-panel.test.js'),
-      path.join('tests', 'react-overlay-layout.test.js'),
+      path.join('tests', 'react-overlay-layout-contract.test.js'),
+      path.join('tests', 'react-overlay-settings-contract.test.js'),
       path.join('tests', 'react-ui-contract.test.js'),
       path.join('tests', 'settings-layout.test.js'),
     ]);
@@ -148,6 +163,26 @@ test('test ui entry contract: current workspace should include runtime bridge an
   );
 });
 
+test('test ui entry contract: current workspace should keep shipped react overlay contracts instead of legacy overlay shell tests', () => {
+  const testFiles = collectUiTestFiles(path.join(__dirname));
+
+  assert.equal(
+    testFiles.some((file) => path.basename(file).startsWith('overlay-panel')),
+    false
+  );
+  assert.deepEqual(
+    testFiles.filter((file) =>
+      ['react-overlay-layout-contract.test.js', 'react-overlay-settings-contract.test.js'].includes(
+        path.basename(file)
+      )
+    ),
+    [
+      path.join('tests', 'react-overlay-layout-contract.test.js'),
+      path.join('tests', 'react-overlay-settings-contract.test.js'),
+    ]
+  );
+});
+
 test('test ui entry contract: run-ui-tests should execute node test with explicit file list', () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'run-ui-tests-runner-'));
   const testsDir = path.join(workspace, 'tests');
@@ -156,6 +191,8 @@ test('test ui entry contract: run-ui-tests should execute node test with explici
     fs.mkdirSync(testsDir, { recursive: true });
     fs.writeFileSync(path.join(testsDir, 'popup.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'contentScript-overlay-bridge.test.js'), '', 'utf8');
+    fs.writeFileSync(path.join(testsDir, 'overlay-panel.test.js'), '', 'utf8');
+    fs.writeFileSync(path.join(testsDir, 'react-overlay-layout-contract.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'react-ui-contract.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'settings-layout.test.js'), '', 'utf8');
     fs.writeFileSync(path.join(testsDir, 'test-ui-entry-contract.test.js'), '', 'utf8');
@@ -180,6 +217,7 @@ test('test ui entry contract: run-ui-tests should execute node test with explici
         args: [
           '--test',
           path.join('tests', 'contentScript-overlay-bridge.test.js'),
+          path.join('tests', 'react-overlay-layout-contract.test.js'),
           path.join('tests', 'react-ui-contract.test.js'),
           path.join('tests', 'settings-layout.test.js'),
         ],

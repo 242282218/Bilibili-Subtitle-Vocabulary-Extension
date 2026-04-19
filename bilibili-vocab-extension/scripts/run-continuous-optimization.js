@@ -26,22 +26,22 @@ const LEGACY_DEFERRED_REASON = `manifest / pack 真实交付入口是 dist/popup
 
 const STATIC_OPTIMIZATION_GAPS = [
   {
-    id: 'legacy-react-drift',
-    priority: 0,
-    title: '继续压低 React 与 legacy 双栈漂移风险',
-    rationale:
-      'manifest 已切到 React 入口，但根目录 legacy popup/options/overlay 仍存在，后续优化需要持续防止目标漂移。',
-    files: ['manifest.json', 'popup.js', 'options.js', 'overlayPanel.js'],
-    suggestedCommands: ['pnpm run test:ui', 'pnpm run build:extension'],
-  },
-  {
     id: 'content-script-decomposition',
-    priority: 1,
+    priority: 0,
     title: '围绕 contentScript.js 做定向拆分或补守卫测试',
     rationale:
       'contentScript.js 仍是最高复杂区，初始化、缓存、观察者、字幕导航和 overlay 桥接耦合较重。',
     files: ['contentScript.js', 'subtitleParser.js', 'subtitleNavigation.js'],
     suggestedCommands: ['node --test tests/contentScript-*.test.js tests/subtitle*.test.js'],
+  },
+  {
+    id: 'legacy-react-drift',
+    priority: 1,
+    title: '继续压低 React 与 legacy 双栈漂移风险',
+    rationale:
+      'manifest 已切到 React 入口，但根目录 legacy popup/options shell 仍存在，后续优化需要持续防止目标漂移。',
+    files: ['manifest.json', 'popup.js', 'options.js'],
+    suggestedCommands: ['pnpm run test:ui', 'pnpm run build:extension'],
   },
 ];
 
