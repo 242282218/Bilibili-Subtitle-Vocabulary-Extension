@@ -807,6 +807,170 @@ test('react ui storage resilience: subscribeActiveTabSubtitleStatus should strea
   unsubscribe();
 });
 
+test('react ui storage resilience: subscribeActiveTabSubtitleStatus should ignore stale port messages after reconnect', async () => {
+  let activeTab = {
+    id: 70,
+    url: 'https://www.bilibili.com/video/BV1shared',
+  };
+  const ports = [];
+  const updates = [];
+  const { module: storageModule, emitTabActivated } = createStorageModule({
+    tabsQueryImpl({ callback }) {
+      callback([cloneValue(activeTab)]);
+    },
+    tabsConnectImpl({ tabId, connectInfo }) {
+      assert.equal(connectInfo.name, 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE');
+      const port = createMockPort(connectInfo.name);
+      ports.push({ tabId, port });
+      return port;
+    },
+  });
+
+  const unsubscribe = storageModule.subscribeActiveTabSubtitleStatus((status) => {
+    updates.push(cloneValue(status));
+  });
+
+  await flushAsyncWork();
+  assert.equal(ports.length, 1);
+
+  ports[0].port.emitMessage({
+    payload: {
+      supported: true,
+      progressLabel: '5 / 18',
+      headline: '当前字幕',
+      description: '00:08.2 - 00:10.4 · 初始连接。',
+      currentText: '旧标签页字幕',
+      canGoPrevious: true,
+      canReplay: true,
+      canGoNext: true,
+    },
+  });
+
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].subtitleNavigation.currentText, '旧标签页字幕');
+
+  activeTab = {
+    id: 71,
+    url: 'https://www.bilibili.com/video/BV1next',
+  };
+  emitTabActivated({ tabId: 71, windowId: 3 });
+
+  await flushAsyncWork();
+  assert.equal(ports.length, 2);
+  assert.equal(ports[0].port.disconnected, true);
+
+  ports[0].port.emitMessage({
+    payload: {
+      supported: true,
+      progressLabel: '6 / 18',
+      headline: '当前字幕',
+      description: '00:10.5 - 00:12.0 · stale message should be ignored.',
+      currentText: '旧 port 晚到字幕',
+      canGoPrevious: true,
+      canReplay: true,
+      canGoNext: true,
+    },
+  });
+
+  assert.equal(updates.length, 1);
+
+  ports[1].port.emitMessage({
+    payload: {
+      supported: true,
+      progressLabel: '9 / 18',
+      headline: '当前字幕',
+      description: '00:18.2 - 00:20.4 · 已重连到新的活动标签页。',
+      currentText: '新标签页字幕',
+      canGoPrevious: true,
+      canReplay: true,
+      canGoNext: false,
+    },
+  });
+
+  assert.equal(updates.length, 2);
+  assert.deepEqual(updates[1], {
+    hostname: 'www.bilibili.com',
+    subtitleNavigation: {
+      supported: true,
+      progressLabel: '9 / 18',
+      headline: '当前字幕',
+      description: '00:18.2 - 00:20.4 · 已重连到新的活动标签页。',
+      currentText: '新标签页字幕',
+      canGoPrevious: true,
+      canReplay: true,
+      canGoNext: false,
+    },
+  });
+
+  unsubscribe();
+});
+
+test('react ui storage resilience: subscribeActiveTabSubtitleStatus should ignore stale port disconnect after reconnect', async () => {
+  let activeTab = {
+    id: 70,
+    url: 'https://www.bilibili.com/video/BV1shared',
+  };
+  const ports = [];
+  const updates = [];
+  const { module: storageModule, emitTabActivated } = createStorageModule({
+    tabsQueryImpl({ callback }) {
+      callback([cloneValue(activeTab)]);
+    },
+    tabsConnectImpl({ tabId, connectInfo }) {
+      assert.equal(connectInfo.name, 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE');
+      const port = createMockPort(connectInfo.name);
+      ports.push({ tabId, port });
+      return port;
+    },
+  });
+
+  const unsubscribe = storageModule.subscribeActiveTabSubtitleStatus((status) => {
+    updates.push(cloneValue(status));
+  });
+
+  await flushAsyncWork();
+  assert.equal(ports.length, 1);
+
+  activeTab = {
+    id: 71,
+    url: 'https://www.bilibili.com/video/BV1next',
+  };
+  emitTabActivated({ tabId: 71, windowId: 3 });
+
+  await flushAsyncWork();
+  assert.equal(ports.length, 2);
+
+  ports[1].port.emitMessage({
+    payload: {
+      supported: true,
+      progressLabel: '9 / 18',
+      headline: '当前字幕',
+      description: '00:18.2 - 00:20.4 · 已重连到新的活动标签页。',
+      currentText: '新标签页字幕',
+      canGoPrevious: true,
+      canReplay: true,
+      canGoNext: false,
+    },
+  });
+
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].subtitleNavigation.currentText, '新标签页字幕');
+
+  ports[0].port.disconnect();
+  assert.equal(updates.length, 1);
+
+  ports[1].port.disconnect();
+  assert.equal(updates.length, 2);
+  assert.equal(updates[1].hostname, 'www.bilibili.com');
+  assert.equal(updates[1].subtitleNavigation.supported, false);
+  assert.match(
+    updates[1].subtitleNavigation.description,
+    /www\.bilibili\.com 当前还没有可用字幕导航/
+  );
+
+  unsubscribe();
+});
+
 test('react ui storage resilience: readActiveTabSubtitleNavigation should fallback when tab bridge is unavailable', async () => {
   let tabsQueryCalls = 0;
   const { module: storageModule } = createStorageModule({
