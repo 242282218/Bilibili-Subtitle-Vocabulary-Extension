@@ -971,6 +971,132 @@ test('react ui storage resilience: subscribeActiveTabSubtitleStatus should ignor
   unsubscribe();
 });
 
+test('react ui storage resilience: subscribeActiveTabSubtitleStatus should ignore stale query result after newer reconnect wins', async () => {
+  const staleTab = {
+    id: 70,
+    url: 'https://www.bilibili.com/video/BV1shared',
+  };
+  const freshTab = {
+    id: 71,
+    url: 'https://www.bilibili.com/video/BV1next',
+  };
+  const pendingQueries = [];
+  const ports = [];
+  const updates = [];
+  const { module: storageModule, emitTabActivated } = createStorageModule({
+    tabsQueryImpl({ callback }) {
+      pendingQueries.push(callback);
+    },
+    tabsConnectImpl({ tabId, connectInfo }) {
+      assert.equal(connectInfo.name, 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE');
+      const port = createMockPort(connectInfo.name);
+      ports.push({ tabId, port });
+      return port;
+    },
+  });
+
+  const unsubscribe = storageModule.subscribeActiveTabSubtitleStatus((status) => {
+    updates.push(cloneValue(status));
+  });
+
+  await flushAsyncWork();
+  assert.equal(pendingQueries.length, 1);
+
+  emitTabActivated({ tabId: 71, windowId: 3 });
+  await flushAsyncWork();
+  assert.equal(pendingQueries.length, 2);
+
+  pendingQueries[1]([cloneValue(freshTab)]);
+  await flushAsyncWork();
+  assert.equal(ports.length, 1);
+  assert.equal(ports[0].tabId, 71);
+
+  ports[0].port.emitMessage({
+    payload: {
+      supported: true,
+      progressLabel: '9 / 18',
+      headline: '当前字幕',
+      description: '00:18.2 - 00:20.4 · 新 reconnect 已接管。',
+      currentText: '新标签页字幕',
+      canGoPrevious: true,
+      canReplay: true,
+      canGoNext: false,
+    },
+  });
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].subtitleNavigation.currentText, '新标签页字幕');
+
+  pendingQueries[0]([cloneValue(staleTab)]);
+  await flushAsyncWork();
+
+  assert.equal(ports.length, 1);
+  assert.equal(ports[0].port.disconnected, false);
+  assert.equal(updates.length, 1);
+
+  unsubscribe();
+});
+
+test('react ui storage resilience: subscribeActiveTabSubtitleStatus should ignore stale empty query fallback after newer reconnect wins', async () => {
+  const freshTab = {
+    id: 71,
+    url: 'https://www.bilibili.com/video/BV1next',
+  };
+  const pendingQueries = [];
+  const ports = [];
+  const updates = [];
+  const { module: storageModule, emitTabActivated } = createStorageModule({
+    tabsQueryImpl({ callback }) {
+      pendingQueries.push(callback);
+    },
+    tabsConnectImpl({ tabId, connectInfo }) {
+      assert.equal(connectInfo.name, 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE');
+      const port = createMockPort(connectInfo.name);
+      ports.push({ tabId, port });
+      return port;
+    },
+  });
+
+  const unsubscribe = storageModule.subscribeActiveTabSubtitleStatus((status) => {
+    updates.push(cloneValue(status));
+  });
+
+  await flushAsyncWork();
+  assert.equal(pendingQueries.length, 1);
+
+  emitTabActivated({ tabId: 71, windowId: 3 });
+  await flushAsyncWork();
+  assert.equal(pendingQueries.length, 2);
+
+  pendingQueries[1]([cloneValue(freshTab)]);
+  await flushAsyncWork();
+  assert.equal(ports.length, 1);
+  assert.equal(ports[0].tabId, 71);
+
+  ports[0].port.emitMessage({
+    payload: {
+      supported: true,
+      progressLabel: '9 / 18',
+      headline: '当前字幕',
+      description: '00:18.2 - 00:20.4 · 新 reconnect 已接管。',
+      currentText: '新标签页字幕',
+      canGoPrevious: true,
+      canReplay: true,
+      canGoNext: false,
+    },
+  });
+  assert.equal(updates.length, 1);
+
+  pendingQueries[0]([]);
+  await flushAsyncWork();
+
+  assert.equal(ports.length, 1);
+  assert.equal(ports[0].port.disconnected, false);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].subtitleNavigation.currentText, '新标签页字幕');
+
+  unsubscribe();
+});
+
 test('react ui storage resilience: readActiveTabSubtitleNavigation should fallback when tab bridge is unavailable', async () => {
   let tabsQueryCalls = 0;
   const { module: storageModule } = createStorageModule({

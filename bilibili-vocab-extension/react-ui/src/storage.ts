@@ -1271,6 +1271,7 @@ export function subscribeActiveTabSubtitleStatus(
   let disposed = false;
   let currentPort: chrome.runtime.Port | null = null;
   let currentTabKey = '';
+  let reconnectGeneration = 0;
 
   const disconnectCurrentPort = () => {
     const port = currentPort;
@@ -1287,8 +1288,9 @@ export function subscribeActiveTabSubtitleStatus(
   };
 
   const reconnect = async () => {
+    const reconnectToken = ++reconnectGeneration;
     const activeTab = await queryActiveTab().catch(() => null);
-    if (disposed) {
+    if (disposed || reconnectGeneration !== reconnectToken) {
       return;
     }
 
