@@ -33,19 +33,30 @@ test('critical content script runtime types: should document cross-module contra
   }
 });
 
-test('legacy removal plan: should keep deletion gated from feature work', () => {
-  const planPath = path.join(
-    __dirname,
-    '..',
-    '..',
-    'docs',
-    'plans',
-    '2026-05-02-legacy-removal-plan.md'
+test('legacy runtime entries: should remain explicit and outside shipped React entries', () => {
+  const root = path.join(__dirname, '..');
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '')
   );
-  const source = fs.readFileSync(planPath, 'utf8');
+  const legacyEntries = [
+    { fileName: 'popup.js', shippedEntry: manifest.action.default_popup },
+    { fileName: 'options.js', shippedEntry: manifest.options_page },
+    { fileName: 'overlayPanel.js', shippedEntry: 'dist/overlay.js' },
+  ];
+  const contentScriptEntry = manifest.content_scripts.find((entry) => Array.isArray(entry.js));
+  const webAccessibleResources = manifest.web_accessible_resources.flatMap((entry) =>
+    Array.isArray(entry.resources) ? entry.resources : []
+  );
 
-  assert.match(source, /popup\.js/);
-  assert.match(source, /options\.js/);
-  assert.match(source, /overlayPanel\.js/);
-  assert.match(source, /删除必须单独成 PR \/ commit/);
+  assert.equal(manifest.action.default_popup, 'dist/popup.html');
+  assert.equal(manifest.options_page, 'dist/options.html');
+  assert.equal(webAccessibleResources.includes('dist/overlay.js'), true);
+  assert.equal(contentScriptEntry.js.includes('overlayPanel.js'), false);
+
+  for (const { fileName, shippedEntry } of legacyEntries) {
+    const source = fs.readFileSync(path.join(root, fileName), 'utf8');
+
+    assert.match(source, /@legacy/);
+    assert.equal(shippedEntry.includes(fileName), false);
+  }
 });

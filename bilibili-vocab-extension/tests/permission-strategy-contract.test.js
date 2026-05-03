@@ -5,7 +5,6 @@ const path = require('node:path');
 
 const PROJECT_ROOT = path.join(__dirname, '..');
 const REPO_ROOT = path.join(PROJECT_ROOT, '..');
-const STRATEGY_DOC = path.join(REPO_ROOT, 'docs', '权限策略', '2026-04-27-权限策略.md');
 const PRIVACY_DOC = path.join(REPO_ROOT, 'docs', '隐私政策.md');
 const PERMISSIONS_DOC = path.join(REPO_ROOT, 'docs', '权限说明.md');
 const README = path.join(REPO_ROOT, 'README.md');
@@ -15,10 +14,6 @@ function readManifest() {
     .readFileSync(path.join(PROJECT_ROOT, 'manifest.json'), 'utf8')
     .replace(/^\uFEFF/, '');
   return JSON.parse(raw);
-}
-
-function readStrategyDoc() {
-  return fs.readFileSync(STRATEGY_DOC, 'utf8');
 }
 
 function readRepoDoc(filePath) {
@@ -41,7 +36,7 @@ function getWebAccessibleMatches(manifest) {
 
 test('permission strategy contract: default manifest should use minimal Bilibili and YouTube scope', () => {
   const manifest = readManifest();
-  const strategy = readStrategyDoc();
+  const permissionsDoc = readRepoDoc(PERMISSIONS_DOC);
   const matches = getContentScriptMatches(manifest);
   const permissions = Array.isArray(manifest.permissions) ? manifest.permissions : [];
   const hostPermissions = Array.isArray(manifest.host_permissions) ? manifest.host_permissions : [];
@@ -71,19 +66,21 @@ test('permission strategy contract: default manifest should use minimal Bilibili
     false
   );
   assert.deepEqual(optionalHostPermissions, ['*://*/*']);
-  assert.match(strategy, /optional_host_permissions[\s\S]*\*:\/\/\*\/\*/);
-  assert.match(strategy, /默认自动注入已收窄/);
+  assert.match(permissionsDoc, /Optional Host 权限[\s\S]*"\*:\/\/\*\/\*"/);
+  assert.match(permissionsDoc, /默认内容脚本只运行在/);
 });
 
 test('permission strategy contract: target state should be minimal Bilibili and YouTube injection', () => {
-  const strategy = readStrategyDoc();
+  const permissionsDoc = readRepoDoc(PERMISSIONS_DOC);
+  const privacy = readRepoDoc(PRIVACY_DOC);
 
-  assert.match(strategy, /推荐方案 A：最小权限发布/);
-  assert.match(strategy, /"https:\/\/www\.bilibili\.com\/\*"/);
-  assert.match(strategy, /"https:\/\/www\.youtube\.com\/\*"/);
-  assert.doesNotMatch(strategy, /目标状态[\s\S]*"http:\/\/\*\/\*"/);
-  assert.match(strategy, /chrome\.permissions\.request/);
-  assert.match(strategy, /拒绝授权不改变站点启用状态/);
+  assert.match(permissionsDoc, /默认内容脚本只运行在/);
+  assert.match(permissionsDoc, /"https:\/\/www\.bilibili\.com\/\*"/);
+  assert.match(permissionsDoc, /"https:\/\/www\.youtube\.com\/\*"/);
+  assert.match(permissionsDoc, /不会自动运行在所有 `http:\/\/\*\/\*` 或 `https:\/\/\*\/\*` 页面/);
+  assert.match(permissionsDoc, /用户主动点击的授权按钮/);
+  assert.match(permissionsDoc, /拒绝授权后不启用当前站点/);
+  assert.match(privacy, /显式用户授权 UI/);
 });
 
 test('permission docs contract: README should link privacy and permission docs', () => {
