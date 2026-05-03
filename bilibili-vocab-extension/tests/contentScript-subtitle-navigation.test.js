@@ -13,6 +13,10 @@ const previousHTMLVideoElement = global.HTMLVideoElement;
 let runtimeConnectListener = null;
 let runtimeMessageListener = null;
 
+const subtitleNavigationControllerRuntime = require('../subtitleNavigationController.js');
+const subtitleNavigationShared = require('../subtitleNavigation.js');
+const overlayBridgeRuntime = require('../overlaySubtitleNavigationBridge.js');
+
 function cloneValue(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
@@ -134,11 +138,56 @@ test('contentScript subtitle navigation: manifest should load shared runtime bef
 
   const scriptList = shippedEntry.js;
   const runtimeIndex = scriptList.indexOf('subtitleNavigation.js');
+  const bridgeRuntimeIndex = scriptList.indexOf('overlaySubtitleNavigationBridge.js');
+  const controllerRuntimeIndex = scriptList.indexOf('subtitleNavigationController.js');
   const contentScriptIndex = scriptList.indexOf('contentScript.js');
 
   assert.notEqual(runtimeIndex, -1);
+  assert.notEqual(bridgeRuntimeIndex, -1);
+  assert.notEqual(controllerRuntimeIndex, -1);
   assert.notEqual(contentScriptIndex, -1);
   assert.ok(runtimeIndex < contentScriptIndex);
+  assert.ok(runtimeIndex < bridgeRuntimeIndex);
+  assert.ok(bridgeRuntimeIndex < contentScriptIndex);
+  assert.ok(runtimeIndex < controllerRuntimeIndex);
+  assert.ok(bridgeRuntimeIndex < controllerRuntimeIndex);
+  assert.ok(controllerRuntimeIndex < contentScriptIndex);
+});
+
+test('subtitleNavigationController module: should build state through injected page adapters', async () => {
+  const video = { currentTime: 2.5 };
+  const timeline = [
+    { from: 0, to: 1.5, content: '第一句' },
+    { from: 2.2, to: 3.7, content: '第二句' },
+  ];
+  const controller = subtitleNavigationControllerRuntime.createSubtitleNavigationController({
+    subtitleNavigation: subtitleNavigationShared,
+    overlayBridgeRuntime,
+    getHostname() {
+      return 'www.bilibili.com';
+    },
+    getVideo() {
+      return video;
+    },
+    getVideoKey() {
+      return 'BVcontroller:cid:1';
+    },
+    loadTimeline() {
+      return Promise.resolve(timeline);
+    },
+    isSupportedHostFallback() {
+      return false;
+    },
+    logError() {},
+  });
+
+  const payload = await controller.refreshOverlaySubtitleNavigation();
+
+  assert.equal(payload.videoKey, 'BVcontroller:cid:1');
+  assert.equal(payload.state.supported, true);
+  assert.equal(payload.state.progressLabel, '2 / 2');
+  assert.equal(payload.state.currentIndex, 1);
+  assert.equal(payload.state.nextIndex, null);
 });
 
 test('contentScript subtitle navigation: should stream initial snapshot over a connected port', async () => {

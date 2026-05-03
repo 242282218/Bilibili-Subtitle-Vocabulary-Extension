@@ -2,6 +2,7 @@
   const LEVELS = ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL'];
   const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
   const REVIEW_SPEEDS = ['slow', 'normal', 'fast'];
+  const REVIEW_DENSITIES = ['sparse', 'normal', 'dense'];
   const VOCABULARY_MODES = ['core', 'full'];
   const EXAM_PREFERENCES = ['balanced', 'exam-first'];
 
@@ -10,6 +11,7 @@
     schemaVersion: 2,
     reviewDanmakuEnabled: false,
     reviewDanmakuSpeed: 'normal',
+    reviewDanmakuDensity: 'normal',
     vocabularyMode: 'core',
     examPreference: 'balanced',
     webPageEnabled: true,
@@ -28,6 +30,7 @@
     LEVELS,
     CEFR_LEVELS,
     REVIEW_SPEEDS,
+    REVIEW_DENSITIES,
     VOCABULARY_MODES,
     EXAM_PREFERENCES,
     DEFAULT_SETTINGS,

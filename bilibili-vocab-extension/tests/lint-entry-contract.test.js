@@ -35,12 +35,17 @@ function parseLintExtensions(lintScript) {
     .filter(Boolean);
 }
 
-test('lint entry contract: should run eslint from repository root', () => {
+test('lint entry contract: should run eslint on explicit source roots', () => {
   const scripts = readPackageScripts();
   const lintScript = normalizeScript(scripts.lint);
 
   assert.notEqual(lintScript, '');
-  assert.match(lintScript, /^eslint\s+\./);
+  assert.match(lintScript, /^eslint\s+/);
+  assert.match(lintScript, /"\*\.js"/);
+  assert.match(lintScript, /"\*\.cjs"/);
+  assert.match(lintScript, /"scripts"/);
+  assert.match(lintScript, /"tests"/);
+  assert.match(lintScript, /"react-ui\/src"/);
   assert.match(lintScript, /--max-warnings\s+0/);
 });
 

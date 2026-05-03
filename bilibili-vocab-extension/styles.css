@@ -1,4 +1,61 @@
 /* Keep content-script styles self-contained because this stylesheet is injected on arbitrary pages. */
+
+#bili-vocab-danmaku-layer {
+  pointer-events: none;
+  z-index: 999;
+  overflow: hidden;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.bili-vocab-danmaku-item {
+  position: absolute;
+  display: inline-flex;
+  align-items: baseline;
+  white-space: nowrap;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", Arial,
+    Helvetica, sans-serif;
+  color: #eaf6ff;
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: 0.01em;
+  opacity: 0.96;
+  text-shadow:
+    0 0 2px rgba(0, 0, 0, 0.98),
+    1px 0 2px rgba(0, 0, 0, 0.98),
+    0 1px 2px rgba(0, 0, 0, 0.98),
+    -1px 0 2px rgba(0, 0, 0, 0.98),
+    0 -1px 2px rgba(0, 0, 0, 0.98);
+  will-change: transform;
+  pointer-events: none;
+}
+
+.bili-vocab-danmaku-item-associated {
+  opacity: 0.68;
+  color: #ffe8a8;
+  text-shadow:
+    0 0 2px rgba(0, 0, 0, 0.92),
+    1px 0 2px rgba(0, 0, 0, 0.92),
+    0 1px 2px rgba(0, 0, 0, 0.92),
+    -1px 0 2px rgba(0, 0, 0, 0.92),
+    0 -1px 2px rgba(0, 0, 0, 0.92);
+}
+
+.bili-vocab-danmaku-item__word,
+.bili-vocab-danmaku-item__separator,
+.bili-vocab-danmaku-item__translation {
+  display: inline;
+  color: inherit;
+}
+
+.bili-vocab-danmaku-item__separator {
+  opacity: 0.8;
+}
+
 .subtitle-container {
   display: inline;
   padding: 4px 8px;

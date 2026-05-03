@@ -45,6 +45,40 @@ function createMockDate(now) {
   };
 }
 
+function createManualTimerApi() {
+  let nextId = 1;
+  const pendingTimers = new Map();
+  return {
+    setTimeout(callback, _delay, ...args) {
+      const id = nextId;
+      nextId += 1;
+      pendingTimers.set(id, { callback, args });
+      return id;
+    },
+    clearTimeout(id) {
+      pendingTimers.delete(id);
+    },
+    runNextTimer() {
+      const next = pendingTimers.entries().next();
+      if (next.done) {
+        return false;
+      }
+      const [id, timer] = next.value;
+      pendingTimers.delete(id);
+      timer.callback(...timer.args);
+      return true;
+    },
+    getPendingCount() {
+      return pendingTimers.size;
+    },
+  };
+}
+
+async function flushMicrotasks() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 function pickPayload(state, keys) {
   if (keys == null) {
     return cloneValue(state);
@@ -183,6 +217,49 @@ function createStorageModule(options = {}) {
         },
       },
     },
+    permissions: {
+      contains(permission, callback) {
+        if (typeof options.permissionsContainsImpl === 'function') {
+          options.permissionsContainsImpl({ permission, callback, runtime });
+          return;
+        }
+        callback(false);
+      },
+      request(permission, callback) {
+        if (typeof options.permissionsRequestImpl === 'function') {
+          options.permissionsRequestImpl({ permission, callback, runtime });
+          return;
+        }
+        callback(false);
+      },
+      remove(permission, callback) {
+        if (typeof options.permissionsRemoveImpl === 'function') {
+          options.permissionsRemoveImpl({ permission, callback, runtime });
+          return;
+        }
+        callback(false);
+      },
+    },
+    scripting: {
+      insertCSS(injection, callback) {
+        if (typeof options.scriptingInsertCssImpl === 'function') {
+          options.scriptingInsertCssImpl({ injection, callback, runtime });
+          return;
+        }
+        if (typeof callback === 'function') {
+          callback();
+        }
+      },
+      executeScript(injection, callback) {
+        if (typeof options.scriptingExecuteScriptImpl === 'function') {
+          options.scriptingExecuteScriptImpl({ injection, callback, runtime });
+          return;
+        }
+        if (typeof callback === 'function') {
+          callback([]);
+        }
+      },
+    },
     runtime,
   };
   const sandbox = {
@@ -240,8 +317,8 @@ function createStorageModule(options = {}) {
     Date: MockDate,
     URL,
     Promise,
-    setTimeout,
-    clearTimeout,
+    setTimeout: options.setTimeoutImpl || setTimeout,
+    clearTimeout: options.clearTimeoutImpl || clearTimeout,
     console,
   };
   sandbox.globalThis = sandbox;
@@ -317,6 +394,16 @@ function createMockPort(name) {
     },
   };
 }
+
+test('react ui storage resilience: content runtime script list should mirror manifest order', () => {
+  const { module: storageModule } = createStorageModule();
+  const manifestPath = path.join(__dirname, '..', 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8').replace(/^\uFEFF/, ''));
+  const shippedEntry = manifest.content_scripts.find((entry) => Array.isArray(entry.js));
+
+  assert.ok(shippedEntry);
+  assert.deepEqual(Array.from(storageModule.CONTENT_RUNTIME_SCRIPT_FILES), shippedEntry.js);
+});
 
 test('react ui storage resilience: readStorage should reject on chrome runtime read error', async () => {
   const { module: storageModule } = createStorageModule({
@@ -432,6 +519,46 @@ test('react ui storage resilience: saveSettingsV3 should delegate without rewrit
   assert.deepEqual(storageState[EXPERIENCE_METRICS_STORAGE_KEY].events, [
     { type: 'context-misreplace', at: 1700000000000 },
   ]);
+});
+
+test('react ui storage resilience: storage mutation timeout should release the queue', async () => {
+  const manualTimers = createManualTimerApi();
+  const committedProfiles = [];
+  const { module: storageModule } = createStorageModule({
+    setTimeoutImpl: manualTimers.setTimeout,
+    clearTimeoutImpl: manualTimers.clearTimeout,
+    sendMessageImpl({ message, callback }) {
+      committedProfiles.push(message.payload.settings.activeProfileId);
+      if (message.payload.settings.activeProfileId === 'stuck') {
+        return;
+      }
+      callback({
+        ok: true,
+        payload: cloneValue(message.payload.settings),
+      });
+    },
+  });
+
+  const stuckMutation = storageModule.saveSettingsV3({
+    schemaVersion: 3,
+    activeProfileId: 'stuck',
+  });
+  const nextMutation = storageModule.saveSettingsV3({
+    schemaVersion: 3,
+    activeProfileId: 'after-timeout',
+  });
+
+  await flushMicrotasks();
+  assert.deepEqual(committedProfiles, ['stuck']);
+  assert.equal(manualTimers.getPendingCount(), 1);
+
+  assert.equal(manualTimers.runNextTimer(), true);
+  await assert.rejects(stuckMutation, /Storage mutation timed out after \d+ms/);
+
+  const nextSettings = await nextMutation;
+  assert.equal(nextSettings.activeProfileId, 'after-timeout');
+  assert.deepEqual(committedProfiles, ['stuck', 'after-timeout']);
+  assert.equal(manualTimers.getPendingCount(), 0);
 });
 
 test('react ui storage resilience: setAdaptiveTuningEnabled should delegate to runtime bridge', async () => {
@@ -807,6 +934,67 @@ test('react ui storage resilience: subscribeActiveTabSubtitleStatus should strea
   unsubscribe();
 });
 
+test('react ui storage resilience: subscribeActiveTabSubtitleStatus should consume tabs.connect lastError on disconnect', async () => {
+  const activeTab = {
+    id: 70,
+    url: 'https://www.bilibili.com/video/BV1shared',
+  };
+  const ports = [];
+  const updates = [];
+  let runtimeError = null;
+  let runtimeErrorReads = 0;
+  const { module: storageModule } = createStorageModule({
+    tabsQueryImpl({ callback }) {
+      callback([cloneValue(activeTab)]);
+    },
+    tabsConnectImpl({ tabId, connectInfo, runtime }) {
+      assert.equal(connectInfo.name, 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE');
+      Object.defineProperty(runtime, 'lastError', {
+        configurable: true,
+        enumerable: true,
+        get() {
+          runtimeErrorReads += 1;
+          return runtimeError;
+        },
+        set(value) {
+          runtimeError = value;
+        },
+      });
+
+      const port = createMockPort(connectInfo.name);
+      const originalDisconnect = port.disconnect;
+      port.disconnect = () => {
+        runtime.lastError = {
+          message: 'Could not establish connection. Receiving end does not exist.',
+        };
+        originalDisconnect.call(port);
+        runtime.lastError = null;
+      };
+      ports.push({ tabId, port });
+      return port;
+    },
+  });
+
+  const unsubscribe = storageModule.subscribeActiveTabSubtitleStatus((status) => {
+    updates.push(cloneValue(status));
+  });
+
+  await flushAsyncWork();
+  assert.equal(ports.length, 1);
+
+  ports[0].port.disconnect();
+
+  assert.equal(runtimeErrorReads, 1);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].subtitleNavigation.supported, false);
+  assert.match(
+    updates[0].subtitleNavigation.description,
+    /www\.bilibili\.com 当前还没有可用字幕导航/
+  );
+
+  unsubscribe();
+});
+
 test('react ui storage resilience: subscribeActiveTabSubtitleStatus should ignore stale port messages after reconnect', async () => {
   let activeTab = {
     id: 70,
@@ -1124,6 +1312,186 @@ test('react ui storage resilience: readActiveTabSubtitleNavigation should fallba
   assert.equal(snapshot.supported, false);
   assert.equal(snapshot.progressLabel, '未连接');
   assert.match(snapshot.description, /youtube\.com 当前还没有可用字幕导航/);
+});
+
+test('react ui storage resilience: readActiveTabSitePermissionState should treat default hosts as authorized', async () => {
+  let containsCalls = 0;
+  const { module: storageModule } = createStorageModule({
+    tabsQueryImpl({ callback }) {
+      callback([
+        {
+          id: 12,
+          url: 'https://www.bilibili.com/video/BV1permission',
+        },
+      ]);
+    },
+    permissionsContainsImpl() {
+      containsCalls += 1;
+    },
+  });
+
+  const state = cloneValue(await storageModule.readActiveTabSitePermissionState());
+
+  assert.equal(containsCalls, 0);
+  assert.deepEqual(state, {
+    hostname: 'www.bilibili.com',
+    originPattern: 'https://www.bilibili.com/*',
+    defaultSupported: true,
+    authorized: true,
+    canRequest: false,
+    canRevoke: false,
+    message: '默认支持站点已随扩展安装授权。',
+  });
+});
+
+test('react ui storage resilience: readActiveTabSitePermissionState should read optional permission for non-default hosts', async () => {
+  const seenPermissions = [];
+  const { module: storageModule } = createStorageModule({
+    tabsQueryImpl({ callback }) {
+      callback([
+        {
+          id: 13,
+          url: 'https://learn.example.com/article',
+        },
+      ]);
+    },
+    permissionsContainsImpl({ permission, callback }) {
+      seenPermissions.push(cloneValue(permission));
+      callback(true);
+    },
+  });
+
+  const state = cloneValue(await storageModule.readActiveTabSitePermissionState());
+
+  assert.deepEqual(seenPermissions, [{ origins: ['https://learn.example.com/*'] }]);
+  assert.deepEqual(state, {
+    hostname: 'learn.example.com',
+    originPattern: 'https://learn.example.com/*',
+    defaultSupported: false,
+    authorized: true,
+    canRequest: false,
+    canRevoke: true,
+    message: '当前站点已获得 optional host permission。',
+  });
+});
+
+test('react ui storage resilience: requestActiveTabSitePermission should keep site unauthorized when user refuses', async () => {
+  const requestedPermissions = [];
+  const { module: storageModule } = createStorageModule({
+    tabsQueryImpl({ callback }) {
+      callback([
+        {
+          id: 14,
+          url: 'https://docs.example.com/page',
+        },
+      ]);
+    },
+    permissionsContainsImpl({ callback }) {
+      callback(false);
+    },
+    permissionsRequestImpl({ permission, callback }) {
+      requestedPermissions.push(cloneValue(permission));
+      callback(false);
+    },
+  });
+
+  const state = cloneValue(await storageModule.requestActiveTabSitePermission());
+
+  assert.deepEqual(requestedPermissions, [{ origins: ['https://docs.example.com/*'] }]);
+  assert.equal(state.authorized, false);
+  assert.equal(state.canRequest, true);
+  assert.equal(state.canRevoke, false);
+  assert.equal(state.message, '用户未授予当前站点权限，站点规则保持不变。');
+});
+
+test('react ui storage resilience: requestActiveTabSitePermission should report granted optional host permission', async () => {
+  const insertedCss = [];
+  const executedScripts = [];
+  const { module: storageModule } = createStorageModule({
+    tabsQueryImpl({ callback }) {
+      callback([
+        {
+          id: 15,
+          url: 'https://reader.example.org/page',
+        },
+      ]);
+    },
+    permissionsContainsImpl({ callback }) {
+      callback(false);
+    },
+    permissionsRequestImpl({ callback }) {
+      callback(true);
+    },
+    scriptingInsertCssImpl({ injection, callback }) {
+      insertedCss.push(cloneValue(injection));
+      callback();
+    },
+    scriptingExecuteScriptImpl({ injection, callback }) {
+      executedScripts.push(cloneValue(injection));
+      callback([]);
+    },
+  });
+
+  const state = cloneValue(await storageModule.requestActiveTabSitePermission());
+
+  assert.deepEqual(insertedCss, [
+    {
+      target: { tabId: 15 },
+      files: ['styles.css'],
+    },
+  ]);
+  assert.equal(executedScripts.length, 1);
+  assert.deepEqual(executedScripts[0].target, { tabId: 15 });
+  const runtimeFiles = executedScripts[0].files;
+  assert.equal(runtimeFiles.includes('overlaySubtitleNavigationBridge.js'), true);
+  assert.equal(runtimeFiles.includes('subtitleNavigationController.js'), true);
+  assert.equal(runtimeFiles.includes('runtimeSettingsSync.js'), true);
+  assert.equal(runtimeFiles.includes('webTextReplacement.js'), true);
+  assert.equal(runtimeFiles.includes('overlayLoader.js'), true);
+  assert.ok(
+    runtimeFiles.indexOf('overlaySubtitleNavigationBridge.js') <
+      runtimeFiles.indexOf('subtitleNavigationController.js')
+  );
+  assert.ok(runtimeFiles.indexOf('subtitleNavigationController.js') < runtimeFiles.length - 1);
+  assert.equal(runtimeFiles.at(-1), 'contentScript.js');
+  assert.equal(runtimeFiles.includes('dist/overlay.js'), false);
+  assert.equal(state.hostname, 'reader.example.org');
+  assert.equal(state.originPattern, 'https://reader.example.org/*');
+  assert.equal(state.authorized, true);
+  assert.equal(state.canRequest, false);
+  assert.equal(state.canRevoke, true);
+  assert.equal(state.message, '已获得当前站点授权，并已注入当前页面。');
+});
+
+test('react ui storage resilience: removeActiveTabSitePermission should revoke optional host permission', async () => {
+  const removedPermissions = [];
+  const { module: storageModule } = createStorageModule({
+    tabsQueryImpl({ callback }) {
+      callback([
+        {
+          id: 16,
+          url: 'https://reader.example.org/page',
+        },
+      ]);
+    },
+    permissionsContainsImpl({ callback }) {
+      callback(true);
+    },
+    permissionsRemoveImpl({ permission, callback }) {
+      removedPermissions.push(cloneValue(permission));
+      callback(true);
+    },
+  });
+
+  const state = cloneValue(await storageModule.removeActiveTabSitePermission());
+
+  assert.deepEqual(removedPermissions, [{ origins: ['https://reader.example.org/*'] }]);
+  assert.equal(state.hostname, 'reader.example.org');
+  assert.equal(state.originPattern, 'https://reader.example.org/*');
+  assert.equal(state.authorized, false);
+  assert.equal(state.canRequest, true);
+  assert.equal(state.canRevoke, false);
+  assert.equal(state.message, '已撤销当前站点授权；当前页面刷新后会完全停止运行。');
 });
 
 test('react ui storage resilience: navigateActiveTabSubtitle should relay action to active tab', async () => {

@@ -1,4 +1,5 @@
 type ReviewDanmakuSpeed = 'slow' | 'normal' | 'fast';
+type ReviewDanmakuDensity = 'sparse' | 'normal' | 'dense';
 type VocabularyMode = 'core' | 'full';
 type ExamPreference = 'balanced' | 'exam-first';
 export type BilingualMode = 'default' | 'bilingual' | 'english-only';
@@ -14,6 +15,7 @@ export interface ProfileConfig {
   targetCefr: string;
   activeLevels: string[];
   reviewDanmakuSpeed: ReviewDanmakuSpeed;
+  reviewDanmakuDensity: ReviewDanmakuDensity;
   vocabularyMode: VocabularyMode;
   examPreference: ExamPreference;
   bilingualMode: BilingualMode;
@@ -61,6 +63,7 @@ export interface ScenePreset {
   replaceRatio: number;
   maxReplaceCount: number;
   reviewDanmakuSpeed: ReviewDanmakuSpeed;
+  reviewDanmakuDensity: ReviewDanmakuDensity;
 }
 
 export interface LearningProfileMeta {
@@ -76,6 +79,7 @@ interface SharedSettingsApi {
   LEVELS?: string[];
   CEFR_LEVELS?: string[];
   REVIEW_SPEEDS?: string[];
+  REVIEW_DENSITIES?: string[];
   OVERLAY_DEFAULTS?: OverlayState;
   SCENE_PRESETS?: Partial<Record<ScenePresetKey, Partial<ScenePreset>>>;
   DEFAULT_SETTINGS?: Partial<ProfileConfig>;
@@ -87,6 +91,7 @@ interface SharedSettingsApi {
     enabled: boolean
   ) => Record<string, DomainRule>;
   normalizeHostname?: (hostname: string) => string;
+  normalizeReviewDanmakuDensity?: (value: unknown) => ReviewDanmakuDensity;
   normalizeSettingsV3?: (value: unknown) => SettingsV3;
   getDefaultSettingsV3?: () => SettingsV3;
   migrateToV3?: (value: unknown) => SettingsV3;
@@ -107,6 +112,7 @@ interface SharedSettingsApi {
   removeCustomProfile?: (settings: SettingsV3, profileId: string) => SettingsV3;
   isDomainEnabled?: (hostname: string, runtime: unknown) => boolean;
   getReviewDanmakuSpeedLabel?: (speed: unknown) => string;
+  getReviewDanmakuDensityLabel?: (density: unknown) => string;
   getMockPreviewData?: (targetCefr: unknown, ratio: unknown, maxReplaceCount: unknown) => string[];
   getLearningProfile?: (settings: unknown) => LearningProfileMeta;
   buildSettingsPreview?: (settings: unknown) => string;
@@ -122,6 +128,7 @@ declare global {
 const FALLBACK_LEVELS = ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL'];
 const FALLBACK_CEFR = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const FALLBACK_REVIEW_SPEEDS = ['slow', 'normal', 'fast'];
+const FALLBACK_REVIEW_DENSITIES = ['sparse', 'normal', 'dense'];
 const FALLBACK_THEME_MODES: ThemeMode[] = ['auto', 'light', 'dark'];
 
 const FALLBACK_OVERLAY: OverlayState = {
@@ -140,6 +147,7 @@ const FALLBACK_PROFILE: ProfileConfig = {
   targetCefr: 'B2',
   activeLevels: FALLBACK_LEVELS.slice(),
   reviewDanmakuSpeed: 'normal',
+  reviewDanmakuDensity: 'normal',
   vocabularyMode: 'core',
   examPreference: 'balanced',
   bilingualMode: 'default',
@@ -151,16 +159,19 @@ const FALLBACK_SCENE_PRESETS: Record<ScenePresetKey, ScenePreset> = {
     replaceRatio: 0.15,
     maxReplaceCount: 1,
     reviewDanmakuSpeed: 'slow',
+    reviewDanmakuDensity: 'sparse',
   },
   balanced: {
     replaceRatio: 0.2,
     maxReplaceCount: 2,
     reviewDanmakuSpeed: 'normal',
+    reviewDanmakuDensity: 'normal',
   },
   intensive: {
     replaceRatio: 0.3,
     maxReplaceCount: 4,
     reviewDanmakuSpeed: 'fast',
+    reviewDanmakuDensity: 'dense',
   },
 };
 
@@ -173,6 +184,7 @@ const FALLBACK_DEFAULTS: SettingsV3 = {
       replaceRatio: 0.15,
       maxReplaceCount: 1,
       reviewDanmakuSpeed: 'slow',
+      reviewDanmakuDensity: 'sparse',
     },
     balanced: { ...FALLBACK_PROFILE },
     intensive: {
@@ -180,6 +192,7 @@ const FALLBACK_DEFAULTS: SettingsV3 = {
       replaceRatio: 0.3,
       maxReplaceCount: 4,
       reviewDanmakuSpeed: 'fast',
+      reviewDanmakuDensity: 'dense',
     },
   },
   profilesCustom: [],
@@ -209,6 +222,16 @@ function normalizeSpeed(value: unknown): ReviewDanmakuSpeed {
     .trim()
     .toLowerCase();
   if (normalized === 'slow' || normalized === 'fast') {
+    return normalized;
+  }
+  return 'normal';
+}
+
+function normalizeDensity(value: unknown): ReviewDanmakuDensity {
+  const normalized = String(value || FALLBACK_PROFILE.reviewDanmakuDensity)
+    .trim()
+    .toLowerCase();
+  if (normalized === 'sparse' || normalized === 'dense') {
     return normalized;
   }
   return 'normal';
@@ -291,6 +314,7 @@ function normalizeProfileConfigFallback(value: unknown): ProfileConfig {
     targetCefr: normalizeCefr(source.targetCefr),
     activeLevels: normalizeLevels(source.activeLevels),
     reviewDanmakuSpeed: normalizeSpeed(source.reviewDanmakuSpeed),
+    reviewDanmakuDensity: normalizeDensity(source.reviewDanmakuDensity),
     vocabularyMode: normalizeMode(source.vocabularyMode),
     examPreference: normalizePreference(source.examPreference),
     bilingualMode: normalizeBilingualMode(source.bilingualMode),
@@ -460,6 +484,9 @@ export const CEFR_LEVELS = Array.isArray(shared.CEFR_LEVELS)
 export const REVIEW_SPEEDS = Array.isArray(shared.REVIEW_SPEEDS)
   ? shared.REVIEW_SPEEDS.slice()
   : FALLBACK_REVIEW_SPEEDS.slice();
+export const REVIEW_DENSITIES = Array.isArray(shared.REVIEW_DENSITIES)
+  ? shared.REVIEW_DENSITIES.slice()
+  : FALLBACK_REVIEW_DENSITIES.slice();
 export const THEME_MODES = FALLBACK_THEME_MODES.slice();
 export const OVERLAY_DEFAULTS = shared.OVERLAY_DEFAULTS
   ? { ...shared.OVERLAY_DEFAULTS }
@@ -501,6 +528,17 @@ function getReviewDanmakuSpeedLabelFallback(speed: unknown): string {
   }
   if (preset === 'fast') {
     return '快';
+  }
+  return '标准';
+}
+
+function getReviewDanmakuDensityLabelFallback(density: unknown): string {
+  const preset = normalizeDensity(density);
+  if (preset === 'sparse') {
+    return '低密度';
+  }
+  if (preset === 'dense') {
+    return '高密度';
   }
   return '标准';
 }
@@ -589,7 +627,7 @@ function buildSettingsPreviewFallback(settings: unknown): string {
 
   const modeLabel = normalized.vocabularyMode === 'core' ? '核心高频' : '全量扩展';
   const preferenceLabel = normalized.examPreference === 'exam-first' ? '考试优先' : '均衡筛选';
-  return `当前会在每句字幕中替换约 ${Math.round(normalized.replaceRatio * 100)}% 的词汇，单句最多 ${normalized.maxReplaceCount} 个词，帮助你以 ${normalized.targetCefr} 难度并结合 ${normalized.activeLevels.length} 个词库持续曝光；词库模式为${modeLabel}，筛选策略为${preferenceLabel}，显示模式为${getBilingualModeLabelFallback(normalized.bilingualMode)}，复习节奏为${getReviewDanmakuSpeedLabelFallback(normalized.reviewDanmakuSpeed)}。`;
+  return `当前会在每句字幕中替换约 ${Math.round(normalized.replaceRatio * 100)}% 的词汇，单句最多 ${normalized.maxReplaceCount} 个词，帮助你以 ${normalized.targetCefr} 难度并结合 ${normalized.activeLevels.length} 个词库持续曝光；词库模式为${modeLabel}，筛选策略为${preferenceLabel}，显示模式为${getBilingualModeLabelFallback(normalized.bilingualMode)}，复习节奏为${getReviewDanmakuSpeedLabelFallback(normalized.reviewDanmakuSpeed)}，复习弹幕密度为${getReviewDanmakuDensityLabelFallback(normalized.reviewDanmakuDensity)}。`;
 }
 
 function getPresetKeyFromSettingsFallback(settings: unknown): ScenePresetKey {
@@ -597,7 +635,8 @@ function getPresetKeyFromSettingsFallback(settings: unknown): ScenePresetKey {
   if (
     normalized.replaceRatio <= SCENE_PRESETS.light.replaceRatio &&
     normalized.maxReplaceCount <= SCENE_PRESETS.light.maxReplaceCount &&
-    normalized.reviewDanmakuSpeed === SCENE_PRESETS.light.reviewDanmakuSpeed
+    normalized.reviewDanmakuSpeed === SCENE_PRESETS.light.reviewDanmakuSpeed &&
+    normalized.reviewDanmakuDensity === SCENE_PRESETS.light.reviewDanmakuDensity
   ) {
     return 'light';
   }
@@ -605,7 +644,8 @@ function getPresetKeyFromSettingsFallback(settings: unknown): ScenePresetKey {
   if (
     normalized.replaceRatio >= SCENE_PRESETS.intensive.replaceRatio &&
     normalized.maxReplaceCount >= SCENE_PRESETS.intensive.maxReplaceCount &&
-    normalized.reviewDanmakuSpeed === SCENE_PRESETS.intensive.reviewDanmakuSpeed
+    normalized.reviewDanmakuSpeed === SCENE_PRESETS.intensive.reviewDanmakuSpeed &&
+    normalized.reviewDanmakuDensity === SCENE_PRESETS.intensive.reviewDanmakuDensity
   ) {
     return 'intensive';
   }
@@ -842,6 +882,13 @@ export function getReviewDanmakuSpeedLabel(speed: unknown): string {
     return shared.getReviewDanmakuSpeedLabel(speed);
   }
   return getReviewDanmakuSpeedLabelFallback(speed);
+}
+
+export function getReviewDanmakuDensityLabel(density: unknown): string {
+  if (typeof shared.getReviewDanmakuDensityLabel === 'function') {
+    return shared.getReviewDanmakuDensityLabel(density);
+  }
+  return getReviewDanmakuDensityLabelFallback(density);
 }
 
 export function getBilingualModeLabel(mode: unknown): string {

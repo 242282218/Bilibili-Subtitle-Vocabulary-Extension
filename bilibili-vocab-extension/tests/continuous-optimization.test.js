@@ -368,7 +368,7 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
       'pack-extension.test.js',
       'test-coverage-entry-contract.test.js',
       'settings-ui-state-machine.test.js',
-      'browser-extension-smoke.test.js',
+      'browser-extension-smoke.spec.js',
       'popup.test.js',
     ]);
 
@@ -389,7 +389,7 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
 
     assert.equal(summary.overallStatus, 'pass');
     assert.deepEqual(summary.unassignedTests, []);
-    assert.deepEqual(summary.outOfBandSmokeTests, ['browser-extension-smoke.test.js']);
+    assert.deepEqual(summary.outOfBandSmokeTests, ['browser-extension-smoke.spec.js']);
     assert.deepEqual(summary.deferredLegacyTests, ['popup.test.js']);
     assert.equal(summary.nextFocusCandidates[0].id, 'content-script-decomposition');
     assert.deepEqual(summary.nextFocusCandidates[1].files, [
@@ -422,7 +422,7 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
 
     const latestReport = JSON.parse(fs.readFileSync(path.join(reportDir, 'latest.json'), 'utf8'));
     assert.deepEqual(latestReport.unassignedTests, []);
-    assert.deepEqual(latestReport.outOfBandSmokeTests, ['browser-extension-smoke.test.js']);
+    assert.deepEqual(latestReport.outOfBandSmokeTests, ['browser-extension-smoke.spec.js']);
     assert.deepEqual(latestReport.deferredLegacyTests, ['popup.test.js']);
     assert.equal(latestReport.nextFocusCandidates[0].id, 'content-script-decomposition');
     assert.deepEqual(latestReport.nextFocusCandidates[1].files, [
@@ -446,7 +446,7 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
 
     const markdown = fs.readFileSync(path.join(reportDir, 'latest.md'), 'utf8');
     assert.match(markdown, /Out-of-Band Browser Smoke Tests/);
-    assert.match(markdown, /browser-extension-smoke\.test\.js/);
+    assert.match(markdown, /browser-extension-smoke\.spec\.js/);
     assert.match(markdown, /pnpm run test:extension-smoke/);
     assert.match(markdown, /独立 CI job/);
     assert.match(markdown, /Legacy Deferred Tests/);

@@ -9,6 +9,7 @@ const readline = require('node:readline');
 const ROOT_DIR = path.resolve(__dirname, '..');
 const SOURCES_DIR = path.join(ROOT_DIR, 'sources');
 const DATA_DIR = path.join(ROOT_DIR, 'data');
+const CLI_ARGS = process.argv.slice(2);
 
 const SOURCE_FILES = {
   ecdict: {
@@ -50,6 +51,12 @@ const SOURCE_MANIFEST = [
     name: 'ECDICT',
     url: 'https://github.com/skywind3000/ECDICT',
     license: 'MIT',
+    licenseStatus: 'verified',
+    redistributable: true,
+    attributionRequired: true,
+    shareAlikeRequired: false,
+    publishBlocking: false,
+    reviewAction: '',
     sourceIds: ['ecdict'],
     notes: '英汉词典，含 cet4/cet6/ielts/toefl/ky 标签。',
   },
@@ -57,6 +64,12 @@ const SOURCE_MANIFEST = [
     name: 'Words-CEFR-Dataset',
     url: 'https://github.com/Maximax67/Words-CEFR-Dataset',
     license: 'MIT',
+    licenseStatus: 'verified',
+    redistributable: true,
+    attributionRequired: true,
+    shareAlikeRequired: false,
+    publishBlocking: false,
+    reviewAction: '',
     sourceIds: ['words', 'wordPos'],
     notes: '按词与词性提供 CEFR 数值等级 (1-6)。',
   },
@@ -64,6 +77,13 @@ const SOURCE_MANIFEST = [
     name: 'KyleBing/english-vocabulary',
     url: 'https://github.com/KyleBing/english-vocabulary',
     license: 'No explicit GitHub license metadata detected',
+    licenseStatus: 'needs-review',
+    redistributable: false,
+    attributionRequired: true,
+    shareAlikeRequired: false,
+    publishBlocking: true,
+    reviewAction:
+      'Obtain explicit redistribution permission or remove derived entries before publishing.',
     sourceIds: ['kylebingCet4', 'kylebingCet6', 'kylebingKaoyan'],
     notes: '提供 CET4 / CET6 / 考研词表、中文释义与短语，用于构建 core 高频层。',
   },
@@ -71,6 +91,13 @@ const SOURCE_MANIFEST = [
     name: 'exam-data/NETEMVocabulary',
     url: 'https://github.com/exam-data/NETEMVocabulary',
     license: 'NOASSERTION (GitHub API)',
+    licenseStatus: 'needs-review',
+    redistributable: false,
+    attributionRequired: true,
+    shareAlikeRequired: false,
+    publishBlocking: true,
+    reviewAction:
+      'Verify upstream redistribution terms or remove NETEM-derived ranking fields before publishing.',
     sourceIds: ['netem'],
     notes: '提供考研词频排序，用于构建 KAOYAN 的 examFrequencyScore 与 examPriorityScore。',
   },
@@ -78,6 +105,13 @@ const SOURCE_MANIFEST = [
     name: 'CC-CEDICT',
     url: 'https://www.mdbg.net/chinese/dictionary?page=cc-cedict',
     license: 'CC BY-SA 3.0 (MDBG 发布版本)',
+    licenseStatus: 'verified',
+    redistributable: true,
+    attributionRequired: true,
+    shareAlikeRequired: true,
+    publishBlocking: false,
+    reviewAction:
+      'Preserve attribution and share-alike obligations when redistributing derived data.',
     sourceIds: ['cedict'],
     notes: '用于中文释义补充，需保留署名与同协议要求。',
   },
@@ -135,6 +169,7 @@ const MANIFEST_FILE_NAME = 'sources.json';
 
 const LEVELS = ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL'];
 const EXAM_LEVELS = new Set(['CET4', 'CET6', 'KAOYAN']);
+const BUILD_TARGETS = new Set(['development', 'publish']);
 const LEVEL_FILE_MAP = {
   CET4: 'cet4.json',
   CET6: 'cet6.json',
@@ -151,7 +186,30 @@ const CEFR_LABEL_MAP = {
   6: 'C2',
 };
 
-const REFRESH = process.argv.includes('--refresh');
+const PUBLISH_BLOCKING_SOURCE_FLAGS = ['kylebing', 'netem'];
+const REFRESH = CLI_ARGS.includes('--refresh');
+
+function readCliOptionValue(flagName, argv = CLI_ARGS) {
+  const flagIndex = argv.indexOf(flagName);
+  if (flagIndex === -1) {
+    return '';
+  }
+  return String(argv[flagIndex + 1] || '').trim();
+}
+
+function normalizeBuildTarget(rawValue = 'development') {
+  const normalized = String(rawValue || 'development')
+    .trim()
+    .toLowerCase();
+  if (!BUILD_TARGETS.has(normalized)) {
+    throw new Error(`Unsupported build target: ${rawValue}`);
+  }
+  return normalized;
+}
+
+function shouldIncludePublishBlockingSources(buildTarget = 'development') {
+  return normalizeBuildTarget(buildTarget) !== 'publish';
+}
 
 function ensureDirectory(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -315,6 +373,10 @@ function uniq(items) {
   return Array.from(new Set(items.filter(Boolean)));
 }
 
+function hasPublishBlockingFlag(sourceFlags) {
+  return uniq(sourceFlags).some((flag) => PUBLISH_BLOCKING_SOURCE_FLAGS.includes(flag));
+}
+
 function normalizePosToken(rawToken) {
   const normalized = String(rawToken || '')
     .trim()
@@ -447,6 +509,12 @@ function createSourceManifest(sourceFiles = SOURCE_FILES) {
       name: source.name,
       url: source.url,
       license: source.license,
+      licenseStatus: source.licenseStatus,
+      redistributable: source.redistributable,
+      attributionRequired: source.attributionRequired,
+      shareAlikeRequired: source.shareAlikeRequired,
+      publishBlocking: source.publishBlocking,
+      reviewAction: source.reviewAction,
       files: source.sourceIds.map((sourceId) => toSourceRelativePath(sourceFiles[sourceId].file)),
       notes: source.notes,
     })),
@@ -921,15 +989,18 @@ function mergeExamSourceFields(entry, supplement, level) {
   };
 }
 
-function mergeExamSources(entriesByKey, kylebingMaps, netemMap, cefrMap) {
+function mergeExamSources(entriesByKey, kylebingMaps, netemMap, cefrMap, options = {}) {
+  const includePublishBlockingSources = options.includePublishBlockingSources !== false;
+
   entriesByKey.forEach((entry, key) => {
     let nextEntry = { ...entry };
-    const kylebingEntry = ['CET4', 'CET6', 'KAOYAN'].includes(entry.level)
-      ? kylebingMaps[entry.level].get(entry.word)
-      : null;
+    const kylebingEntry =
+      includePublishBlockingSources && ['CET4', 'CET6', 'KAOYAN'].includes(entry.level)
+        ? kylebingMaps[entry.level].get(entry.word)
+        : null;
     nextEntry = mergeExamSourceFields(nextEntry, kylebingEntry, entry.level);
 
-    if (entry.level === 'KAOYAN') {
+    if (includePublishBlockingSources && entry.level === 'KAOYAN') {
       const netemEntry = netemMap.get(entry.word);
       nextEntry = mergeExamSourceFields(nextEntry, netemEntry, entry.level);
     }
@@ -938,6 +1009,10 @@ function mergeExamSources(entriesByKey, kylebingMaps, netemMap, cefrMap) {
   });
 
   ['CET4', 'CET6', 'KAOYAN'].forEach((level) => {
+    if (!includePublishBlockingSources) {
+      return;
+    }
+
     kylebingMaps[level].forEach((supplement, word) => {
       const key = `${level}|${word}`;
       if (entriesByKey.has(key)) {
@@ -1090,6 +1165,8 @@ async function buildVocabularyDataset(options = {}) {
   const sourceFiles = options.sourceFiles || SOURCE_FILES;
   const dataDir = options.dataDir || DATA_DIR;
   const shouldEnsureSources = options.ensureSources !== false;
+  const buildTarget = normalizeBuildTarget(options.buildTarget || 'development');
+  const includePublishBlockingSources = shouldIncludePublishBlockingSources(buildTarget);
 
   if (shouldEnsureSources) {
     await ensureSources(sourceFiles);
@@ -1099,7 +1176,9 @@ async function buildVocabularyDataset(options = {}) {
   const entriesByKey = await buildExamEntries(cefrMap, sourceFiles);
   const kylebingMaps = buildKyleBingMaps(sourceFiles);
   const netemMap = buildNetemMap(sourceFiles);
-  mergeExamSources(entriesByKey, kylebingMaps, netemMap, cefrMap);
+  mergeExamSources(entriesByKey, kylebingMaps, netemMap, cefrMap, {
+    includePublishBlockingSources,
+  });
 
   const selectedWords = new Set(Array.from(entriesByKey.values()).map((entry) => entry.word));
   const cedictSupplement = await buildCedictSupplement(selectedWords, sourceFiles);
@@ -1114,16 +1193,26 @@ async function buildVocabularyDataset(options = {}) {
   }
 
   return {
+    buildTarget,
     grouped,
     manifest,
   };
 }
 
 async function main() {
+  const buildTarget = normalizeBuildTarget(
+    CLI_ARGS.includes('--publish-safe')
+      ? 'publish'
+      : readCliOptionValue('--build-target') || 'development'
+  );
+  const outputDir = readCliOptionValue('--output-dir') || DATA_DIR;
   console.log('[build] loading vocabulary sources...');
-  const { grouped } = await buildVocabularyDataset();
+  const { grouped } = await buildVocabularyDataset({
+    buildTarget,
+    dataDir: outputDir,
+  });
   printSummary(grouped);
-  console.log('[done] data files updated in /data');
+  console.log(`[done] data files updated in ${outputDir} (target=${buildTarget})`);
 }
 
 if (require.main === module) {
@@ -1136,4 +1225,7 @@ if (require.main === module) {
 module.exports = {
   buildVocabularyDataset,
   createSourceManifest,
+  hasPublishBlockingFlag,
+  normalizeBuildTarget,
+  shouldIncludePublishBlockingSources,
 };

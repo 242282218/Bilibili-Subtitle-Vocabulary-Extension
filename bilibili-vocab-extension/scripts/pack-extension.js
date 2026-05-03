@@ -3,6 +3,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
+const BUILD_VOCAB_DATASET_SCRIPT = path.join('scripts', 'build-vocab-dataset.js');
 const DEFAULT_OUTPUT_NAME = 'extension.zip';
 const DEFAULT_INCLUDE_GLOBS = [];
 const FIXED_INCLUDE_PATHS = [
@@ -78,6 +79,64 @@ function collectPackEntries(rootDir, options = {}) {
 function normalizeOutputZipPath(rootDir, outputZip) {
   const outputName = outputZip || process.env.EXTENSION_ZIP_NAME || DEFAULT_OUTPUT_NAME;
   return path.resolve(rootDir, outputName);
+}
+
+function copyEntryToDirectory(rootDir, stagingRoot, entry) {
+  const sourcePath = path.resolve(rootDir, entry);
+  const targetPath = path.resolve(stagingRoot, entry);
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  fs.cpSync(sourcePath, targetPath, { recursive: true });
+}
+
+function shouldStagePublishData(rootDir, options = {}) {
+  if (options.stagePublishData === false) {
+    return false;
+  }
+
+  return (
+    fs.existsSync(path.join(rootDir, 'sources')) &&
+    fs.existsSync(path.join(rootDir, BUILD_VOCAB_DATASET_SCRIPT))
+  );
+}
+
+function buildPublishDataset(stagingRoot, rootDir, options = {}) {
+  const datasetRunner = options.datasetRunner || spawnSync;
+  const dataDir = path.join(stagingRoot, 'data');
+  fs.mkdirSync(dataDir, { recursive: true });
+
+  const result = datasetRunner(
+    process.execPath,
+    [BUILD_VOCAB_DATASET_SCRIPT, '--publish-safe', '--output-dir', dataDir],
+    {
+      cwd: rootDir,
+      stdio: 'inherit',
+    }
+  );
+
+  if (!result || result.status !== 0) {
+    const status = result && Number.isInteger(result.status) ? result.status : 1;
+    throw new Error(`Publish dataset build failed with exit code ${status}.`);
+  }
+}
+
+function createPackStageRoot(rootDir, entries, options = {}) {
+  const stagingRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ext-pack-root-'));
+  const stagePublishData = shouldStagePublishData(rootDir, options);
+
+  for (const entry of entries) {
+    if (entry === 'data' && stagePublishData) {
+      continue;
+    }
+    copyEntryToDirectory(rootDir, stagingRoot, entry);
+  }
+
+  if (entries.includes('data') && stagePublishData) {
+    buildPublishDataset(stagingRoot, rootDir, options);
+  } else if (entries.includes('data')) {
+    copyEntryToDirectory(rootDir, stagingRoot, 'data');
+  }
+
+  return stagingRoot;
 }
 
 function normalizeArchivePathForCheck(entryPath) {
@@ -347,16 +406,27 @@ function runPack(options = {}) {
   const runner = options.runner || spawnSync;
   const inspectorRunner = options.inspectorRunner || runner;
   const originalCwd = process.cwd();
-  process.chdir(rootDir);
 
   let cleanup = null;
   try {
+    const packRoot = createPackStageRoot(rootDir, entries, options);
+    cleanup = () => {
+      fs.rmSync(packRoot, { recursive: true, force: true });
+    };
+    process.chdir(packRoot);
+
     if (fs.existsSync(outputZipPath)) {
       fs.rmSync(outputZipPath, { force: true });
     }
 
-    const commandSpec = createZipCommand(rootDir, outputZipPath, entries, options);
-    cleanup = commandSpec.cleanup;
+    const commandSpec = createZipCommand(packRoot, outputZipPath, entries, options);
+    const commandCleanup = commandSpec.cleanup;
+    cleanup = () => {
+      if (typeof commandCleanup === 'function') {
+        commandCleanup();
+      }
+      fs.rmSync(packRoot, { recursive: true, force: true });
+    };
     const result = runPackCommandWithRetry(commandSpec, {
       runner,
       platform: options.platform,
@@ -379,6 +449,7 @@ function runPack(options = {}) {
 
     return {
       rootDir,
+      packRoot,
       outputZipPath,
       entries,
       archiveEntries,
@@ -426,5 +497,6 @@ module.exports = {
   shouldRetryWindowsPack,
   runPackCommandWithRetry,
   createZipCommand,
+  createPackStageRoot,
   runPack,
 };

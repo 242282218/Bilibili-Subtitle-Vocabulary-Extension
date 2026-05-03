@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 
 const {
   REQUIRED_ARCHIVE_ENTRIES,
@@ -224,6 +225,71 @@ test('pack extension: runPack should fail when no files matched', () => {
         }),
       /No files matched/
     );
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('pack extension: runPack should stage publish-safe data when a dataset builder is available', () => {
+  const workspace = createWorkspace();
+  try {
+    fs.mkdirSync(path.join(workspace, 'sources'), { recursive: true });
+    fs.writeFileSync(
+      path.join(workspace, 'scripts', 'build-vocab-dataset.js'),
+      `#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+const outputDir = process.argv[process.argv.indexOf('--output-dir') + 1];
+fs.mkdirSync(outputDir, { recursive: true });
+fs.writeFileSync(path.join(outputDir, 'cet4.json'), JSON.stringify([{ word: 'publish-only' }]), 'utf8');
+fs.writeFileSync(path.join(outputDir, 'sources.json'), JSON.stringify({ target: 'publish' }), 'utf8');
+`,
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(workspace, 'data', 'cet4.json'),
+      JSON.stringify([{ word: 'raw-data' }]),
+      'utf8'
+    );
+
+    let stagedCet4 = '';
+    const outputZip = path.join(workspace, 'extension.zip');
+    const runner = (command, args) => {
+      if (command === 'zip') {
+        stagedCet4 = fs.readFileSync(path.join(process.cwd(), 'data', 'cet4.json'), 'utf8');
+        fs.writeFileSync(outputZip, 'zip', 'utf8');
+        return { status: 0 };
+      }
+      if (command === 'unzip') {
+        return {
+          status: 0,
+          stdout: `
+Archive:  ${outputZip}
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+        34  2026-04-16 00:00   manifest.json
+        0  2026-04-16 00:00   background.js
+        0  2026-04-16 00:00   contentScript.js
+        0  2026-04-16 00:00   scripts/
+        7  2026-04-16 00:00   styles.css
+        0  2026-04-16 00:00   dist/
+        0  2026-04-16 00:00   data/
+---------                     -------
+`,
+        };
+      }
+      throw new Error(`Unexpected command ${command}`);
+    };
+
+    runPack({
+      rootDir: workspace,
+      platform: 'linux',
+      runner,
+      datasetRunner: spawnSync,
+    });
+
+    assert.match(stagedCet4, /publish-only/);
+    assert.doesNotMatch(stagedCet4, /raw-data/);
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
   }

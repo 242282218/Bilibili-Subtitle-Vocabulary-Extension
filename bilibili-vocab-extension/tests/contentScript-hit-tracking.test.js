@@ -8,6 +8,7 @@ const previousRequestAnimationFrame = global.requestAnimationFrame;
 const previousLocation = global.location;
 const previousHTMLVideoElement = global.HTMLVideoElement;
 const previousSubtitleRenderer = global.SubtitleRenderer;
+const previousSubtitleTranslator = global.SubtitleTranslator;
 
 class FakeVideoElement {
   constructor({ paused = false, ended = false } = {}) {
@@ -70,6 +71,37 @@ test('recordRenderedHits: should not record duplicate hits for the same source t
   contentScript.recordRenderedHits(element, result, '金字塔结构');
 
   assert.deepEqual(calls, ['pyramid', 'structure']);
+});
+
+test('recordRenderedHits: should dedupe repeated words and report rendered exposure once per unique word', () => {
+  const calls = [];
+  const exposures = [];
+  global.VocabularyModule = {
+    recordHit(word) {
+      calls.push(word);
+    },
+  };
+  global.SubtitleTranslator = {
+    reportRenderedExposure(word) {
+      exposures.push(word);
+    },
+  };
+
+  const element = { dataset: {} };
+  const result = {
+    tokens: [
+      { type: 'word', word: 'System' },
+      { type: 'text', text: ' ' },
+      { type: 'word', word: 'system' },
+      { type: 'word', word: 'strategy' },
+    ],
+  };
+
+  contentScript.recordRenderedHits(element, result, '系统系统策略');
+  contentScript.recordRenderedHits(element, result, '系统系统策略');
+
+  assert.deepEqual(calls, ['System', 'strategy']);
+  assert.deepEqual(exposures, ['System', 'strategy']);
 });
 
 test('resetHitTrackingIfSourceChanged: should clear hit signature only when subtitle source text changes', () => {
@@ -263,6 +295,7 @@ test('classifyRuntimeSettingsChange: should ignore theme-only changes and keep d
     themeMode: 'auto',
     reviewDanmakuEnabled: false,
     reviewDanmakuSpeed: 'normal',
+    reviewDanmakuDensity: 'normal',
   };
 
   assert.deepEqual(
@@ -274,6 +307,7 @@ test('classifyRuntimeSettingsChange: should ignore theme-only changes and keep d
       translationChanged: false,
       reviewDanmakuChanged: false,
       reviewDanmakuSpeedChanged: false,
+      reviewDanmakuDensityChanged: false,
     }
   );
 
@@ -286,6 +320,7 @@ test('classifyRuntimeSettingsChange: should ignore theme-only changes and keep d
       translationChanged: true,
       reviewDanmakuChanged: false,
       reviewDanmakuSpeedChanged: false,
+      reviewDanmakuDensityChanged: false,
     }
   );
 
@@ -299,8 +334,40 @@ test('classifyRuntimeSettingsChange: should ignore theme-only changes and keep d
       translationChanged: false,
       reviewDanmakuChanged: true,
       reviewDanmakuSpeedChanged: true,
+      reviewDanmakuDensityChanged: false,
     }
   );
+
+  assert.deepEqual(
+    contentScript.classifyRuntimeSettingsChange(baseSettings, {
+      ...baseSettings,
+      reviewDanmakuDensity: 'dense',
+    }),
+    {
+      translationChanged: false,
+      reviewDanmakuChanged: false,
+      reviewDanmakuSpeedChanged: false,
+      reviewDanmakuDensityChanged: true,
+    }
+  );
+});
+
+test('runtime settings sync contract: manifest should load runtime settings sync before contentScript', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const manifestPath = path.join(__dirname, '..', 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8').replace(/^\uFEFF/, ''));
+  const contentScripts = Array.isArray(manifest.content_scripts) ? manifest.content_scripts : [];
+  const shippedEntry = contentScripts.find((entry) => Array.isArray(entry.js));
+  assert.ok(shippedEntry, 'content_scripts entry should exist');
+
+  const scriptList = shippedEntry.js;
+  const syncRuntimeIndex = scriptList.indexOf('runtimeSettingsSync.js');
+  const contentScriptIndex = scriptList.indexOf('contentScript.js');
+
+  assert.notEqual(syncRuntimeIndex, -1);
+  assert.notEqual(contentScriptIndex, -1);
+  assert.ok(syncRuntimeIndex < contentScriptIndex);
 });
 
 test('watchStorageChanges: should keep cache on theme-only v3 saves and clear it on bilingual changes', async () => {
@@ -308,9 +375,12 @@ test('watchStorageChanges: should keep cache on theme-only v3 saves and clear it
   const previousAddListener = global.chrome.storage.onChanged.addListener;
   const previousMutationObserver = global.MutationObserver;
   const previousSubtitleParser = global.SubtitleParser;
+  const previousDanmakuModule = global.DanmakuModule;
+  const previousSchedulerModule = global.SchedulerModule;
   let changeListener = null;
   const baseV3 = sharedSettings.migrateToV3({});
   const balancedProfile = baseV3.profilesBuiltin.balanced;
+  const densitySyncCalls = [];
 
   global.location = { hostname: 'www.bilibili.com' };
   global.SubtitleParser = {
@@ -334,6 +404,19 @@ test('watchStorageChanges: should keep cache on theme-only v3 saves and clear it
     disconnect() {}
 
     observe() {}
+  };
+  global.DanmakuModule = {
+    setSpeedPreset(speed) {
+      densitySyncCalls.push(['danmaku-speed', speed]);
+    },
+    setDensityPreset(density) {
+      densitySyncCalls.push(['danmaku-density', density]);
+    },
+  };
+  global.SchedulerModule = {
+    setDensityPreset(density) {
+      densitySyncCalls.push(['scheduler-density', density]);
+    },
   };
 
   try {
@@ -381,10 +464,36 @@ test('watchStorageChanges: should keep cache on theme-only v3 saves and clear it
       'local'
     );
     assert.equal(contentScript.__readFromCacheForTest('bilingual'), null);
+
+    changeListener(
+      {
+        [sharedSettings.SETTINGS_STORAGE_KEY_V3]: {
+          newValue: {
+            ...baseV3,
+            profilesBuiltin: {
+              ...baseV3.profilesBuiltin,
+              balanced: {
+                ...balancedProfile,
+                reviewDanmakuSpeed: 'fast',
+                reviewDanmakuDensity: 'dense',
+              },
+            },
+          },
+        },
+      },
+      'local'
+    );
+    assert.deepEqual(densitySyncCalls.slice(-3), [
+      ['danmaku-speed', 'fast'],
+      ['danmaku-density', 'dense'],
+      ['scheduler-density', 'dense'],
+    ]);
     await new Promise((resolve) => setTimeout(resolve, 150));
   } finally {
     global.MutationObserver = previousMutationObserver;
     global.SubtitleParser = previousSubtitleParser;
+    global.DanmakuModule = previousDanmakuModule;
+    global.SchedulerModule = previousSchedulerModule;
     global.chrome.storage.onChanged.addListener = previousAddListener;
     contentScript.__clearTranslationCacheForTest();
   }
@@ -453,6 +562,7 @@ test('buildRuntimeSettings: should merge updates on top of runtime baseline', ()
       webPageEnabled: true,
       reviewDanmakuEnabled: false,
       reviewDanmakuSpeed: 'normal',
+      reviewDanmakuDensity: 'normal',
       activeLevels: ['CET4'],
       replaceRatio: 0.2,
       maxReplaceCount: 2,
@@ -633,4 +743,5 @@ test.after(() => {
   global.location = previousLocation;
   global.HTMLVideoElement = previousHTMLVideoElement;
   global.SubtitleRenderer = previousSubtitleRenderer;
+  global.SubtitleTranslator = previousSubtitleTranslator;
 });

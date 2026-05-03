@@ -122,3 +122,37 @@ test('createSchedulerEngine: should retry failed associated words before drawing
     { word: 'adapt', isAssociated: true },
   ]);
 });
+
+test('density presets: should normalize preset and control scheduler interval', () => {
+  assert.equal(scheduler.normalizeDensityPreset('dense'), 'dense');
+  assert.equal(scheduler.normalizeDensityPreset('unknown'), 'normal');
+
+  const engine = scheduler.createSchedulerEngine({ densityPreset: 'dense' });
+  try {
+    assert.equal(engine.getIntervalMs(), 2600);
+    assert.equal(engine.setDensityPreset('sparse'), 'sparse');
+    assert.equal(engine.getIntervalMs(), 4200);
+  } finally {
+    engine.stop();
+  }
+});
+
+test('createSchedulerEngine: should fire one review danmaku immediately after start', () => {
+  const calls = [];
+  const engine = scheduler.createSchedulerEngine({
+    getVocabularyWords: () => [{ word: 'review', translation: '复习', hitCount: 1 }],
+    shootDanmaku: (wordObj, isAssociated) => {
+      calls.push({ word: wordObj.word, isAssociated });
+      return true;
+    },
+    intervalMs: 60000,
+  });
+
+  try {
+    engine.start();
+  } finally {
+    engine.stop();
+  }
+
+  assert.deepEqual(calls, [{ word: 'review', isAssociated: false }]);
+});

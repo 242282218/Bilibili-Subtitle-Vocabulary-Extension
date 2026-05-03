@@ -4,6 +4,7 @@ import {
   getBilingualModeLabel,
   getLearningProfile,
   getMockPreviewData,
+  getReviewDanmakuDensityLabel,
   getReviewDanmakuSpeedLabel,
 } from './settings-bridge';
 
@@ -114,6 +115,10 @@ export function StudyPreview({
         <div className="preview-metric-card">
           <span>复习节奏</span>
           <strong>{getReviewDanmakuSpeedLabel(profile.reviewDanmakuSpeed)}</strong>
+        </div>
+        <div className="preview-metric-card">
+          <span>弹幕密度</span>
+          <strong>{getReviewDanmakuDensityLabel(profile.reviewDanmakuDensity)}</strong>
         </div>
       </div>
 

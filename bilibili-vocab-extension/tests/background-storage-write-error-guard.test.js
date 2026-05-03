@@ -46,10 +46,10 @@ function createChromeStub({ storageState, shouldFailSet, sendMessageImpl }) {
         query(_query, callback) {
           callback([{ id: 7, url: 'https://www.bilibili.com/video/BV1xx411c7mD' }]);
         },
-        sendMessage(tabId, message) {
+        sendMessage(tabId, message, callback) {
           sentMessages.push({ tabId, message });
           if (typeof sendMessageImpl === 'function') {
-            return sendMessageImpl(tabId, message);
+            return sendMessageImpl(tabId, message, callback, runtime);
           }
           return undefined;
         },
@@ -171,6 +171,47 @@ test('background command: should skip broadcast when storage write fails', async
         false
       );
       assert.equal(loggedErrors.length, 1);
+    }
+  );
+});
+
+test('background command: should consume tabs.sendMessage lastError when receiver is missing', async () => {
+  const storageState = {
+    [sharedSettings.SETTINGS_STORAGE_KEY_V3]: sharedSettings.getDefaultSettingsV3(),
+  };
+  let runtimeError = null;
+  let runtimeErrorReads = 0;
+
+  await withBackgroundRuntime(
+    {
+      storageState,
+      sendMessageImpl(_tabId, _message, callback, runtime) {
+        Object.defineProperty(runtime, 'lastError', {
+          configurable: true,
+          enumerable: true,
+          get() {
+            runtimeErrorReads += 1;
+            return runtimeError;
+          },
+          set(value) {
+            runtimeError = value;
+          },
+        });
+        runtime.lastError = {
+          message: 'Could not establish connection. Receiving end does not exist.',
+        };
+        callback();
+        runtime.lastError = null;
+        return undefined;
+      },
+    },
+    async ({ listeners, sentMessages, loggedErrors }) => {
+      await listeners.command('toggle-overlay');
+      await flushAsync();
+
+      assert.equal(sentMessages.length, 1);
+      assert.equal(runtimeErrorReads, 1);
+      assert.equal(loggedErrors.length, 0);
     }
   );
 });

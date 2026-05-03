@@ -2,19 +2,45 @@ import { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './ui.css';
 import {
-  CEFR_LEVELS,
-  REVIEW_SPEEDS,
-  THEME_MODES,
+  SettingsV3,
   cloneSettingsV3,
   getProfileConfigById,
   isDomainEnabled,
-  listProfileOptions,
   normalizeHostname,
-  resolveEffectiveRuntime,
+  ProfileConfig,
   setExactDomainRuleEnabled,
   setActiveProfileConfig,
 } from './settings-bridge';
 import { getSiteToggleUiState } from './site-toggle-state';
+import {
+  ActiveTabSitePermissionState,
+  ActiveTabSubtitleNavigation,
+  ActiveTabSubtitleNavigationAction,
+  ActiveTabSubtitleStatus,
+  AdaptiveTuningState,
+  ExperienceMetricsSnapshot,
+  LearningStreak,
+  LearningSummary,
+  QuickReviewDashboard,
+  navigateActiveTabSubtitle,
+  openOptionsPage,
+  readActiveTabSitePermissionState,
+  readActiveTabSubtitleStatus,
+  readAdaptiveTuningState,
+  readEncounteredWordRanking,
+  readExperienceMetricsSnapshot,
+  readLearningStreak,
+  readQuickReviewDashboard,
+  removeActiveTabSitePermission,
+  requestActiveTabSitePermission,
+  setAdaptiveTuningEnabled,
+  submitQuickReviewFeedback,
+  subscribeActiveTabSubtitleStatus,
+  subscribeAdaptiveTuningState,
+  subscribeExperienceMetricsSnapshot,
+  subscribeLearningStreak,
+  subscribeQuickReviewSource,
+} from './storage';
 import {
   EncounteredWordRankingItem,
   EncounteredWordSortMode,
@@ -24,51 +50,67 @@ import {
   getRankingSummaryText,
   getRelativeSeenText,
 } from './learning-dashboard';
-import { ShortcutGuide } from './shortcut-guide';
-import { StudyPreview } from './study-preview';
-import {
-  ActiveTabSubtitleStatus,
-  ActiveTabSubtitleNavigation,
-  ActiveTabSubtitleNavigationAction,
-  AdaptiveTuningState,
-  ExperienceMetricsSnapshot,
-  LearningSummary,
-  LearningStreak,
-  QuickReviewDashboard,
-  VocabularyExportFormat,
-  readAdaptiveTuningState,
-  readEncounteredWordRanking,
-  readExperienceMetricsSnapshot,
-  readLearningStreak,
-  readQuickReviewDashboard,
-  setAdaptiveTuningEnabled,
-  submitQuickReviewFeedback,
-  subscribeEncounteredWordStats,
-  subscribeAdaptiveTuningState,
-  subscribeExperienceMetricsSnapshot,
-  subscribeLearningStreak,
-  exportVocabularyBook,
-  navigateActiveTabSubtitle,
-  openOptionsPage,
-  readActiveTabSubtitleStatus,
-  subscribeActiveTabSubtitleStatus,
-  subscribeQuickReviewSource,
-} from './storage';
-import { getThemeModeLabel, useDocumentTheme } from './ui-theme';
+import { useDocumentTheme } from './ui-theme';
 import { useV3Settings } from './use-v3-settings';
+import { StudyPreview } from './study-preview';
 
-const HIGH_RISK_UNDO_WINDOW_MS = 6 * 1000;
+const HIGH_RISK_UNDO_WINDOW_MS = 6000;
+
 const EMPTY_SUMMARY: LearningSummary = {
   todayCount: 0,
   newCount: 0,
   masteredCount: 0,
   recentWords: [],
 };
+
 const EMPTY_REVIEW_DASHBOARD: QuickReviewDashboard = {
   summary: EMPTY_SUMMARY,
   items: [],
 };
-const EMPTY_TAB_SUBTITLE_NAVIGATION: ActiveTabSubtitleNavigation = {
+
+const EMPTY_STREAK: LearningStreak = {
+  currentStreak: 0,
+  maxStreak: 0,
+  lastActiveDate: '',
+  totalActiveDays: 0,
+  activeDays: [],
+};
+
+const EMPTY_SITE_PERMISSION: ActiveTabSitePermissionState = {
+  hostname: '',
+  originPattern: '',
+  defaultSupported: false,
+  authorized: false,
+  canRequest: false,
+  canRevoke: false,
+  message: '正在读取当前站点授权状态...',
+};
+
+const EMPTY_ADAPTIVE_STATE: AdaptiveTuningState = {
+  enabled: false,
+  manualOverrideUntil: null,
+  manualOverrideRemainingMs: 0,
+  manualOverrideActive: false,
+  feedbackWindowSize: 0,
+  lastAppliedAt: null,
+  lastAppliedMode: 'none',
+  hint: '自动调优状态读取中。',
+};
+
+const EMPTY_EXPERIENCE_METRICS: ExperienceMetricsSnapshot = {
+  windowDays: 7,
+  updatedAt: null,
+  contextMisreplaceReported: 0,
+  contextMisreplaceHigh: 0,
+  adaptiveDecisionApplied: 0,
+  adaptiveManualOverride: 0,
+  adaptiveToggleEnabled: 0,
+  adaptiveToggleDisabled: 0,
+  adaptiveToggleTotal: 0,
+  adaptiveToggleDisableRate: 0,
+};
+
+const EMPTY_SUBTITLE_NAVIGATION: ActiveTabSubtitleNavigation = {
   supported: false,
   progressLabel: '未连接',
   headline: '当前标签页暂无字幕导航',
@@ -78,59 +120,28 @@ const EMPTY_TAB_SUBTITLE_NAVIGATION: ActiveTabSubtitleNavigation = {
   canReplay: false,
   canGoNext: false,
 };
-const EMPTY_STREAK: LearningStreak = {
-  currentStreak: 0,
-  maxStreak: 0,
-  lastActiveDate: '',
-  totalActiveDays: 0,
-  activeDays: [],
+
+const EMPTY_SUBTITLE_STATUS: ActiveTabSubtitleStatus = {
+  hostname: '',
+  subtitleNavigation: EMPTY_SUBTITLE_NAVIGATION,
 };
-const EXPORT_META: Record<
-  VocabularyExportFormat,
-  { label: string; extension: string; mimeType: string }
-> = {
-  json: {
-    label: 'JSON',
-    extension: 'json',
-    mimeType: 'application/json',
-  },
-  csv: {
-    label: 'CSV',
-    extension: 'csv',
-    mimeType: 'text/csv;charset=utf-8;',
-  },
-  anki: {
-    label: 'Anki TSV',
-    extension: 'tsv',
-    mimeType: 'text/tab-separated-values;charset=utf-8;',
-  },
-};
+
+const BILINGUAL_MODE_OPTIONS: Array<{ value: ProfileConfig['bilingualMode']; label: string }> = [
+  { value: 'default', label: '括号释义' },
+  { value: 'bilingual', label: '双语对照' },
+  { value: 'english-only', label: '纯英文' },
+];
+
+const THEME_MODE_OPTIONS: Array<{ value: ProfileConfig['themeMode']; label: string }> = [
+  { value: 'auto', label: '跟随系统' },
+  { value: 'light', label: '浅色' },
+  { value: 'dark', label: '深色' },
+];
 
 interface PendingUndoAction {
   label: string;
-  snapshot: ReturnType<typeof cloneSettingsV3>;
+  snapshot: SettingsV3;
   expiresAt: number;
-}
-
-function asNumber(value: string, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function isSameActiveTabSubtitleNavigation(
-  left: ActiveTabSubtitleNavigation,
-  right: ActiveTabSubtitleNavigation
-): boolean {
-  return (
-    left.supported === right.supported &&
-    left.progressLabel === right.progressLabel &&
-    left.headline === right.headline &&
-    left.description === right.description &&
-    left.currentText === right.currentText &&
-    left.canGoPrevious === right.canGoPrevious &&
-    left.canReplay === right.canReplay &&
-    left.canGoNext === right.canGoNext
-  );
 }
 
 function getTodayDateString() {
@@ -158,9 +169,140 @@ function formatLearningStreakMeta(streak: LearningStreak): string {
   return parts.join(' · ');
 }
 
+function formatPercent(value: number): string {
+  const normalized = Math.max(0, Math.min(1, Number(value) || 0));
+  return `${Math.round(normalized * 100)}%`;
+}
+
+function formatAdaptiveLastApplied(state: AdaptiveTuningState | null): string {
+  if (!state || !state.lastAppliedAt) {
+    return '尚未自动调整';
+  }
+  return `上次调优：${new Date(state.lastAppliedAt).toLocaleString()}`;
+}
+
+function formatManualOverride(state: AdaptiveTuningState | null): string {
+  if (!state || !state.manualOverrideActive || state.manualOverrideRemainingMs <= 0) {
+    return '当前没有人工覆盖窗口';
+  }
+  const minutes = Math.max(1, Math.ceil(state.manualOverrideRemainingMs / 60000));
+  return `人工覆盖剩余约 ${minutes} 分钟`;
+}
+
+function getPermissionActionLabel(
+  sitePermission: ActiveTabSitePermissionState,
+  permissionRequesting: boolean
+): string {
+  if (permissionRequesting) {
+    return '处理中...';
+  }
+  if (sitePermission.defaultSupported) {
+    return '默认支持站点';
+  }
+  if (sitePermission.authorized) {
+    return sitePermission.canRevoke ? '撤销授权' : '已授权';
+  }
+  return '授权当前站点';
+}
+
+function getSiteStatusView({
+  hostname,
+  profileEnabled,
+  siteRuleEnabled,
+  sitePermission,
+}: {
+  hostname: string;
+  profileEnabled: boolean;
+  siteRuleEnabled: boolean;
+  sitePermission: ActiveTabSitePermissionState;
+}): {
+  badge: string;
+  tone: 'good' | 'warn';
+  headline: string;
+  description: string;
+} {
+  if (!hostname) {
+    return {
+      badge: '未识别',
+      tone: 'warn',
+      headline: '当前页面无法识别域名',
+      description: '请切换到可识别的站点后，再调整当前站点的运行状态。',
+    };
+  }
+
+  if (!profileEnabled) {
+    return {
+      badge: '总开关关闭',
+      tone: 'warn',
+      headline: '当前配置档已关闭字幕替换',
+      description: '恢复总开关后，当前站点会继续按站点规则运行。',
+    };
+  }
+
+  if (!siteRuleEnabled) {
+    return {
+      badge: '已暂停',
+      tone: 'warn',
+      headline: `${hostname} 当前已暂停`,
+      description: '该站点已被本地规则暂停；需要时可直接恢复。',
+    };
+  }
+
+  if (sitePermission.defaultSupported) {
+    return {
+      badge: '已启用',
+      tone: 'good',
+      headline: `${hostname} 当前已启用`,
+      description: '默认支持站点已随扩展安装授权，可直接运行。',
+    };
+  }
+
+  if (sitePermission.authorized) {
+    return {
+      badge: '已授权',
+      tone: 'good',
+      headline: `${hostname} 已允许运行`,
+      description: sitePermission.message,
+    };
+  }
+
+  if (sitePermission.canRequest) {
+    return {
+      badge: '待授权',
+      tone: 'warn',
+      headline: `${hostname} 需要先授权`,
+      description: sitePermission.message,
+    };
+  }
+
+  return {
+    badge: '受限',
+    tone: 'warn',
+    headline: `${hostname} 当前不可运行`,
+    description: sitePermission.message,
+  };
+}
+
+function canUseSubtitleAction(
+  navigation: ActiveTabSubtitleNavigation,
+  action: ActiveTabSubtitleNavigationAction
+): boolean {
+  if (!navigation.supported) {
+    return false;
+  }
+  if (action === 'previous') {
+    return navigation.canGoPrevious;
+  }
+  if (action === 'replay') {
+    return navigation.canReplay;
+  }
+  return navigation.canGoNext;
+}
+
 function PopupApp() {
   const {
     working,
+    loading,
     saving,
     dirty,
     conflict,
@@ -169,7 +311,6 @@ function PopupApp() {
     feedback,
     setStatus,
     setWorkingDirect,
-    mutateWorking,
     save,
     resolveConflictUseRemote,
     resolveConflictUseLocal,
@@ -180,97 +321,57 @@ function PopupApp() {
   const [quickReview, setQuickReview] = useState<QuickReviewDashboard>(EMPTY_REVIEW_DASHBOARD);
   const [reviewCursor, setReviewCursor] = useState(0);
   const [reviewSubmitting, setReviewSubmitting] = useState<QuickReviewAction | null>(null);
-  const [rankingSort, setRankingSort] = useState<EncounteredWordSortMode>('asc');
-  const [rankingItems, setRankingItems] = useState<EncounteredWordRankingItem[]>([]);
   const [learningStreak, setLearningStreak] = useState<LearningStreak>(EMPTY_STREAK);
-  const [hostname, setHostname] = useState('');
-  const [subtitleNavigation, setSubtitleNavigation] = useState<ActiveTabSubtitleNavigation>(
-    EMPTY_TAB_SUBTITLE_NAVIGATION
-  );
-  const [subtitleNavigating, setSubtitleNavigating] =
-    useState<ActiveTabSubtitleNavigationAction | null>(null);
+  const [encounteredRanking, setEncounteredRanking] = useState<EncounteredWordRankingItem[]>([]);
+  const [rankingSortMode, setRankingSortMode] = useState<EncounteredWordSortMode>('asc');
   const [adaptiveState, setAdaptiveState] = useState<AdaptiveTuningState | null>(null);
-  const [experienceMetrics, setExperienceMetrics] = useState<ExperienceMetricsSnapshot | null>(
-    null
-  );
+  const [experienceMetrics, setExperienceMetrics] =
+    useState<ExperienceMetricsSnapshot>(EMPTY_EXPERIENCE_METRICS);
+  const [adaptiveBusy, setAdaptiveBusy] = useState(false);
+  const [subtitleStatus, setSubtitleStatus] =
+    useState<ActiveTabSubtitleStatus>(EMPTY_SUBTITLE_STATUS);
+  const [subtitleActionBusy, setSubtitleActionBusy] =
+    useState<ActiveTabSubtitleNavigationAction | null>(null);
+  const [hostname, setHostname] = useState('');
+  const [sitePermission, setSitePermission] =
+    useState<ActiveTabSitePermissionState>(EMPTY_SITE_PERMISSION);
+  const [permissionRequesting, setPermissionRequesting] = useState(false);
   const [pendingUndo, setPendingUndo] = useState<PendingUndoAction | null>(null);
-
-  function applyAdaptiveSnapshot(
-    nextAdaptive: AdaptiveTuningState,
-    nextMetrics: ExperienceMetricsSnapshot
-  ) {
-    setAdaptiveState(nextAdaptive);
-    setExperienceMetrics(nextMetrics);
-  }
-
-  function applyActiveTabSubtitleStatus(activeTabStatus: ActiveTabSubtitleStatus) {
-    const normalizedHostname = normalizeHostname(activeTabStatus.hostname);
-    setHostname((current) => (current === normalizedHostname ? current : normalizedHostname));
-    setSubtitleNavigation((current) =>
-      isSameActiveTabSubtitleNavigation(current, activeTabStatus.subtitleNavigation)
-        ? current
-        : activeTabStatus.subtitleNavigation
-    );
-  }
-
-  async function refreshActiveTabSubtitleStatus(shouldSkip: () => boolean = () => false) {
-    const activeTabStatus = await readActiveTabSubtitleStatus();
-    if (shouldSkip()) {
-      return;
-    }
-    applyActiveTabSubtitleStatus(activeTabStatus);
-  }
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      try {
-        const dashboardPayload = await readQuickReviewDashboard();
+    void readQuickReviewDashboard()
+      .then((dashboardPayload) => {
         if (cancelled) {
           return;
         }
         setSummary(dashboardPayload.summary);
         setQuickReview(dashboardPayload);
-        setStatus('已加载当前策略，可快速调整后手动保存。');
-      } catch {
+      })
+      .catch(() => {
         if (!cancelled) {
           setStatus('学习概览读取失败，请稍后重试。');
         }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      });
 
-  useEffect(() => {
-    let cancelled = false;
-    void refreshActiveTabSubtitleStatus(() => cancelled);
-    const unsubscribeSubtitle = subscribeActiveTabSubtitleStatus((next) => {
-      if (cancelled) {
-        return;
-      }
-      applyActiveTabSubtitleStatus(next);
-    });
-
-    return () => {
-      cancelled = true;
-      unsubscribeSubtitle();
-    };
-  }, []);
-
-  useEffect(() => {
     const unsubscribeQuickReview = subscribeQuickReviewSource(() => {
       void readQuickReviewDashboard()
         .then((next) => {
+          if (cancelled) {
+            return;
+          }
           setQuickReview(next);
           setSummary(next.summary);
         })
         .catch(() => {
-          setStatus('学习数据读取失败，请稍后重试。');
+          if (!cancelled) {
+            setStatus('学习数据读取失败，请稍后重试。');
+          }
         });
     });
+
     return () => {
+      cancelled = true;
       unsubscribeQuickReview();
     };
   }, [setStatus]);
@@ -284,40 +385,29 @@ function PopupApp() {
   }, [quickReview.items]);
 
   useEffect(() => {
-    if (!pendingUndo) {
-      return () => {};
-    }
-
-    const timeout = window.setTimeout(
-      () => {
-        setPendingUndo((current) => {
-          if (!current || current.expiresAt !== pendingUndo.expiresAt) {
-            return current;
+    let cancelled = false;
+    const refreshEncounteredRanking = () => {
+      void readEncounteredWordRanking(rankingSortMode, 6)
+        .then((items) => {
+          if (!cancelled) {
+            setEncounteredRanking(items);
           }
-          return null;
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setStatus('生词排行读取失败，请稍后重试。');
+          }
         });
-      },
-      Math.max(0, pendingUndo.expiresAt - Date.now())
-    );
+    };
+
+    refreshEncounteredRanking();
+    const unsubscribeRankingSource = subscribeQuickReviewSource(refreshEncounteredRanking);
 
     return () => {
-      window.clearTimeout(timeout);
+      cancelled = true;
+      unsubscribeRankingSource();
     };
-  }, [pendingUndo]);
-
-  async function onNavigateSubtitle(action: ActiveTabSubtitleNavigationAction) {
-    setSubtitleNavigating(action);
-    try {
-      const next = await navigateActiveTabSubtitle(action);
-      setSubtitleNavigation(next);
-      const label = action === 'previous' ? '上一句' : action === 'replay' ? '当前句' : '下一句';
-      setStatus(next.supported ? `已同步当前标签页${label}字幕。` : next.description);
-    } catch {
-      setStatus('字幕导航失败，请刷新视频页后重试。');
-    } finally {
-      setSubtitleNavigating((current) => (current === action ? null : current));
-    }
-  }
+  }, [rankingSortMode, setStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -332,9 +422,13 @@ function PopupApp() {
           setStatus('连续学习进度读取失败，请稍后重试。');
         }
       });
+
     const unsubscribeLearningStreak = subscribeLearningStreak((next) => {
-      setLearningStreak(next);
+      if (!cancelled) {
+        setLearningStreak(next);
+      }
     });
+
     return () => {
       cancelled = true;
       unsubscribeLearningStreak();
@@ -343,62 +437,108 @@ function PopupApp() {
 
   useEffect(() => {
     let cancelled = false;
-    async function refreshRanking() {
-      try {
-        const next = await readEncounteredWordRanking(rankingSort);
-        if (!cancelled) {
-          setRankingItems(next);
-        }
-      } catch {
-        if (!cancelled) {
-          setStatus('生词排行读取失败，请稍后重试。');
-        }
-      }
-    }
-
-    void refreshRanking();
-    const unsubscribeRanking = subscribeEncounteredWordStats(() => {
-      void refreshRanking();
-    });
-
-    return () => {
-      cancelled = true;
-      unsubscribeRanking();
-    };
-  }, [rankingSort, setStatus]);
-
-  useEffect(() => {
-    let cancelled = false;
     void Promise.all([readAdaptiveTuningState(), readExperienceMetricsSnapshot(7)])
       .then(([nextAdaptive, nextMetrics]) => {
-        if (!cancelled) {
-          applyAdaptiveSnapshot(nextAdaptive, nextMetrics);
+        if (cancelled) {
+          return;
         }
+        setAdaptiveState(nextAdaptive);
+        setExperienceMetrics(nextMetrics);
       })
       .catch(() => {
         if (!cancelled) {
+          setAdaptiveState(EMPTY_ADAPTIVE_STATE);
+          setExperienceMetrics(EMPTY_EXPERIENCE_METRICS);
           setStatus('自动调优状态读取失败，请稍后重试。');
         }
       });
-    const unsubscribeAdaptive = subscribeAdaptiveTuningState((next) => {
-      setAdaptiveState(next);
+
+    const unsubscribeAdaptiveState = subscribeAdaptiveTuningState((next) => {
+      if (!cancelled) {
+        setAdaptiveState(next);
+      }
     });
-    const unsubscribeMetrics = subscribeExperienceMetricsSnapshot((next) => {
-      setExperienceMetrics(next);
+    const unsubscribeExperienceMetrics = subscribeExperienceMetricsSnapshot((next) => {
+      if (!cancelled) {
+        setExperienceMetrics(next);
+      }
     }, 7);
+
     return () => {
       cancelled = true;
-      unsubscribeAdaptive();
-      unsubscribeMetrics();
+      unsubscribeAdaptiveState();
+      unsubscribeExperienceMetrics();
     };
-  }, []);
+  }, [setStatus]);
 
-  const profileOptions = useMemo(() => {
-    if (!working) {
-      return [];
+  useEffect(() => {
+    let cancelled = false;
+    const refreshActiveTabSubtitleStatus = async () => {
+      try {
+        const next = await readActiveTabSubtitleStatus();
+        if (!cancelled) {
+          setSubtitleStatus(next);
+        }
+      } catch {
+        if (!cancelled) {
+          setSubtitleStatus(EMPTY_SUBTITLE_STATUS);
+          setStatus('字幕导航状态读取失败，请稍后重试。');
+        }
+      }
+    };
+
+    void refreshActiveTabSubtitleStatus();
+    const unsubscribeSubtitleStatus = subscribeActiveTabSubtitleStatus((next) => {
+      if (!cancelled) {
+        setSubtitleStatus(next);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribeSubtitleStatus();
+    };
+  }, [setStatus]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void readActiveTabSitePermissionState()
+      .then((next) => {
+        if (cancelled) {
+          return;
+        }
+        setSitePermission(next);
+        setHostname(normalizeHostname(next.hostname));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSitePermission({
+            ...EMPTY_SITE_PERMISSION,
+            message: '当前站点授权状态读取失败，请稍后重试。',
+          });
+          setHostname('');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
+
+  useEffect(() => {
+    if (!pendingUndo) {
+      return () => {};
     }
-    return listProfileOptions(working);
-  }, [working]);
+    const remainingMs = Math.max(0, pendingUndo.expiresAt - Date.now());
+    const timeoutId = window.setTimeout(() => {
+      setPendingUndo((current) =>
+        current && current.expiresAt === pendingUndo.expiresAt ? null : current
+      );
+    }, remainingMs);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [pendingUndo]);
 
   const activeProfile = useMemo(() => {
     if (!working) {
@@ -406,14 +546,8 @@ function PopupApp() {
     }
     return getProfileConfigById(working, working.activeProfileId);
   }, [working]);
-  useDocumentTheme(activeProfile ? activeProfile.themeMode : 'auto');
 
-  const runtime = useMemo(() => {
-    if (!working) {
-      return null;
-    }
-    return resolveEffectiveRuntime(working, hostname);
-  }, [working, hostname]);
+  useDocumentTheme(activeProfile ? activeProfile.themeMode : 'auto');
 
   const siteRuleEnabled = useMemo(() => {
     if (!working || !hostname) {
@@ -434,70 +568,37 @@ function PopupApp() {
       }),
     [activeProfile, hostname, siteRuleEnabled]
   );
+
+  const siteStatus = useMemo(
+    () =>
+      getSiteStatusView({
+        hostname,
+        profileEnabled: activeProfile ? activeProfile.enabled : true,
+        siteRuleEnabled,
+        sitePermission,
+      }),
+    [activeProfile, hostname, sitePermission, siteRuleEnabled]
+  );
+
   const quickReviewCard = useMemo(
     () => buildQuickReviewCard(quickReview.items, reviewCursor),
     [quickReview.items, reviewCursor]
   );
+
   const rankingSummary = useMemo(
-    () => getRankingSummaryText(rankingItems, rankingSort),
-    [rankingItems, rankingSort]
+    () => getRankingSummaryText(encounteredRanking, rankingSortMode),
+    [encounteredRanking, rankingSortMode]
   );
 
-  function setGlobalSettings(patch: Partial<NonNullable<typeof working>['globalControls']>) {
-    mutateWorking((draft) => {
-      draft.globalControls = {
-        ...draft.globalControls,
-        ...patch,
-      };
-      return draft;
-    });
-  }
+  const subtitleNavigation = subtitleStatus.subtitleNavigation;
+  const statusCodeText = statusCode ? `（${statusCode}）` : '';
 
-  function patchActiveProfile(patch: Partial<NonNullable<typeof activeProfile>>) {
-    mutateWorking((draft) => {
-      return setActiveProfileConfig(draft, draft.activeProfileId, patch);
-    });
-  }
-
-  function setWorkingSafely(next: NonNullable<typeof working>) {
-    setWorkingDirect(next);
-  }
-
-  function registerHighRiskUndo(snapshot: NonNullable<typeof working>, label: string) {
+  function registerPendingUndo(snapshot: SettingsV3, label: string) {
     setPendingUndo({
       label,
       snapshot: cloneSettingsV3(snapshot),
       expiresAt: Date.now() + HIGH_RISK_UNDO_WINDOW_MS,
     });
-    setStatus(`${label}，可在 6 秒内撤销。`);
-  }
-
-  function undoHighRiskAction() {
-    if (!pendingUndo) {
-      return;
-    }
-    setWorkingDirect(cloneSettingsV3(pendingUndo.snapshot));
-    setPendingUndo(null);
-    setStatus('已撤销刚才的高风险操作。');
-  }
-
-  function toggleCurrentSite() {
-    if (!working || siteToggleState.buttonDisabled) {
-      setStatus(siteToggleState.hint);
-      return;
-    }
-    const before = cloneSettingsV3(working);
-    setGlobalSettings({
-      siteRules: setExactDomainRuleEnabled(
-        working.globalControls.siteRules,
-        hostname,
-        !siteRuleEnabled
-      ),
-    });
-    registerHighRiskUndo(
-      before,
-      siteRuleEnabled ? `已暂停站点 ${hostname}` : `已恢复站点 ${hostname}`
-    );
   }
 
   async function onSave() {
@@ -511,48 +612,85 @@ function PopupApp() {
         readAdaptiveTuningState(),
         readExperienceMetricsSnapshot(7),
       ]);
-      applyAdaptiveSnapshot(nextAdaptive, nextMetrics);
+      setAdaptiveState(nextAdaptive);
+      setExperienceMetrics(nextMetrics);
       setStatus(
         saveResult.preservedLocalEdits
           ? `最近一次保存已完成，当前仍有未保存修改。${nextAdaptive.hint}`
           : `策略已保存。${nextAdaptive.hint}`
       );
     } catch {
-      setStatus(
-        saveResult.preservedLocalEdits
-          ? '最近一次保存已完成，当前仍有未保存修改；自动调优状态刷新失败，请稍后重试。'
-          : '策略已保存，但自动调优状态刷新失败，请稍后重试。'
-      );
+      setStatus('策略已保存，但自动调优状态刷新失败，请稍后重试。');
     }
   }
 
-  async function onToggleAdaptive(checked: boolean) {
+  async function onToggleCurrentSite() {
+    if (!working || siteToggleState.buttonDisabled) {
+      setStatus(siteToggleState.hint);
+      return;
+    }
+
+    if (!siteRuleEnabled && !sitePermission.defaultSupported && !sitePermission.authorized) {
+      setStatus('需要先授权当前站点，再恢复站点运行。');
+      return;
+    }
+
+    const before = cloneSettingsV3(working);
+    const next = cloneSettingsV3(working);
+    next.globalControls.siteRules = setExactDomainRuleEnabled(
+      next.globalControls.siteRules,
+      hostname,
+      !siteRuleEnabled
+    );
+    setWorkingDirect(next);
+
+    const saveResult = await save(
+      siteRuleEnabled ? `已暂停站点 ${hostname}。` : `已恢复站点 ${hostname}。`
+    );
+    if (!saveResult) {
+      setWorkingDirect(before);
+      return;
+    }
+    registerPendingUndo(
+      before,
+      siteRuleEnabled ? `已暂停站点 ${hostname}` : `已恢复站点 ${hostname}`
+    );
+  }
+
+  async function onRequestSitePermission() {
+    setPermissionRequesting(true);
     try {
-      const [nextAdaptive, nextMetrics] = await Promise.all([
-        setAdaptiveTuningEnabled(checked),
-        readExperienceMetricsSnapshot(7),
-      ]);
-      applyAdaptiveSnapshot(nextAdaptive, nextMetrics);
-      setStatus(
-        checked
-          ? '已启用自动调优，后续会按反馈自动微调。'
-          : '已关闭自动调优，后续仅按手动参数运行。'
-      );
+      const next = await requestActiveTabSitePermission();
+      setSitePermission(next);
+      setHostname(normalizeHostname(next.hostname));
+      setStatus(next.authorized ? next.message : `${next.message} 拒绝授权不会恢复站点规则。`);
     } catch {
-      setStatus('切换自动调优失败，请稍后重试。');
+      setStatus('请求当前站点授权失败，请稍后重试。');
+    } finally {
+      setPermissionRequesting(false);
     }
   }
 
-  async function refreshAdaptiveInsightsSilently() {
+  async function onRemoveSitePermission() {
+    setPermissionRequesting(true);
     try {
-      const [nextAdaptive, nextMetrics] = await Promise.all([
-        readAdaptiveTuningState(),
-        readExperienceMetricsSnapshot(7),
-      ]);
-      applyAdaptiveSnapshot(nextAdaptive, nextMetrics);
+      const next = await removeActiveTabSitePermission();
+      setSitePermission(next);
+      setHostname(normalizeHostname(next.hostname));
+      setStatus(next.message);
     } catch {
-      // Ignore secondary refresh failures to keep popup actions responsive.
+      setStatus('撤销当前站点授权失败，请稍后重试。');
+    } finally {
+      setPermissionRequesting(false);
     }
+  }
+
+  function onToggleSitePermission() {
+    if (sitePermission.canRevoke) {
+      void onRemoveSitePermission();
+      return;
+    }
+    void onRequestSitePermission();
   }
 
   function cycleQuickReviewCard() {
@@ -560,6 +698,16 @@ function PopupApp() {
       return;
     }
     setReviewCursor((current) => (current + 1) % quickReview.items.length);
+  }
+
+  async function updatePopupProfile(patch: Partial<ProfileConfig>) {
+    if (!working) {
+      return;
+    }
+
+    const next = setActiveProfileConfig(working, working.activeProfileId, patch);
+    setWorkingDirect(next);
+    await save('弹窗显示设置已保存。');
   }
 
   async function handleQuickReviewAction(action: QuickReviewAction) {
@@ -577,7 +725,10 @@ function PopupApp() {
       });
       setSummary(result.summary);
       setReviewCursor(0);
-      void refreshAdaptiveInsightsSilently();
+      const nextRanking = await readEncounteredWordRanking(rankingSortMode, 6).catch(() => null);
+      if (nextRanking) {
+        setEncounteredRanking(nextRanking);
+      }
       const actionText =
         action === 'know' ? '已标记为认识' : action === 'fuzzy' ? '已标记为模糊' : '已标记为不认识';
       setStatus(result.adaptiveApplied ? `${actionText}，并已触发自动调优。` : actionText);
@@ -588,36 +739,80 @@ function PopupApp() {
     }
   }
 
-  async function handleExportVocabularyBook(format: VocabularyExportFormat) {
+  async function onToggleAdaptive(checked: boolean) {
+    setAdaptiveBusy(true);
     try {
-      const exportMeta = EXPORT_META[format];
-      const content = await exportVocabularyBook(format);
-      const blob = new Blob([content], { type: exportMeta.mimeType });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute(
-        'download',
-        `bilibili-vocab-book-${new Date().toISOString().slice(0, 10)}.${exportMeta.extension}`
-      );
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      setStatus(`生词本已导出（${exportMeta.label}）`);
-    } catch (e) {
-      setStatus('导出生词本失败，请重试');
-      console.error('Export failed:', e);
+      const [nextAdaptive, nextMetrics] = await Promise.all([
+        setAdaptiveTuningEnabled(checked),
+        readExperienceMetricsSnapshot(7),
+      ]);
+      setAdaptiveState(nextAdaptive);
+      setExperienceMetrics(nextMetrics);
+      setStatus(checked ? '已启用自动调优。' : '已关闭自动调优。');
+    } catch {
+      setStatus('切换自动调优失败，请稍后重试。');
+    } finally {
+      setAdaptiveBusy(false);
     }
   }
 
-  if (!working || !activeProfile || !runtime) {
+  async function onNavigateSubtitle(action: ActiveTabSubtitleNavigationAction) {
+    if (!canUseSubtitleAction(subtitleNavigation, action) || subtitleActionBusy) {
+      return;
+    }
+    setSubtitleActionBusy(action);
+    try {
+      const nextNavigation = await navigateActiveTabSubtitle(action);
+      setSubtitleStatus((current) => ({
+        ...current,
+        subtitleNavigation: nextNavigation,
+      }));
+      setStatus('字幕导航已更新。');
+    } catch {
+      setStatus('字幕导航失败，请稍后重试。');
+    } finally {
+      setSubtitleActionBusy(null);
+    }
+  }
+
+  async function onResolveConflictUseLocal() {
+    const result = await resolveConflictUseLocal('已应用本地版本，并覆盖外部修改。');
+    if (!result) {
+      return;
+    }
+    if (result.preservedLocalEdits) {
+      setStatus('本地版本已覆盖远端，当前仍有未保存修改。');
+    }
+  }
+
+  function onResolveConflictUseRemote() {
+    resolveConflictUseRemote('已应用远端版本，当前与最新配置同步。');
+    setPendingUndo(null);
+  }
+
+  async function onUndoPendingAction() {
+    if (!pendingUndo) {
+      return;
+    }
+    setWorkingDirect(cloneSettingsV3(pendingUndo.snapshot));
+    const saveResult = await save('已撤销该操作。');
+    if (!saveResult) {
+      setStatus('撤销该操作失败，请重试。');
+      return;
+    }
+    setPendingUndo(null);
+  }
+
+  if (!working || !activeProfile) {
     return (
       <main className="popup-shell">
         <section className="studio-hero">
           <span className="studio-eyebrow">Quick Control</span>
-          <h1 className="studio-title">加载中</h1>
-          <p className="studio-subtitle">{status}</p>
+          <h1 className="studio-title">{loading ? '加载中' : '配置不可用'}</h1>
+          <p className="studio-subtitle">
+            {status}
+            {statusCode ? `（${statusCode}）` : ''}
+          </p>
         </section>
       </main>
     );
@@ -626,116 +821,263 @@ function PopupApp() {
   return (
     <main className="popup-shell">
       <section className="studio-hero stagger-enter" data-index="0">
-        <span className="studio-eyebrow">Quick Control</span>
-        <h1 className="studio-title">学习策略快控台</h1>
-        <p className="studio-subtitle">
-          当前站点：{hostname || '无法识别'} ·{' '}
-          {!activeProfile.enabled ? '总开关关闭中' : runtime.siteEnabled ? '已启用' : '已暂停'}
-        </p>
+        <div className="inline wrap">
+          <div>
+            <span className="studio-eyebrow">Quick Control</span>
+            <h1 className="studio-title">当前页面学习助手</h1>
+            <p className="studio-subtitle">
+              当前站点：{hostname || '未识别'} · {siteStatus.badge}
+            </p>
+          </div>
+          <button type="button" className="btn primary" onClick={() => void openOptionsPage()}>
+            打开设置
+          </button>
+        </div>
       </section>
 
       <section className="panel stack stagger-enter" data-index="1">
-        <div className="inline">
-          <h3>配置档切换</h3>
-          <span className={`badge ${dirty ? 'warn' : 'good'}`}>{dirty ? '未保存' : '已同步'}</span>
-        </div>
-        <div className="field">
-          <label htmlFor="popupProfileSelect">当前配置档</label>
-          <select
-            id="popupProfileSelect"
-            value={String(working.activeProfileId)}
-            onChange={(event) => {
-              setWorkingSafely({
-                ...working,
-                activeProfileId: event.target.value,
-              });
-            }}
-          >
-            {profileOptions.map((option) => (
-              <option key={option.id} value={String(option.id)}>
-                {option.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="popup-metrics">
-          <div className="popup-metric">
-            <span>今日待复习</span>
-            <strong>{summary.todayCount}</strong>
-          </div>
-          <div className="popup-metric">
-            <span>新增词</span>
-            <strong>{summary.newCount}</strong>
-          </div>
-          <div className="popup-metric">
-            <span>已掌握</span>
-            <strong>{summary.masteredCount}</strong>
-          </div>
-        </div>
-        <div className="summary-item">
-          <strong>{formatLearningStreakHeadline(learningStreak)}</strong>
-          <span>{formatLearningStreakMeta(learningStreak)}</span>
-        </div>
         <StudyPreview
           profile={activeProfile}
           title="实时学习预览"
-          subtitle="保存前先看当前策略的替换密度和学习节奏。"
+          subtitle="当前页面会按这个配置档渲染字幕和复习弹幕。"
           sentenceVariant="popup"
           compact
         />
+        <div className="grid-two">
+          <div className="field">
+            <label htmlFor="popupBilingualMode">显示模式</label>
+            <select
+              id="popupBilingualMode"
+              value={activeProfile.bilingualMode}
+              onChange={(event) =>
+                void updatePopupProfile({
+                  bilingualMode: event.target.value as ProfileConfig['bilingualMode'],
+                })
+              }
+              disabled={saving}
+            >
+              {BILINGUAL_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="popupThemeMode">主题模式</label>
+            <select
+              id="popupThemeMode"
+              value={activeProfile.themeMode}
+              onChange={(event) =>
+                void updatePopupProfile({
+                  themeMode: event.target.value as ProfileConfig['themeMode'],
+                })
+              }
+              disabled={saving}
+            >
+              {THEME_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="btn-row">
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() => void onSave()}
+            disabled={saving}
+          >
+            {saving ? '保存中...' : dirty ? '保存策略' : '策略已同步'}
+          </button>
+        </div>
       </section>
 
       <section className="panel stack stagger-enter" data-index="2">
         <div className="inline wrap">
           <div>
+            <h3>当前站点控制</h3>
+            <p className="panel-subtitle">只保留当前页面最关键的启停与授权操作。</p>
+          </div>
+          <span className={`badge ${siteStatus.tone}`}>{siteStatus.badge}</span>
+        </div>
+        <div className="summary-item">
+          <strong>{siteStatus.headline}</strong>
+          <span>{siteStatus.description}</span>
+        </div>
+        <p className="panel-subtitle">
+          拒绝授权不会恢复站点规则；如需重新启用，请授权后再恢复站点运行。
+        </p>
+        <div className="btn-row">
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => void onToggleCurrentSite()}
+            disabled={siteToggleState.buttonDisabled || saving}
+          >
+            {saving ? '处理中...' : siteToggleState.buttonLabel}
+          </button>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={onToggleSitePermission}
+            disabled={
+              permissionRequesting ||
+              saving ||
+              (!sitePermission.canRequest && !sitePermission.canRevoke)
+            }
+          >
+            {getPermissionActionLabel(sitePermission, permissionRequesting)}
+          </button>
+        </div>
+      </section>
+
+      {conflict && (
+        <section className="panel stack stagger-enter" data-index="3">
+          <div className="inline wrap">
+            <div>
+              <h3>检测到并发修改</h3>
+              <p className="panel-subtitle">当前弹窗配置与外部保存版本不一致。</p>
+            </div>
+            <span className="badge warn">冲突</span>
+          </div>
+          <div className="summary-item">
+            <strong>冲突范围：{conflict.summary}</strong>
+            <span>可应用远端版本，或应用本地版本覆盖远端。</span>
+          </div>
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={onResolveConflictUseRemote}
+              disabled={saving}
+            >
+              应用远端版本
+            </button>
+            <button
+              type="button"
+              className="btn warn"
+              onClick={() => void onResolveConflictUseLocal()}
+              disabled={saving}
+            >
+              应用本地版本
+            </button>
+          </div>
+        </section>
+      )}
+
+      {pendingUndo && (
+        <section className="panel stack stagger-enter" data-index="3">
+          <div className="inline wrap">
+            <div>
+              <h3>{pendingUndo.label}</h3>
+              <p className="panel-subtitle">6 秒内可撤销。</p>
+            </div>
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => void onUndoPendingAction()}
+              disabled={saving}
+            >
+              撤销该操作
+            </button>
+          </div>
+        </section>
+      )}
+
+      <section className="panel stack stagger-enter" data-index="4">
+        <div className="inline wrap">
+          <div>
+            <h3>自动调优状态</h3>
+            <p className="panel-subtitle">根据误替换反馈和复习行为自动微调策略。</p>
+          </div>
+          <span className={`badge ${adaptiveState && adaptiveState.enabled ? 'good' : 'warn'}`}>
+            {adaptiveState && adaptiveState.enabled ? '运行中' : '已关闭'}
+          </span>
+        </div>
+        <label className="switch-row">
+          <span>
+            <strong>启用自动调优</strong>
+            <small>{adaptiveState ? adaptiveState.hint : '自动调优状态读取中。'}</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={adaptiveState ? adaptiveState.enabled : false}
+            onChange={(event) => void onToggleAdaptive(event.target.checked)}
+            disabled={adaptiveBusy}
+          />
+        </label>
+        <div className="summary-item">
+          <strong>{formatAdaptiveLastApplied(adaptiveState)}</strong>
+          <span>{formatManualOverride(adaptiveState)}</span>
+        </div>
+        <h4>近 7 天关键指标</h4>
+        <div className="popup-metrics">
+          <div className="popup-metric">
+            <span>自动决策</span>
+            <strong>{experienceMetrics.adaptiveDecisionApplied}</strong>
+          </div>
+          <div className="popup-metric">
+            <span>误替换反馈</span>
+            <strong>{experienceMetrics.contextMisreplaceReported}</strong>
+          </div>
+          <div className="popup-metric">
+            <span>关闭率</span>
+            <strong>{formatPercent(experienceMetrics.adaptiveToggleDisableRate)}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section className="panel stack stagger-enter" data-index="5">
+        <div className="inline wrap">
+          <div>
             <h3>当前字幕导航</h3>
             <p className="panel-subtitle">直接控制当前标签页的上一句、重播和下一句。</p>
           </div>
-          <span className={`badge ${subtitleNavigation.supported ? 'good' : ''}`}>
+          <span className={`badge ${subtitleNavigation.supported ? 'good' : 'warn'}`}>
             {subtitleNavigation.progressLabel}
           </span>
         </div>
-        <div className={`review-card${subtitleNavigation.canReplay ? '' : ' review-card--empty'}`}>
-          <div className="review-card__head">
-            <strong>{subtitleNavigation.headline}</strong>
-            <span>{hostname || '当前标签页'}</span>
-          </div>
-          <p className="review-card__meta">{subtitleNavigation.description}</p>
-          <p className="review-card__description">{subtitleNavigation.currentText}</p>
+        <div className="summary-item">
+          <strong>{subtitleNavigation.headline}</strong>
+          <span>{subtitleNavigation.description}</span>
         </div>
+        <p className="review-card__description">{subtitleNavigation.currentText}</p>
         <div className="btn-row">
           <button
             type="button"
             className="btn ghost"
             onClick={() => void onNavigateSubtitle('previous')}
-            disabled={!subtitleNavigation.canGoPrevious || !!subtitleNavigating}
+            disabled={!canUseSubtitleAction(subtitleNavigation, 'previous') || !!subtitleActionBusy}
           >
-            {subtitleNavigating === 'previous' ? '跳转中...' : '上一句'}
+            {subtitleActionBusy === 'previous' ? '跳转中...' : '上一句'}
           </button>
           <button
             type="button"
             className="btn secondary"
             onClick={() => void onNavigateSubtitle('replay')}
-            disabled={!subtitleNavigation.canReplay || !!subtitleNavigating}
+            disabled={!canUseSubtitleAction(subtitleNavigation, 'replay') || !!subtitleActionBusy}
           >
-            {subtitleNavigating === 'replay' ? '跳转中...' : '重播本句'}
+            {subtitleActionBusy === 'replay' ? '跳转中...' : '重播本句'}
           </button>
           <button
             type="button"
             className="btn ghost"
             onClick={() => void onNavigateSubtitle('next')}
-            disabled={!subtitleNavigation.canGoNext || !!subtitleNavigating}
+            disabled={!canUseSubtitleAction(subtitleNavigation, 'next') || !!subtitleActionBusy}
           >
-            {subtitleNavigating === 'next' ? '跳转中...' : '下一句'}
+            {subtitleActionBusy === 'next' ? '跳转中...' : '下一句'}
           </button>
         </div>
       </section>
 
-      <section className="panel stack stagger-enter" data-index="3">
+      <section className="panel stack stagger-enter" data-index="6">
         <div className="inline wrap">
           <div>
             <h3>快速复习</h3>
-            <p className="panel-subtitle">把刚积累的待复习词直接在真实 popup 里处理掉。</p>
+            <p className="panel-subtitle">优先处理当前最值得复习的一张卡片。</p>
           </div>
           <span className={`badge ${quickReviewCard.empty ? '' : 'good'}`}>
             {formatReviewCountText(summary)}
@@ -789,342 +1131,81 @@ function PopupApp() {
         </div>
       </section>
 
-      <section className="panel stack stagger-enter" data-index="4">
+      <section className="panel stack stagger-enter" data-index="7">
         <div className="inline wrap">
           <div>
             <h3>生词排行</h3>
-            <p className="panel-subtitle">切换查看当前最需要补强或命中最高频的词。</p>
-          </div>
-          <div className="btn-group">
-            <button
-              type="button"
-              className={`btn ${rankingSort === 'asc' ? 'secondary' : 'ghost'}`}
-              onClick={() => setRankingSort('asc')}
-            >
-              待巩固
-            </button>
-            <button
-              type="button"
-              className={`btn ${rankingSort === 'desc' ? 'secondary' : 'ghost'}`}
-              onClick={() => setRankingSort('desc')}
-            >
-              最高频
-            </button>
-          </div>
-        </div>
-        <div className="summary-item">
-          <strong>{rankingSummary}</strong>
-          <span>排序会跟随最近命中与复习结果实时更新。</span>
-        </div>
-        {rankingItems.length > 0 ? (
-          <div className="ranking-list">
-            {rankingItems.map((item) => (
-              <div
-                className="ranking-item"
-                key={`${rankingSort}-${item.word}-${item.lastSeen || 0}`}
-              >
-                <div className="ranking-item__main">
-                  <div className="ranking-item__head">
-                    <strong>{item.word}</strong>
-                    <span className="badge">{item.level || 'WORD'}</span>
-                  </div>
-                  <span className="ranking-item__translation">{item.translation || '-'}</span>
-                  <span className="ranking-item__meta">{getRelativeSeenText(item.lastSeen)}</span>
-                </div>
-                <span className="ranking-item__count">{item.hitCount}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="summary-item">
-            <strong>暂无排行数据</strong>
-            <span>继续观看带字幕的视频后，这里会出现高频命中词和待巩固词。</span>
-          </div>
-        )}
-      </section>
-
-      {conflict && (
-        <section className="panel stack">
-          <h3>检测到并发修改</h3>
-          <div className="summary-item">
-            <strong>其他页面已更新配置</strong>
-            <span>
-              冲突范围：{conflict.summary}
-              。你可以应用远端版本，或保存本地版本覆盖远端（最后写入生效）。
-            </span>
-          </div>
-          <div className="btn-row">
-            <button
-              type="button"
-              className="btn ghost"
-              onClick={() => resolveConflictUseRemote()}
-              disabled={saving}
-            >
-              应用远端版本
-            </button>
-            <button
-              type="button"
-              className="btn warn"
-              onClick={() => void resolveConflictUseLocal()}
-              disabled={saving || !dirty}
-            >
-              应用本地版本
-            </button>
-          </div>
-        </section>
-      )}
-
-      <section className="panel stack stagger-enter" data-index="5">
-        <h3>全局开关</h3>
-        <label className="switch-row">
-          <span>
-            <strong>字幕替换总开关</strong>
-            <span className="desc">全局关闭时仅保留原始字幕。</span>
-          </span>
-          <input
-            type="checkbox"
-            checked={activeProfile.enabled}
-            onChange={(event) => patchActiveProfile({ enabled: event.target.checked })}
-          />
-        </label>
-        <label className="switch-row">
-          <span>
-            <strong>网页正文模式</strong>
-            <span className="desc">启用后在正文文本区域执行词汇替换。</span>
-          </span>
-          <input
-            type="checkbox"
-            checked={working.globalControls.webPageEnabled}
-            onChange={(event) => setGlobalSettings({ webPageEnabled: event.target.checked })}
-          />
-        </label>
-        <label className="switch-row">
-          <span>
-            <strong>复习弹幕</strong>
-            <span className="desc">在观看过程中穿插复习词汇。</span>
-          </span>
-          <input
-            type="checkbox"
-            checked={working.globalControls.reviewDanmakuEnabled}
-            onChange={(event) => setGlobalSettings({ reviewDanmakuEnabled: event.target.checked })}
-          />
-        </label>
-        <label className="switch-row">
-          <span>
-            <strong>启用自动调优</strong>
-            <span className="desc">根据最近反馈自动微调替换比例、每句上限与复习节奏。</span>
-          </span>
-          <input
-            type="checkbox"
-            checked={adaptiveState ? adaptiveState.enabled : true}
-            onChange={(event) => {
-              void onToggleAdaptive(event.target.checked);
-            }}
-          />
-        </label>
-        <div className="summary-item">
-          <strong>自动调优状态</strong>
-          <span>{adaptiveState ? adaptiveState.hint : '正在读取自动调优状态...'}</span>
-        </div>
-        <div className="summary-item">
-          <strong>近 7 天关键指标</strong>
-          <span>
-            {experienceMetrics
-              ? `误替换反馈 ${experienceMetrics.contextMisreplaceReported} 次 · 自动调优执行 ${experienceMetrics.adaptiveDecisionApplied} 次`
-              : '正在统计近 7 天关键指标...'}
-          </span>
-        </div>
-        {pendingUndo && (
-          <div className="summary-item">
-            <strong>高风险操作可撤销</strong>
-            <span>{pendingUndo.label}。6 秒内可撤销。</span>
-            <div className="btn-row">
-              <button type="button" className="btn ghost" onClick={undoHighRiskAction}>
-                撤销该操作
-              </button>
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section className="panel stack stagger-enter" data-index="5">
-        <h3>快速调参</h3>
-        <div className="field">
-          <label htmlFor="popupRatio">
-            替换比例：{Math.round(activeProfile.replaceRatio * 100)}%
-          </label>
-          <input
-            id="popupRatio"
-            type="range"
-            min={0.1}
-            max={0.3}
-            step={0.01}
-            value={activeProfile.replaceRatio}
-            onChange={(event) =>
-              patchActiveProfile({
-                replaceRatio: asNumber(event.target.value, activeProfile.replaceRatio),
-              })
-            }
-          />
-        </div>
-        <div className="grid-two">
-          <div className="field">
-            <label htmlFor="popupMax">单句上限</label>
-            <input
-              id="popupMax"
-              type="number"
-              min={1}
-              max={5}
-              value={activeProfile.maxReplaceCount}
-              onChange={(event) =>
-                patchActiveProfile({
-                  maxReplaceCount: asNumber(event.target.value, activeProfile.maxReplaceCount),
-                })
-              }
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="popupCefr">目标 CEFR</label>
-            <select
-              id="popupCefr"
-              value={activeProfile.targetCefr}
-              onChange={(event) => patchActiveProfile({ targetCefr: event.target.value })}
-            >
-              {CEFR_LEVELS.map((cefr) => (
-                <option key={cefr} value={cefr}>
-                  {cefr}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="popupSpeed">复习节奏</label>
-            <select
-              id="popupSpeed"
-              value={activeProfile.reviewDanmakuSpeed}
-              onChange={(event) =>
-                patchActiveProfile({
-                  reviewDanmakuSpeed: event.target.value as 'slow' | 'normal' | 'fast',
-                })
-              }
-            >
-              {REVIEW_SPEEDS.map((speed) => (
-                <option key={speed} value={speed}>
-                  {speed}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="popupBilingualMode">显示模式</label>
-            <select
-              id="popupBilingualMode"
-              value={activeProfile.bilingualMode}
-              onChange={(event) =>
-                patchActiveProfile({
-                  bilingualMode: event.target.value as 'default' | 'bilingual' | 'english-only',
-                })
-              }
-            >
-              <option value="default">默认模式（词汇 + 括号释义）</option>
-              <option value="bilingual">双语模式（整句对照）</option>
-              <option value="english-only">纯英文模式（不显示括号）</option>
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="popupThemeMode">主题模式</label>
-            <select
-              id="popupThemeMode"
-              value={activeProfile.themeMode}
-              onChange={(event) =>
-                patchActiveProfile({
-                  themeMode: event.target.value as 'auto' | 'light' | 'dark',
-                })
-              }
-            >
-              {THEME_MODES.map((mode) => (
-                <option key={mode} value={mode}>
-                  {getThemeModeLabel(mode)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="popupDomainToggle">站点级控制</label>
-            <button
-              id="popupDomainToggle"
-              type="button"
-              className="btn"
-              onClick={toggleCurrentSite}
-              disabled={siteToggleState.buttonDisabled}
-            >
-              {siteToggleState.buttonLabel}
-            </button>
-            <span className="hint">{siteToggleState.hint}</span>
-          </div>
-        </div>
-        <div className="btn-row">
-          <button type="button" className="btn ghost" onClick={() => void openOptionsPage()}>
-            打开完整配置页
-          </button>
-          <div className="btn-group">
-            <button
-              type="button"
-              className="btn secondary"
-              onClick={() => handleExportVocabularyBook('json')}
-            >
-              导出JSON
-            </button>
-            <button
-              type="button"
-              className="btn secondary"
-              onClick={() => handleExportVocabularyBook('csv')}
-            >
-              导出CSV
-            </button>
-            <button
-              type="button"
-              className="btn secondary"
-              onClick={() => handleExportVocabularyBook('anki')}
-            >
-              导出Anki TSV
-            </button>
+            <p className="panel-subtitle">按命中次数找出最需要巩固的词。</p>
           </div>
           <button
             type="button"
-            className="btn primary"
-            onClick={onSave}
-            disabled={!dirty || saving}
+            className="btn ghost"
+            onClick={() => setRankingSortMode((current) => (current === 'asc' ? 'desc' : 'asc'))}
           >
-            {saving ? '保存中...' : '保存'}
+            {rankingSortMode === 'asc' ? '查看高频' : '查看待巩固'}
           </button>
         </div>
-        <p className="status-text">
-          {status}
-          {statusCode ? `（${statusCode}）` : ''}
-          {feedback && feedback.suggestion ? ` · 建议：${feedback.suggestion}` : ''}
-        </p>
-      </section>
-
-      {summary.recentWords.length > 0 && (
-        <section className="panel stack">
-          <h3>最近词汇</h3>
-          <div className="summary-list">
-            {summary.recentWords.map((item) => (
-              <div className="summary-item" key={`${item.word}-${item.translation || ''}`}>
-                <strong>{item.word}</strong>
+        <div className="summary-item">
+          <strong>{rankingSummary}</strong>
+          <span>连续学习：{formatLearningStreakHeadline(learningStreak)}</span>
+        </div>
+        {encounteredRanking.length ? (
+          <div className="stack">
+            {encounteredRanking.map((item) => (
+              <div className="summary-item" key={item.word}>
+                <strong>
+                  {item.word} {item.translation ? `· ${item.translation}` : ''}
+                </strong>
                 <span>
-                  {item.translation || '暂无释义'}
-                  {item.status ? ` · ${item.status}` : ''}
+                  {item.level || 'WORD'} · 命中 {item.hitCount} 次 ·{' '}
+                  {getRelativeSeenText(item.lastSeen)}
                 </span>
               </div>
             ))}
           </div>
-        </section>
-      )}
+        ) : (
+          <p className="panel-subtitle">等待词汇命中后显示排行。</p>
+        )}
+      </section>
 
-      <section className="panel stack">
-        <ShortcutGuide title="快捷键速览" compact />
+      <section className="panel stack stagger-enter" data-index="8">
+        <div className="inline wrap">
+          <div>
+            <h3>今日关键指标</h3>
+            <p className="panel-subtitle">只看今天最关键的学习进度。</p>
+          </div>
+          <span className={`badge ${learningStreak.currentStreak > 0 ? 'good' : ''}`}>
+            {learningStreak.currentStreak > 0
+              ? `${learningStreak.currentStreak} 天连学`
+              : '今日进度'}
+          </span>
+        </div>
+        <div className="popup-metrics">
+          <div className="popup-metric">
+            <span>今日待复习</span>
+            <strong>{summary.todayCount}</strong>
+          </div>
+          <div className="popup-metric">
+            <span>新增词</span>
+            <strong>{summary.newCount}</strong>
+          </div>
+          <div className="popup-metric">
+            <span>已掌握</span>
+            <strong>{summary.masteredCount}</strong>
+          </div>
+        </div>
+        <div className="summary-item">
+          <strong>{formatLearningStreakHeadline(learningStreak)}</strong>
+          <span>{formatLearningStreakMeta(learningStreak)}</span>
+        </div>
+      </section>
+
+      <section className="panel stack stagger-enter" data-index="9">
+        <p className={`status-text ${feedback ? `status-text--${feedback.stage}` : ''}`}>
+          {status}
+          {statusCodeText}
+        </p>
+        {feedback && feedback.suggestion && <p className="panel-subtitle">{feedback.suggestion}</p>}
       </section>
     </main>
   );

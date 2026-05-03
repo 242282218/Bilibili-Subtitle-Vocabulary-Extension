@@ -11,6 +11,7 @@ type OverlaySharedSettingsApi = {
   SETTINGS_STORAGE_KEY_V3?: string;
   CEFR_LEVELS?: string[];
   REVIEW_SPEEDS?: string[];
+  REVIEW_DENSITIES?: string[];
   normalizeProfileConfig?: (value: unknown) => ProfileConfig;
   normalizeSettingsV3?: (value: unknown) => SettingsV3;
   getDefaultSettingsV3?: () => SettingsV3;
@@ -24,6 +25,7 @@ const BUILTIN_PROFILE_IDS: BuiltinProfileId[] = ['gentle', 'balanced', 'intensiv
 const FALLBACK_LEVELS = ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL'];
 const FALLBACK_CEFR = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const FALLBACK_REVIEW_SPEEDS = ['slow', 'normal', 'fast'];
+const FALLBACK_REVIEW_DENSITIES = ['sparse', 'normal', 'dense'];
 
 const FALLBACK_PROFILE_LABELS: Record<BuiltinProfileId, string> = {
   gentle: '轻量输入',
@@ -38,6 +40,7 @@ const FALLBACK_PROFILE: ProfileConfig = {
   targetCefr: 'B2',
   activeLevels: FALLBACK_LEVELS.slice(),
   reviewDanmakuSpeed: 'normal',
+  reviewDanmakuDensity: 'normal',
   vocabularyMode: 'core',
   examPreference: 'balanced',
   bilingualMode: 'default',
@@ -62,6 +65,7 @@ const FALLBACK_DEFAULT_SETTINGS: SettingsV3 = {
       replaceRatio: 0.15,
       maxReplaceCount: 1,
       reviewDanmakuSpeed: 'slow',
+      reviewDanmakuDensity: 'sparse',
     },
     balanced: { ...FALLBACK_PROFILE },
     intensive: {
@@ -69,6 +73,7 @@ const FALLBACK_DEFAULT_SETTINGS: SettingsV3 = {
       replaceRatio: 0.3,
       maxReplaceCount: 4,
       reviewDanmakuSpeed: 'fast',
+      reviewDanmakuDensity: 'dense',
     },
   },
   profilesCustom: [],
@@ -116,6 +121,16 @@ function normalizeSpeed(value: unknown): ProfileConfig['reviewDanmakuSpeed'] {
     .trim()
     .toLowerCase();
   if (normalized === 'slow' || normalized === 'fast') {
+    return normalized;
+  }
+  return 'normal';
+}
+
+function normalizeDensity(value: unknown): ProfileConfig['reviewDanmakuDensity'] {
+  const normalized = String(value || FALLBACK_PROFILE.reviewDanmakuDensity)
+    .trim()
+    .toLowerCase();
+  if (normalized === 'sparse' || normalized === 'dense') {
     return normalized;
   }
   return 'normal';
@@ -186,6 +201,7 @@ function normalizeProfileConfigFallback(value: unknown): ProfileConfig {
     targetCefr: normalizeCefr(source.targetCefr),
     activeLevels: normalizeLevels(source.activeLevels),
     reviewDanmakuSpeed: normalizeSpeed(source.reviewDanmakuSpeed),
+    reviewDanmakuDensity: normalizeDensity(source.reviewDanmakuDensity),
     vocabularyMode: normalizeVocabularyMode(source.vocabularyMode),
     examPreference: normalizeExamPreference(source.examPreference),
     bilingualMode: normalizeBilingualMode(source.bilingualMode),
@@ -304,6 +320,9 @@ export const CEFR_LEVELS = Array.isArray(readSharedSettings().CEFR_LEVELS)
 export const REVIEW_SPEEDS = Array.isArray(readSharedSettings().REVIEW_SPEEDS)
   ? readSharedSettings().REVIEW_SPEEDS!.slice()
   : FALLBACK_REVIEW_SPEEDS.slice();
+export const REVIEW_DENSITIES = Array.isArray(readSharedSettings().REVIEW_DENSITIES)
+  ? readSharedSettings().REVIEW_DENSITIES!.slice()
+  : FALLBACK_REVIEW_DENSITIES.slice();
 
 export type { ProfileConfig, SettingsV3 };
 

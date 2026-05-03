@@ -58,6 +58,7 @@ test('react overlay settings fallback: should migrate legacy flat settings into 
     maxReplaceCount: 4,
     targetCefr: 'C1',
     reviewDanmakuSpeed: 'fast',
+    reviewDanmakuDensity: 'dense',
     vocabularyMode: 'full',
     examPreference: 'exam-first',
     overlayPanelHidden: true,
@@ -75,6 +76,7 @@ test('react overlay settings fallback: should migrate legacy flat settings into 
   assert.equal(migrated.profilesCustom[0].config.enabled, false);
   assert.equal(migrated.profilesCustom[0].config.replaceRatio, 0.3);
   assert.equal(migrated.profilesCustom[0].config.maxReplaceCount, 4);
+  assert.equal(migrated.profilesCustom[0].config.reviewDanmakuDensity, 'dense');
   assert.deepEqual(Array.from(migrated.profilesCustom[0].config.activeLevels), ['IELTS']);
   assert.equal(migrated.globalControls.reviewDanmakuEnabled, true);
   assert.equal(migrated.globalControls.webPageEnabled, false);

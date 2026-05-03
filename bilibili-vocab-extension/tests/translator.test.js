@@ -371,6 +371,62 @@ test('selectMatches: should deprioritize words under dynamic cooldown', () => {
   translator.__resetContextFeedbackForTest();
 });
 
+test('selectMatches: should deprioritize recently exposed words', () => {
+  translator.__resetContextFeedbackForTest();
+
+  translator.reportRenderedExposure('optimize', { now: 1700000000000 });
+
+  const selected = translator.selectMatches(
+    [
+      { start: 0, end: 2, word: 'optimize', level: 'TOEFL' },
+      { start: 3, end: 5, word: 'strategy', level: 'CET4' },
+    ],
+    {
+      replaceRatio: 0.1,
+      maxReplaceCount: 1,
+    },
+    {
+      sourceText: '我们优化策略',
+      now: 1700000001000,
+    }
+  );
+
+  const state = translator.getWordExposureState('optimize', 1700000001000);
+  assert.equal(state.inRecentWindow, true);
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].word, 'strategy');
+
+  translator.__resetContextFeedbackForTest();
+});
+
+test('selectMatches: should stop applying recent exposure penalty after the exposure window', () => {
+  translator.__resetContextFeedbackForTest();
+
+  translator.reportRenderedExposure('optimize', { now: 1700000000000 });
+
+  const selected = translator.selectMatches(
+    [
+      { start: 0, end: 2, word: 'optimize', level: 'TOEFL' },
+      { start: 3, end: 5, word: 'strategy', level: 'CET4' },
+    ],
+    {
+      replaceRatio: 0.1,
+      maxReplaceCount: 1,
+    },
+    {
+      sourceText: '我们优化策略',
+      now: 1700000000000 + 3 * 60 * 1000 + 1,
+    }
+  );
+
+  const state = translator.getWordExposureState('optimize', 1700000000000 + 3 * 60 * 1000 + 1);
+  assert.equal(state.inRecentWindow, false);
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].word, 'optimize');
+
+  translator.__resetContextFeedbackForTest();
+});
+
 test('buildTokens: 应透传 CEFR 与词频元数据到词 token', () => {
   const tokens = translator.buildTokens('我们优化系统', [
     {

@@ -1,21 +1,18 @@
 ﻿{
   "manifest_version": 3,
   "name": "Bilibili Vocabulary Subtitle",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "在 Bilibili 字幕中自动插入英文词汇，帮助被动学习英语",
   "permissions": [
     "activeTab",
+    "scripting",
     "storage"
   ],
   "host_permissions": [
     "https://www.bilibili.com/*",
     "https://api.bilibili.com/*",
     "https://aisubtitle.hdslb.com/*",
-    "https://www.youtube.com/*",
-    "https://v.qq.com/*",
-    "https://www.iqiyi.com/*",
-    "https://www.netflix.com/*",
-    "https://v.youku.com/*"
+    "https://www.youtube.com/*"
   ],
   "optional_host_permissions": [
     "*://*/*"
@@ -26,8 +23,8 @@
   "content_scripts": [
     {
       "matches": [
-        "http://*/*",
-        "https://*/*"
+        "https://www.bilibili.com/*",
+        "https://www.youtube.com/*"
       ],
       "js": [
         "config.js",
@@ -46,6 +43,11 @@
         "scripts/scheduler.js",
         "tooltip.js",
         "subtitleNavigation.js",
+        "overlaySubtitleNavigationBridge.js",
+        "subtitleNavigationController.js",
+        "runtimeSettingsSync.js",
+        "webTextReplacement.js",
+        "overlayLoader.js",
         "contentScript.js"
       ],
       "css": [
@@ -66,8 +68,8 @@
         "dist/overlay.js"
       ],
       "matches": [
-        "http://*/*",
-        "https://*/*"
+        "https://www.bilibili.com/*",
+        "https://www.youtube.com/*"
       ]
     }
   ],

@@ -58,6 +58,7 @@ test('react ui settings bridge fallback: should migrate legacy flat settings int
     maxReplaceCount: 4,
     targetCefr: 'C1',
     reviewDanmakuSpeed: 'fast',
+    reviewDanmakuDensity: 'dense',
     vocabularyMode: 'full',
     examPreference: 'exam-first',
     bilingualMode: 'bilingual',
@@ -77,6 +78,7 @@ test('react ui settings bridge fallback: should migrate legacy flat settings int
   assert.equal(migrated.profilesCustom[0].config.enabled, false);
   assert.equal(migrated.profilesCustom[0].config.replaceRatio, 0.3);
   assert.equal(migrated.profilesCustom[0].config.maxReplaceCount, 4);
+  assert.equal(migrated.profilesCustom[0].config.reviewDanmakuDensity, 'dense');
   assert.equal(migrated.profilesCustom[0].config.bilingualMode, 'bilingual');
   assert.equal(migrated.profilesCustom[0].config.themeMode, 'dark');
   assert.deepEqual(Array.from(migrated.profilesCustom[0].config.activeLevels), ['IELTS']);
@@ -193,6 +195,7 @@ test('react ui settings bridge fallback: should parse imported settings text int
       maxReplaceCount: 4,
       targetCefr: 'C1',
       reviewDanmakuSpeed: 'fast',
+      reviewDanmakuDensity: 'dense',
       vocabularyMode: 'full',
       examPreference: 'exam-first',
       bilingualMode: 'bilingual',
@@ -205,6 +208,7 @@ test('react ui settings bridge fallback: should parse imported settings text int
   assert.equal(imported.profilesCustom.length, 1);
   assert.equal(imported.profilesCustom[0].config.enabled, false);
   assert.equal(imported.profilesCustom[0].config.replaceRatio, 0.3);
+  assert.equal(imported.profilesCustom[0].config.reviewDanmakuDensity, 'dense');
   assert.equal(imported.profilesCustom[0].config.themeMode, 'dark');
   assert.equal(imported.globalControls.reviewDanmakuEnabled, true);
   assert.equal(imported.globalControls.webPageEnabled, false);

@@ -49,6 +49,6 @@ test('build entry contract: extension smoke should build first and then run node
   assert.notEqual(smokeScript, '');
   assert.match(
     smokeScript,
-    /^pnpm run build:extension && node --test tests\/browser-extension-smoke\.test\.js$/
+    /^pnpm run build:extension && node --test tests\/browser-extension-smoke\.spec\.js$/
   );
 });

@@ -68,6 +68,9 @@ function createSettingsBridgeStub(learningProfile) {
     getReviewDanmakuSpeedLabel(speed) {
       return `SPEED:${speed}`;
     },
+    getReviewDanmakuDensityLabel(density) {
+      return `DENSITY:${density}`;
+    },
   };
 }
 
@@ -79,6 +82,7 @@ function createProfile(overrides = {}) {
     targetCefr: 'B2',
     activeLevels: ['CET4', 'IELTS'],
     reviewDanmakuSpeed: 'fast',
+    reviewDanmakuDensity: 'dense',
     vocabularyMode: 'core',
     examPreference: 'balanced',
     bilingualMode: 'default',
@@ -149,6 +153,7 @@ test('react ui study preview: should render metrics, compact class and learning 
   assert.match(html, /25%/);
   assert.match(html, /3 词/);
   assert.match(html, /SPEED:fast/);
+  assert.match(html, /DENSITY:dense/);
   assert.match(html, /preview-tone--focus/);
   assert.match(html, /preview-card__tag--focus/);
   assert.match(html, /聚焦模式/);

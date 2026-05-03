@@ -1,4 +1,7 @@
-﻿const DEFAULT_SETTINGS = {
+const sharedSettings =
+  globalThis.SharedSettings ||
+  (typeof require === 'function' ? require('./sharedSettings.js') : null);
+const FALLBACK_DEFAULT_SETTINGS = {
   enabled: true,
   schemaVersion: 2,
   reviewDanmakuEnabled: false,
@@ -11,12 +14,30 @@
   replaceRatio: 0.2,
   maxReplaceCount: 2,
   targetCefr: 'B2',
+  bilingualMode: 'default',
+  themeMode: 'auto',
 };
+const DEFAULT_SETTINGS =
+  sharedSettings && sharedSettings.DEFAULT_SETTINGS
+    ? sharedSettings.DEFAULT_SETTINGS
+    : FALLBACK_DEFAULT_SETTINGS;
 
-const CEFR_LEVELS = new Set(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']);
-const sharedSettings =
-  globalThis.SharedSettings ||
-  (typeof require === 'function' ? require('./sharedSettings.js') : null);
+// @legacy - shipped popup entry is React UI under react-ui/ and dist/popup.html.
+const CEFR_LEVELS = new Set(
+  sharedSettings && Array.isArray(sharedSettings.CEFR_LEVELS)
+    ? sharedSettings.CEFR_LEVELS
+    : ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
+);
+const BILINGUAL_MODES = new Set(
+  sharedSettings && Array.isArray(sharedSettings.BILINGUAL_MODES)
+    ? sharedSettings.BILINGUAL_MODES
+    : ['default', 'bilingual', 'english-only']
+);
+const THEME_MODES = new Set(
+  sharedSettings && Array.isArray(sharedSettings.THEME_MODES)
+    ? sharedSettings.THEME_MODES
+    : ['auto', 'light', 'dark']
+);
 const learningState =
   globalThis.LearningState ||
   (typeof require === 'function' ? require('./learningState.js') : null);
@@ -37,10 +58,6 @@ const LEARNING_SUMMARY_STORAGE_KEY = learningState
   ? learningState.STORAGE_KEYS.LEARNING_SUMMARY
   : 'bili_vocab_learning_summary_v1';
 const doc = typeof document !== 'undefined' ? document : null;
-
-if (sharedSettings) {
-  Object.assign(DEFAULT_SETTINGS, sharedSettings.DEFAULT_SETTINGS);
-}
 
 const enabledInput = doc ? doc.getElementById('enabled') : null;
 const webPageEnabledInput = doc ? doc.getElementById('webPageEnabled') : null;
@@ -117,6 +134,8 @@ const SETTINGS_STORAGE_KEYS =
         'replaceRatio',
         'maxReplaceCount',
         'targetCefr',
+        'bilingualMode',
+        'themeMode',
         'domainRules',
         'schemaVersion',
       ];
@@ -439,6 +458,20 @@ function normalizeReviewDanmakuSpeed(value) {
     : DEFAULT_SETTINGS.reviewDanmakuSpeed;
 }
 
+function normalizeBilingualMode(value) {
+  const normalized = String(value || DEFAULT_SETTINGS.bilingualMode)
+    .trim()
+    .toLowerCase();
+  return BILINGUAL_MODES.has(normalized) ? normalized : DEFAULT_SETTINGS.bilingualMode;
+}
+
+function normalizeThemeMode(value) {
+  const normalized = String(value || DEFAULT_SETTINGS.themeMode)
+    .trim()
+    .toLowerCase();
+  return THEME_MODES.has(normalized) ? normalized : DEFAULT_SETTINGS.themeMode;
+}
+
 function normalizeSettings(settings) {
   if (sharedSettings) {
     return sharedSettings.normalizeSettings(settings);
@@ -478,6 +511,8 @@ function normalizeSettings(settings) {
       Math.max(1, Math.floor(Number(source.maxReplaceCount) || DEFAULT_SETTINGS.maxReplaceCount))
     ),
     targetCefr: CEFR_LEVELS.has(targetCefr) ? targetCefr : DEFAULT_SETTINGS.targetCefr,
+    bilingualMode: normalizeBilingualMode(source.bilingualMode),
+    themeMode: normalizeThemeMode(source.themeMode),
   };
 }
 
@@ -1752,6 +1787,7 @@ if (typeof module !== 'undefined' && module.exports) {
     normalizeReviewDanmakuSpeed: sharedSettings
       ? sharedSettings.normalizeReviewDanmakuSpeed
       : normalizeReviewDanmakuSpeed,
+    normalizeSettings: sharedSettings ? sharedSettings.normalizeSettings : normalizeSettings,
     getHeroMetricMeta: sharedSettings ? sharedSettings.getHeroMetricMeta : getHeroMetricMeta,
     getInitialPopupSettings,
     collectActiveLevels,

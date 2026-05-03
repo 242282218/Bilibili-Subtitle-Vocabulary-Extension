@@ -4,7 +4,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { buildVocabularyDataset } = require('../scripts/build-vocab-dataset.js');
+const {
+  buildVocabularyDataset,
+  hasPublishBlockingFlag,
+} = require('../scripts/build-vocab-dataset.js');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const LEVELS = ['cet4', 'cet6', 'kaoyan', 'ielts', 'toefl'];
@@ -28,6 +31,7 @@ const CEFR_LABELS = {
 const PART_OF_SPEECH_PATTERN =
   /^(?:abbr|adj|adv|art|aux|conj|int|n|num|pl|prep|pron|v|vi|vt)(?: \/ (?:abbr|adj|adv|art|aux|conj|int|n|num|pl|prep|pron|v|vi|vt))*$/;
 const UTF8_BOM = '\uFEFF';
+const SOURCE_LICENSE_STATUSES = new Set(['verified', 'needs-review', 'removed']);
 
 function createTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'vocab-dataset-'));
@@ -199,6 +203,34 @@ test('sources.json 应列出真实输入文件并保持可追溯', () => {
 
   manifest.sources.forEach((source, index) => {
     assert.equal(typeof source.name, 'string', `sources[${index}] name 类型错误`);
+    assert.equal(typeof source.url, 'string', `sources[${index}] url 类型错误`);
+    assert.equal(typeof source.license, 'string', `sources[${index}] license 类型错误`);
+    assert.equal(
+      SOURCE_LICENSE_STATUSES.has(source.licenseStatus),
+      true,
+      `sources[${index}] licenseStatus 非法`
+    );
+    assert.equal(
+      typeof source.redistributable,
+      'boolean',
+      `sources[${index}] redistributable 类型错误`
+    );
+    assert.equal(
+      typeof source.attributionRequired,
+      'boolean',
+      `sources[${index}] attributionRequired 类型错误`
+    );
+    assert.equal(
+      typeof source.shareAlikeRequired,
+      'boolean',
+      `sources[${index}] shareAlikeRequired 类型错误`
+    );
+    assert.equal(
+      typeof source.publishBlocking,
+      'boolean',
+      `sources[${index}] publishBlocking 类型错误`
+    );
+    assert.equal(typeof source.reviewAction, 'string', `sources[${index}] reviewAction 类型错误`);
     assert.equal(Array.isArray(source.files), true, `sources[${index}] files 类型错误`);
     assert.ok(source.files.length > 0, `sources[${index}] files 为空`);
     source.files.forEach((file) => {
@@ -207,6 +239,30 @@ test('sources.json 应列出真实输入文件并保持可追溯', () => {
       const sourcePath = path.join(__dirname, '..', file);
       assert.equal(fs.existsSync(sourcePath), true, `${file} 不存在`);
     });
+  });
+});
+
+test('sources.json 应机器标记许可证发布阻断来源', () => {
+  const manifest = readSourceManifest();
+  const sources = manifest.sources;
+  const blockingSources = sources.filter((source) => source.publishBlocking === true);
+
+  assert.deepEqual(
+    blockingSources.map((source) => source.name).sort(),
+    ['KyleBing/english-vocabulary', 'exam-data/NETEMVocabulary'].sort()
+  );
+
+  sources.forEach((source) => {
+    if (source.licenseStatus === 'verified') {
+      assert.equal(source.redistributable, true, `${source.name} verified source 应可再分发`);
+      assert.equal(source.publishBlocking, false, `${source.name} verified source 不应阻断发布`);
+      return;
+    }
+
+    assert.equal(source.licenseStatus, 'needs-review', `${source.name} 应显式标为 needs-review`);
+    assert.equal(source.redistributable, false, `${source.name} needs-review 不应标为可再分发`);
+    assert.equal(source.publishBlocking, true, `${source.name} needs-review 应阻断发布`);
+    assert.notEqual(source.reviewAction.trim(), '', `${source.name} 缺少审核动作`);
   });
 });
 
@@ -224,6 +280,39 @@ test('词库生成器输出应与仓库快照一致', async () => {
       const snapshot = readRawDataFile(fileName);
       assert.equal(generated, snapshot, `${fileName} 与生成器输出不一致`);
     });
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('publish 词库构建不应携带 publishBlocking 来源派生数据', async () => {
+  const workspace = createTempDir();
+
+  try {
+    const { grouped } = await buildVocabularyDataset({
+      buildTarget: 'publish',
+      dataDir: workspace,
+      ensureSources: false,
+    });
+
+    Object.entries(grouped).forEach(([level, entries]) => {
+      entries.forEach((entry, index) => {
+        assert.equal(
+          hasPublishBlockingFlag(entry.sourceFlags || []),
+          false,
+          `${level}[${index}] 不应包含 publishBlocking sourceFlags`
+        );
+      });
+    });
+
+    assert.ok(grouped.CET4.length >= 3000, `publish CET4 词条数量过少: ${grouped.CET4.length}`);
+    assert.ok(grouped.CET6.length >= 5000, `publish CET6 词条数量过少: ${grouped.CET6.length}`);
+    assert.ok(
+      grouped.KAOYAN.length >= 4000,
+      `publish KAOYAN 词条数量过少: ${grouped.KAOYAN.length}`
+    );
+    assert.equal(grouped.IELTS.length, readLevel('ielts').length);
+    assert.equal(grouped.TOEFL.length, readLevel('toefl').length);
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
   }

@@ -70,6 +70,16 @@
     return sharedSettings ? sharedSettings.DEFAULT_SETTINGS.reviewDanmakuSpeed : 'normal';
   }
 
+  function normalizeReviewDensity(density) {
+    if (sharedSettings && typeof sharedSettings.normalizeReviewDanmakuDensity === 'function') {
+      return sharedSettings.normalizeReviewDanmakuDensity(density);
+    }
+    const normalized = String(density || '')
+      .trim()
+      .toLowerCase();
+    return ['sparse', 'normal', 'dense'].includes(normalized) ? normalized : 'normal';
+  }
+
   function normalizeAction(action) {
     const normalized = String(action || '')
       .trim()
@@ -219,6 +229,9 @@
       reviewDanmakuSpeed: normalizeReviewSpeed(
         decision.reviewDanmakuSpeed || source.reviewDanmakuSpeed
       ),
+      reviewDanmakuDensity: normalizeReviewDensity(
+        decision.reviewDanmakuDensity || source.reviewDanmakuDensity
+      ),
     };
   }
 
@@ -228,7 +241,9 @@
       clampMaxReplaceCount(before.maxReplaceCount) !==
         clampMaxReplaceCount(after.maxReplaceCount) ||
       normalizeReviewSpeed(before.reviewDanmakuSpeed) !==
-        normalizeReviewSpeed(after.reviewDanmakuSpeed)
+        normalizeReviewSpeed(after.reviewDanmakuSpeed) ||
+      normalizeReviewDensity(before.reviewDanmakuDensity) !==
+        normalizeReviewDensity(after.reviewDanmakuDensity)
     );
   }
 
@@ -238,6 +253,7 @@
       replaceRatio: clampRatio(profile && profile.replaceRatio),
       maxReplaceCount: clampMaxReplaceCount(profile && profile.maxReplaceCount),
       reviewDanmakuSpeed: normalizeReviewSpeed(profile && profile.reviewDanmakuSpeed),
+      reviewDanmakuDensity: normalizeReviewDensity(profile && profile.reviewDanmakuDensity),
     };
     const timestamp = normalizeTimestamp(now) || Date.now();
 

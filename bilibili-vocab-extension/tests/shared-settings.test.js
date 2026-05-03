@@ -25,12 +25,15 @@ test('shared settings: should expose defaults and scene presets', () => {
     'TOEFL',
   ]);
   assert.equal(sharedSettings.DEFAULT_SETTINGS.reviewDanmakuSpeed, 'normal');
+  assert.equal(sharedSettings.DEFAULT_SETTINGS.reviewDanmakuDensity, 'normal');
+  assert.deepEqual(sharedSettings.REVIEW_DENSITIES, ['sparse', 'normal', 'dense']);
   assert.equal(sharedSettings.DEFAULT_SETTINGS.vocabularyMode, 'core');
   assert.equal(sharedSettings.DEFAULT_SETTINGS.examPreference, 'balanced');
   assert.deepEqual(sharedSettings.SCENE_PRESETS.light, {
     replaceRatio: 0.15,
     maxReplaceCount: 1,
     reviewDanmakuSpeed: 'slow',
+    reviewDanmakuDensity: 'sparse',
   });
 });
 
@@ -47,12 +50,14 @@ test('shared settings: should normalize invalid values into safe defaults', () =
       maxReplaceCount: -10,
       targetCefr: 'z9',
       reviewDanmakuSpeed: 'turbo',
+      reviewDanmakuDensity: 'crowded',
       activeLevels: ['cet4', 'unknown', '', 'IELTS', 'cet4'],
     }),
     {
       enabled: true,
       reviewDanmakuEnabled: false,
       reviewDanmakuSpeed: 'normal',
+      reviewDanmakuDensity: 'normal',
       vocabularyMode: 'core',
       examPreference: 'balanced',
       webPageEnabled: true,
@@ -99,6 +104,9 @@ test('shared settings: should expose popup metric labels through shared helper',
   assert.equal(sharedSettings.getHeroMetricMeta('reviewSpeed', 'slow'), '低压慢复习');
   assert.equal(sharedSettings.getHeroMetricMeta('reviewSpeed', 'normal'), '稳定推进');
   assert.equal(sharedSettings.getHeroMetricMeta('reviewSpeed', 'fast'), '冲刺高频');
+  assert.equal(sharedSettings.getHeroMetricMeta('reviewDensity', 'sparse'), '低频回放');
+  assert.equal(sharedSettings.getHeroMetricMeta('reviewDensity', 'normal'), '稳定回放');
+  assert.equal(sharedSettings.getHeroMetricMeta('reviewDensity', 'dense'), '高频回放');
 });
 
 test('shared settings: should fallback to default active levels when selection is empty', () => {
@@ -149,6 +157,7 @@ test('shared settings: should derive preview copy and preset key from normalized
     maxReplaceCount: 4,
     targetCefr: 'C1',
     reviewDanmakuSpeed: 'fast',
+    reviewDanmakuDensity: 'dense',
     activeLevels: ['TOEFL', 'IELTS'],
   });
 
@@ -160,6 +169,7 @@ test('shared settings: should derive preview copy and preset key from normalized
   );
   assert.match(sharedSettings.buildSettingsPreview(intensive), /30%/);
   assert.match(sharedSettings.buildSettingsPreview(intensive), /C1/);
+  assert.match(sharedSettings.buildSettingsPreview(intensive), /高密度/);
 });
 
 test('shared settings: should normalize domain rules and evaluate current hostname', () => {
@@ -267,6 +277,7 @@ test('shared settings v3: should migrate legacy flat settings into v3 payload', 
     activeLevels: ['ielts', 'toefl'],
     bilingualMode: 'bilingual',
     themeMode: 'dark',
+    reviewDanmakuDensity: 'dense',
     reviewDanmakuEnabled: true,
     webPageEnabled: false,
     domainRules: {
@@ -289,6 +300,7 @@ test('shared settings v3: should migrate legacy flat settings into v3 payload', 
   assert.equal(migrated.profilesCustom.length, 1);
   assert.equal(migrated.profilesCustom[0].config.bilingualMode, 'bilingual');
   assert.equal(migrated.profilesCustom[0].config.themeMode, 'dark');
+  assert.equal(migrated.profilesCustom[0].config.reviewDanmakuDensity, 'dense');
 });
 
 test('shared settings v3: should resolve effective runtime by active profile and global controls', () => {
@@ -317,6 +329,7 @@ test('shared settings v3: should resolve effective runtime by active profile and
   });
   assert.equal(runtimeBlocked.reviewDanmakuEnabled, true);
   assert.equal(runtimeBlocked.maxReplaceCount, 4);
+  assert.equal(runtimeBlocked.reviewDanmakuDensity, 'dense');
   assert.equal(runtimeBlocked.bilingualMode, 'default');
   assert.equal(runtimeBlocked.themeMode, 'auto');
   assert.equal(runtimeBlocked.siteEnabled, false);

@@ -5,6 +5,12 @@
       "name": "ECDICT",
       "url": "https://github.com/skywind3000/ECDICT",
       "license": "MIT",
+      "licenseStatus": "verified",
+      "redistributable": true,
+      "attributionRequired": true,
+      "shareAlikeRequired": false,
+      "publishBlocking": false,
+      "reviewAction": "",
       "files": [
         "sources/ecdict.csv"
       ],
@@ -14,6 +20,12 @@
       "name": "Words-CEFR-Dataset",
       "url": "https://github.com/Maximax67/Words-CEFR-Dataset",
       "license": "MIT",
+      "licenseStatus": "verified",
+      "redistributable": true,
+      "attributionRequired": true,
+      "shareAlikeRequired": false,
+      "publishBlocking": false,
+      "reviewAction": "",
       "files": [
         "sources/words.csv",
         "sources/word_pos.csv"
@@ -24,6 +36,12 @@
       "name": "KyleBing/english-vocabulary",
       "url": "https://github.com/KyleBing/english-vocabulary",
       "license": "No explicit GitHub license metadata detected",
+      "licenseStatus": "needs-review",
+      "redistributable": false,
+      "attributionRequired": true,
+      "shareAlikeRequired": false,
+      "publishBlocking": true,
+      "reviewAction": "Obtain explicit redistribution permission or remove derived entries before publishing.",
       "files": [
         "sources/kylebing-cet4.json",
         "sources/kylebing-cet6.json",
@@ -35,6 +53,12 @@
       "name": "exam-data/NETEMVocabulary",
       "url": "https://github.com/exam-data/NETEMVocabulary",
       "license": "NOASSERTION (GitHub API)",
+      "licenseStatus": "needs-review",
+      "redistributable": false,
+      "attributionRequired": true,
+      "shareAlikeRequired": false,
+      "publishBlocking": true,
+      "reviewAction": "Verify upstream redistribution terms or remove NETEM-derived ranking fields before publishing.",
       "files": [
         "sources/netem_full_list.json"
       ],
@@ -44,6 +68,12 @@
       "name": "CC-CEDICT",
       "url": "https://www.mdbg.net/chinese/dictionary?page=cc-cedict",
       "license": "CC BY-SA 3.0 (MDBG 发布版本)",
+      "licenseStatus": "verified",
+      "redistributable": true,
+      "attributionRequired": true,
+      "shareAlikeRequired": true,
+      "publishBlocking": false,
+      "reviewAction": "Preserve attribution and share-alike obligations when redistributing derived data.",
       "files": [
         "sources/cedict_ts.u8.gz"
       ],

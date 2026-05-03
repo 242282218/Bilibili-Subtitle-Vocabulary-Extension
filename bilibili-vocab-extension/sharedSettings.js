@@ -9,6 +9,9 @@
   const REVIEW_SPEEDS = Array.isArray(globalScope.Config && globalScope.Config.REVIEW_SPEEDS)
     ? globalScope.Config.REVIEW_SPEEDS.slice()
     : ['slow', 'normal', 'fast'];
+  const REVIEW_DENSITIES = Array.isArray(globalScope.Config && globalScope.Config.REVIEW_DENSITIES)
+    ? globalScope.Config.REVIEW_DENSITIES.slice()
+    : ['sparse', 'normal', 'dense'];
   const VOCABULARY_MODES = Array.isArray(globalScope.Config && globalScope.Config.VOCABULARY_MODES)
     ? globalScope.Config.VOCABULARY_MODES.slice()
     : ['core', 'full'];
@@ -23,6 +26,7 @@
     schemaVersion: SCHEMA_VERSION,
     reviewDanmakuEnabled: false,
     reviewDanmakuSpeed: 'normal',
+    reviewDanmakuDensity: 'normal',
     vocabularyMode: 'core',
     examPreference: 'balanced',
     webPageEnabled: true,
@@ -40,6 +44,7 @@
     'webPageEnabled',
     'reviewDanmakuEnabled',
     'reviewDanmakuSpeed',
+    'reviewDanmakuDensity',
     'vocabularyMode',
     'examPreference',
     'activeLevels',
@@ -76,9 +81,24 @@
   });
 
   const SCENE_PRESETS = {
-    light: { replaceRatio: 0.15, maxReplaceCount: 1, reviewDanmakuSpeed: 'slow' },
-    balanced: { replaceRatio: 0.2, maxReplaceCount: 2, reviewDanmakuSpeed: 'normal' },
-    intensive: { replaceRatio: 0.3, maxReplaceCount: 4, reviewDanmakuSpeed: 'fast' },
+    light: {
+      replaceRatio: 0.15,
+      maxReplaceCount: 1,
+      reviewDanmakuSpeed: 'slow',
+      reviewDanmakuDensity: 'sparse',
+    },
+    balanced: {
+      replaceRatio: 0.2,
+      maxReplaceCount: 2,
+      reviewDanmakuSpeed: 'normal',
+      reviewDanmakuDensity: 'normal',
+    },
+    intensive: {
+      replaceRatio: 0.3,
+      maxReplaceCount: 4,
+      reviewDanmakuSpeed: 'fast',
+      reviewDanmakuDensity: 'dense',
+    },
   };
 
   function clampNumber(value, min, max, fallback) {
@@ -118,6 +138,15 @@
     return REVIEW_SPEEDS.includes(reviewDanmakuSpeed)
       ? reviewDanmakuSpeed
       : DEFAULT_SETTINGS.reviewDanmakuSpeed;
+  }
+
+  function normalizeReviewDanmakuDensity(value) {
+    const reviewDanmakuDensity = String(value || DEFAULT_SETTINGS.reviewDanmakuDensity)
+      .trim()
+      .toLowerCase();
+    return REVIEW_DENSITIES.includes(reviewDanmakuDensity)
+      ? reviewDanmakuDensity
+      : DEFAULT_SETTINGS.reviewDanmakuDensity;
   }
 
   function normalizeActiveLevels(levels) {
@@ -286,6 +315,7 @@
       schemaVersion: SCHEMA_VERSION,
       reviewDanmakuEnabled: source.reviewDanmakuEnabled === true,
       reviewDanmakuSpeed: normalizeReviewDanmakuSpeed(source.reviewDanmakuSpeed),
+      reviewDanmakuDensity: normalizeReviewDanmakuDensity(source.reviewDanmakuDensity),
       vocabularyMode: normalizeVocabularyMode(source.vocabularyMode),
       examPreference: normalizeExamPreference(source.examPreference),
       webPageEnabled: source.webPageEnabled !== false,
@@ -317,6 +347,7 @@
       targetCefr: normalized.targetCefr,
       activeLevels: normalized.activeLevels.slice(),
       reviewDanmakuSpeed: normalized.reviewDanmakuSpeed,
+      reviewDanmakuDensity: normalized.reviewDanmakuDensity,
       vocabularyMode: normalized.vocabularyMode,
       examPreference: normalized.examPreference,
       bilingualMode: normalized.bilingualMode,
@@ -638,6 +669,17 @@
     return '标准';
   }
 
+  function getReviewDanmakuDensityLabel(density) {
+    const preset = normalizeReviewDanmakuDensity(density);
+    if (preset === 'sparse') {
+      return '低密度';
+    }
+    if (preset === 'dense') {
+      return '高密度';
+    }
+    return '标准';
+  }
+
   function getBilingualModeLabel(mode) {
     const normalized = normalizeBilingualMode(mode);
     if (normalized === 'bilingual') {
@@ -673,6 +715,17 @@
         return '冲刺高频';
       }
       return '稳定推进';
+    }
+
+    if (type === 'reviewDensity') {
+      const density = normalizeReviewDanmakuDensity(value);
+      if (density === 'sparse') {
+        return '低频回放';
+      }
+      if (density === 'dense') {
+        return '高频回放';
+      }
+      return '稳定回放';
     }
 
     if (type === 'cefr') {
@@ -760,7 +813,7 @@
 
     const modeLabel = normalized.vocabularyMode === 'core' ? '核心高频' : '全量扩展';
     const preferenceLabel = normalized.examPreference === 'exam-first' ? '考试优先' : '均衡筛选';
-    return `当前会在每句字幕中替换约 ${Math.round(normalized.replaceRatio * 100)}% 的词汇，单句最多 ${normalized.maxReplaceCount} 个词，帮助你以 ${normalized.targetCefr} 难度并结合 ${normalized.activeLevels.length} 个词库持续曝光；词库模式为${modeLabel}，筛选策略为${preferenceLabel}，显示模式为${getBilingualModeLabel(normalized.bilingualMode)}，复习节奏为${getReviewDanmakuSpeedLabel(normalized.reviewDanmakuSpeed)}。`;
+    return `当前会在每句字幕中替换约 ${Math.round(normalized.replaceRatio * 100)}% 的词汇，单句最多 ${normalized.maxReplaceCount} 个词，帮助你以 ${normalized.targetCefr} 难度并结合 ${normalized.activeLevels.length} 个词库持续曝光；词库模式为${modeLabel}，筛选策略为${preferenceLabel}，显示模式为${getBilingualModeLabel(normalized.bilingualMode)}，复习节奏为${getReviewDanmakuSpeedLabel(normalized.reviewDanmakuSpeed)}，复习弹幕密度为${getReviewDanmakuDensityLabel(normalized.reviewDanmakuDensity)}。`;
   }
 
   function getPresetKeyFromSettings(settings) {
@@ -768,7 +821,8 @@
     if (
       normalized.replaceRatio <= SCENE_PRESETS.light.replaceRatio &&
       normalized.maxReplaceCount <= SCENE_PRESETS.light.maxReplaceCount &&
-      normalized.reviewDanmakuSpeed === SCENE_PRESETS.light.reviewDanmakuSpeed
+      normalized.reviewDanmakuSpeed === SCENE_PRESETS.light.reviewDanmakuSpeed &&
+      normalized.reviewDanmakuDensity === SCENE_PRESETS.light.reviewDanmakuDensity
     ) {
       return 'light';
     }
@@ -776,7 +830,8 @@
     if (
       normalized.replaceRatio >= SCENE_PRESETS.intensive.replaceRatio &&
       normalized.maxReplaceCount >= SCENE_PRESETS.intensive.maxReplaceCount &&
-      normalized.reviewDanmakuSpeed === SCENE_PRESETS.intensive.reviewDanmakuSpeed
+      normalized.reviewDanmakuSpeed === SCENE_PRESETS.intensive.reviewDanmakuSpeed &&
+      normalized.reviewDanmakuDensity === SCENE_PRESETS.intensive.reviewDanmakuDensity
     ) {
       return 'intensive';
     }
@@ -788,6 +843,7 @@
     LEVELS,
     CEFR_LEVELS,
     REVIEW_SPEEDS,
+    REVIEW_DENSITIES,
     VOCABULARY_MODES,
     EXAM_PREFERENCES,
     SCHEMA_VERSION,
@@ -804,6 +860,7 @@
     setExactDomainRuleEnabled,
     normalizeTargetCefr,
     normalizeReviewDanmakuSpeed,
+    normalizeReviewDanmakuDensity,
     normalizeActiveLevels,
     normalizeVocabularyMode,
     normalizeExamPreference,
@@ -822,6 +879,7 @@
     removeCustomProfile,
     isDomainEnabled,
     getReviewDanmakuSpeedLabel,
+    getReviewDanmakuDensityLabel,
     getHeroMetricMeta,
     getMockPreviewData,
     getLearningProfile,

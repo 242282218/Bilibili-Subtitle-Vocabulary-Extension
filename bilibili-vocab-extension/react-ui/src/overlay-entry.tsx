@@ -4,6 +4,7 @@ import overlayCss from './overlay.css?inline';
 import {
   CEFR_LEVELS,
   ProfileConfig,
+  REVIEW_DENSITIES,
   REVIEW_SPEEDS,
   SettingsV3,
   getProfileConfigById,
@@ -47,6 +48,16 @@ function asNumber(value: string, fallback: number): number {
 
 function clampOffset(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function getReviewDensityLabel(density: ProfileConfig['reviewDanmakuDensity']): string {
+  if (density === 'sparse') {
+    return '低密度';
+  }
+  if (density === 'dense') {
+    return '高密度';
+  }
+  return '标准';
 }
 
 function getRecentWordMeta(item: LearningSummary['recentWords'][number]): string {
@@ -552,6 +563,25 @@ function OverlayApp() {
                     {REVIEW_SPEEDS.map((item) => (
                       <option key={item} value={item}>
                         {item}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="rv-field">
+                  <label htmlFor="rvDensity">复习弹幕密度</label>
+                  <select
+                    id="rvDensity"
+                    value={profile.reviewDanmakuDensity}
+                    onChange={(event) =>
+                      patchProfile({
+                        reviewDanmakuDensity: event.target
+                          .value as ProfileConfig['reviewDanmakuDensity'],
+                      })
+                    }
+                  >
+                    {REVIEW_DENSITIES.map((item) => (
+                      <option key={item} value={item}>
+                        {getReviewDensityLabel(item as ProfileConfig['reviewDanmakuDensity'])}
                       </option>
                     ))}
                   </select>

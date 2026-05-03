@@ -1,3 +1,4 @@
+// @legacy - shipped options entry is React UI under react-ui/ and dist/options.html.
 const sharedSettings =
   globalThis.SharedSettings ||
   (typeof require === 'function' ? require('./sharedSettings.js') : null);
@@ -25,9 +26,13 @@ const DEFAULT_SETTINGS = sharedSettings
       replaceRatio: 0.2,
       maxReplaceCount: 2,
       targetCefr: 'B2',
+      bilingualMode: 'default',
+      themeMode: 'auto',
     };
 
 const LOCAL_CEFR_LEVELS = new Set(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']);
+const LOCAL_BILINGUAL_MODES = new Set(['default', 'bilingual', 'english-only']);
+const LOCAL_THEME_MODES = new Set(['auto', 'light', 'dark']);
 const SCENE_PRESETS = sharedSettings
   ? sharedSettings.SCENE_PRESETS
   : {
@@ -1008,6 +1013,12 @@ function normalizeSettings(settings) {
   const source = { ...DEFAULT_SETTINGS, ...(settings || {}) };
   const targetCefr = normalizeTargetCefr(source.targetCefr);
   const reviewDanmakuSpeed = normalizeReviewDanmakuSpeed(source.reviewDanmakuSpeed);
+  const bilingualMode = String(source.bilingualMode || DEFAULT_SETTINGS.bilingualMode)
+    .trim()
+    .toLowerCase();
+  const themeMode = String(source.themeMode || DEFAULT_SETTINGS.themeMode)
+    .trim()
+    .toLowerCase();
 
   return {
     enabled: source.enabled !== false,
@@ -1036,6 +1047,10 @@ function normalizeSettings(settings) {
     replaceRatio: Math.min(0.3, Math.max(0.1, Number(source.replaceRatio))),
     maxReplaceCount: Math.min(5, Math.max(1, Math.floor(Number(source.maxReplaceCount) || 2))),
     targetCefr: LOCAL_CEFR_LEVELS.has(targetCefr) ? targetCefr : DEFAULT_SETTINGS.targetCefr,
+    bilingualMode: LOCAL_BILINGUAL_MODES.has(bilingualMode)
+      ? bilingualMode
+      : DEFAULT_SETTINGS.bilingualMode,
+    themeMode: LOCAL_THEME_MODES.has(themeMode) ? themeMode : DEFAULT_SETTINGS.themeMode,
   };
 }
 

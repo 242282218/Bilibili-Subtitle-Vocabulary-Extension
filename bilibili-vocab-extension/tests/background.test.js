@@ -24,6 +24,7 @@ test('normalizeStoredSettings: 缺省配置应回落到 DEV_SPEC 默认值', () 
   assert.equal(normalized.enabled, true);
   assert.equal(normalized.reviewDanmakuEnabled, false);
   assert.equal(normalized.reviewDanmakuSpeed, 'normal');
+  assert.equal(normalized.reviewDanmakuDensity, 'normal');
   assert.equal(normalized.replaceRatio, 0.2);
   assert.equal(normalized.maxReplaceCount, 2);
   assert.deepEqual(normalized.activeLevels, ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL']);
@@ -48,6 +49,18 @@ test('normalizeStoredSettings: 应保留独立复习弹幕速度档位', () => {
 
   assert.equal(fast.reviewDanmakuSpeed, 'fast');
   assert.equal(fallback.reviewDanmakuSpeed, 'normal');
+});
+
+test('normalizeStoredSettings: 应保留独立复习弹幕密度档位', () => {
+  const dense = background.normalizeStoredSettings({
+    reviewDanmakuDensity: 'dense',
+  });
+  const fallback = background.normalizeStoredSettings({
+    reviewDanmakuDensity: 'unknown',
+  });
+
+  assert.equal(dense.reviewDanmakuDensity, 'dense');
+  assert.equal(fallback.reviewDanmakuDensity, 'normal');
 });
 
 test('normalizeStoredSettings: 应归一化站点规则并回写 schemaVersion', () => {

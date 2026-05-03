@@ -31,12 +31,13 @@ test('react ui shortcuts contract: options should render shortcut guide in shipp
   const source = readProjectFile('react-ui/src/options-main.tsx');
 
   assert.match(source, /import \{ ShortcutGuide \} from '.\/shortcut-guide'/);
-  assert.match(source, /<ShortcutGuide \/>/);
+  assert.match(source, /<ShortcutGuide title="快捷键" \/>/);
 });
 
-test('react ui shortcuts contract: popup should render shortcut guide in shipped entry', () => {
+test('react ui shortcuts contract: popup should delegate shortcut management to options entry', () => {
   const source = readProjectFile('react-ui/src/popup-main.tsx');
 
-  assert.match(source, /import \{ ShortcutGuide \} from '.\/shortcut-guide'/);
-  assert.match(source, /<ShortcutGuide title="快捷键速览" compact \/>/);
+  assert.doesNotMatch(source, /ShortcutGuide/);
+  assert.match(source, /openOptionsPage/);
+  assert.match(source, /打开设置/);
 });

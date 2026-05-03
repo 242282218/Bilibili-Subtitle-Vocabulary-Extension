@@ -1,7 +1,21 @@
 ﻿(function (globalScope) {
-  const DEFAULT_INTERVAL_MS = 1000;
-  const MAX_ASSOCIATED_PER_CLUSTER = 3;
+  const DEFAULT_INTERVAL_MS = 3400;
+  const MAX_ASSOCIATED_PER_CLUSTER = 1;
   const MAX_COOLDOWN_QUEUE_LENGTH = 60;
+  const DENSITY_PRESET_TO_INTERVAL_MS = {
+    sparse: 4200,
+    normal: 3400,
+    dense: 2600,
+  };
+
+  function normalizeDensityPreset(value) {
+    const normalized = String(value || 'normal')
+      .trim()
+      .toLowerCase();
+    return Object.prototype.hasOwnProperty.call(DENSITY_PRESET_TO_INTERVAL_MS, normalized)
+      ? normalized
+      : 'normal';
+  }
 
   function normalizeWordKey(word) {
     return String(word || '')
@@ -257,7 +271,11 @@
             return false;
           };
 
-    const intervalMs = Math.max(200, Number(config.intervalMs) || DEFAULT_INTERVAL_MS);
+    let densityPreset = normalizeDensityPreset(config.densityPreset);
+    let intervalMs = Math.max(
+      200,
+      Number(config.intervalMs) || DENSITY_PRESET_TO_INTERVAL_MS[densityPreset]
+    );
     let timer = null;
     const cooldownQueue = [];
     const associatedQueue = [];
@@ -299,11 +317,25 @@
       }
 
       if (!candidate) {
+        console.debug(
+          '[DanmakuReview] tick: no candidate. poolSize:',
+          Array.isArray(pool) ? pool.length : 0,
+          'cooldownSize:',
+          cooldownSet.size,
+          'assocQueueLen:',
+          associatedQueue.length
+        );
         return;
       }
 
       const fired = shootDanmaku(candidate, isAssociated);
       if (!fired) {
+        console.debug(
+          '[DanmakuReview] tick: shootDanmaku returned false for',
+          candidate.word,
+          'isAssociated:',
+          isAssociated
+        );
         return;
       }
 
@@ -320,7 +352,9 @@
       if (timer) {
         return;
       }
+      console.debug('[DanmakuReview] Engine started, interval:', intervalMs, 'ms');
       timer = setInterval(tick, intervalMs);
+      tick();
     }
 
     function pause() {
@@ -344,14 +378,28 @@
       cooldownQueue.length = 0;
     }
 
+    function setDensityPreset(nextDensityPreset) {
+      densityPreset = normalizeDensityPreset(nextDensityPreset);
+      intervalMs = DENSITY_PRESET_TO_INTERVAL_MS[densityPreset];
+      if (timer) {
+        pause();
+        start();
+      }
+      return densityPreset;
+    }
+
     return {
       start,
       pause,
       resume,
       stop,
+      setDensityPreset,
       tick,
       isRunning() {
         return Boolean(timer);
+      },
+      getIntervalMs() {
+        return intervalMs;
       },
     };
   }
@@ -360,6 +408,8 @@
 
   const api = {
     DEFAULT_INTERVAL_MS,
+    DENSITY_PRESET_TO_INTERVAL_MS,
+    normalizeDensityPreset,
     computeWordWeight,
     computeChineseJaccard,
     levenshteinDistance,
@@ -369,6 +419,7 @@
     pickWeightedWord,
     buildAssociationCluster,
     createSchedulerEngine,
+    setDensityPreset: (nextDensityPreset) => defaultEngine.setDensityPreset(nextDensityPreset),
     startEngine: () => defaultEngine.start(),
     pauseEngine: () => defaultEngine.pause(),
     resumeEngine: () => defaultEngine.resume(),

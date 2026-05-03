@@ -6,6 +6,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 const modulePath = path.join(__dirname, '..', 'react-ui', 'src', 'site-toggle-state.ts');
+const popupPath = path.join(__dirname, '..', 'react-ui', 'src', 'popup-main.tsx');
 
 function loadModule() {
   const source = fs.readFileSync(modulePath, 'utf8');
@@ -66,4 +67,16 @@ test('react ui popup site toggle: should expose restore action when only site ru
   assert.equal(result.buttonDisabled, false);
   assert.equal(result.buttonLabel, '恢复当前站点');
   assert.match(result.hint, /站点规则处于暂停状态/);
+});
+
+test('react ui popup site toggle: should expose optional permission authorization before restoring non-default sites', () => {
+  const source = fs.readFileSync(popupPath, 'utf8');
+
+  assert.match(source, /readActiveTabSitePermissionState/);
+  assert.match(source, /requestActiveTabSitePermission/);
+  assert.match(source, /removeActiveTabSitePermission/);
+  assert.match(source, /授权当前站点/);
+  assert.match(source, /撤销授权/);
+  assert.match(source, /拒绝授权不会恢复站点规则/);
+  assert.match(source, /需要先授权当前站点/);
 });

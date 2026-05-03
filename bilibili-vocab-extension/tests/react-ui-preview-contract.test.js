@@ -50,12 +50,14 @@ test('react ui preview contract: settings bridge should expose shared preset and
   assert.equal(bridge.SCENE_PRESETS.light.replaceRatio, 0.15);
   assert.equal(bridge.SCENE_PRESETS.light.maxReplaceCount, 1);
   assert.equal(bridge.SCENE_PRESETS.light.reviewDanmakuSpeed, 'slow');
+  assert.equal(bridge.SCENE_PRESETS.light.reviewDanmakuDensity, 'sparse');
   assert.equal(
     bridge.getPresetKeyFromSettings({
       enabled: true,
       replaceRatio: 0.3,
       maxReplaceCount: 4,
       reviewDanmakuSpeed: 'fast',
+      reviewDanmakuDensity: 'dense',
     }),
     'intensive'
   );
@@ -72,6 +74,7 @@ test('react ui preview contract: settings bridge should expose shared preset and
       targetCefr: 'B2',
       activeLevels: ['CET4', 'IELTS'],
       reviewDanmakuSpeed: 'normal',
+      reviewDanmakuDensity: 'normal',
       vocabularyMode: 'core',
       examPreference: 'balanced',
       bilingualMode: 'bilingual',

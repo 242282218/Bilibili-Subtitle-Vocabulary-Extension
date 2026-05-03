@@ -1,15 +1,29 @@
 ﻿(function () {
+  const CONTENT_SCRIPT_INSTANCE_KEY = '__BILI_VOCAB_CONTENT_SCRIPT_INSTANCE__';
+  const isCommonJsRuntime = typeof module !== 'undefined' && module.exports;
+  if (!isCommonJsRuntime && globalThis[CONTENT_SCRIPT_INSTANCE_KEY]) {
+    return;
+  }
+  if (!isCommonJsRuntime) {
+    globalThis[CONTENT_SCRIPT_INSTANCE_KEY] = true;
+  }
+
   const DEFAULT_SETTINGS = {
     enabled: true,
     schemaVersion: 2,
     reviewDanmakuEnabled: false,
     reviewDanmakuSpeed: 'normal',
+    reviewDanmakuDensity: 'normal',
     webPageEnabled: true,
     domainRules: {},
     activeLevels: ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL'],
     replaceRatio: 0.2,
     maxReplaceCount: 2,
     targetCefr: 'B2',
+    vocabularyMode: 'core',
+    examPreference: 'balanced',
+    bilingualMode: 'default',
+    themeMode: 'auto',
   };
   const sharedSettings =
     globalThis.SharedSettings ||
@@ -17,8 +31,24 @@
   const subtitleNavigation =
     globalThis.SubtitleNavigationShared ||
     (typeof require === 'function' ? require('./subtitleNavigation.js') : null);
+  const overlaySubtitleNavigationBridgeRuntime =
+    globalThis.BiliVocabOverlaySubtitleNavigationBridgeRuntime ||
+    (typeof require === 'function' ? require('./overlaySubtitleNavigationBridge.js') : null);
+  const subtitleNavigationControllerRuntime =
+    globalThis.BiliVocabSubtitleNavigationControllerRuntime ||
+    (typeof require === 'function' ? require('./subtitleNavigationController.js') : null);
+  const runtimeSettingsSyncRuntime =
+    globalThis.BiliVocabRuntimeSettingsSync ||
+    (typeof require === 'function' ? require('./runtimeSettingsSync.js') : null);
+  const webTextReplacementRuntime =
+    globalThis.BiliVocabWebTextReplacement ||
+    (typeof require === 'function' ? require('./webTextReplacement.js') : null);
+  const overlayLoaderRuntime =
+    globalThis.BiliVocabOverlayLoader ||
+    (typeof require === 'function' ? require('./overlayLoader.js') : null);
 
   const PROCESS_DELAY_MS = 120;
+  const MUTATION_OBSERVER_THROTTLE_MS = 500;
   const TIMELINE_POLL_MS = 300;
   const TRANSLATION_CACHE_LIMIT = 200;
   const WEB_TEXT_PROCESS_INTERVAL = 1000; // 网页文本处理间隔
@@ -31,10 +61,14 @@
     'netflix.com',
     'youku.com',
   ];
+  const DEFAULT_OVERLAY_HOSTS = ['www.bilibili.com', 'www.youtube.com'];
   const TRANSLATION_SETTINGS_KEYS =
     sharedSettings && Array.isArray(sharedSettings.SETTINGS_STORAGE_KEYS)
       ? sharedSettings.SETTINGS_STORAGE_KEYS.filter(
-          (key) => key !== 'reviewDanmakuEnabled' && key !== 'reviewDanmakuSpeed'
+          (key) =>
+            key !== 'reviewDanmakuEnabled' &&
+            key !== 'reviewDanmakuSpeed' &&
+            key !== 'reviewDanmakuDensity'
         )
       : [
           'enabled',
@@ -52,6 +86,7 @@
     ...TRANSLATION_SETTINGS_KEYS,
     'reviewDanmakuEnabled',
     'reviewDanmakuSpeed',
+    'reviewDanmakuDensity',
   ];
   const SETTINGS_STORAGE_KEY_V3 =
     sharedSettings && sharedSettings.SETTINGS_STORAGE_KEY_V3
@@ -63,6 +98,9 @@
   const ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE =
     'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE';
   const OVERLAY_SUBTITLE_NAVIGATION_BRIDGE_KEY = 'BiliVocabOverlaySubtitleNavigationBridge';
+  const EFFECTIVE_DEFAULTS = sharedSettings
+    ? { ...DEFAULT_SETTINGS, ...(sharedSettings.DEFAULT_SETTINGS || {}) }
+    : { ...DEFAULT_SETTINGS };
 
   let observer = null;
   let observerTarget = null;
@@ -70,7 +108,8 @@
   let timelinePollTimer = null;
   let processing = false;
   let pendingProcess = false;
-  let settings = { ...DEFAULT_SETTINGS };
+  let lastMutationObserverRefreshAt = 0;
+  let settings = { ...EFFECTIVE_DEFAULTS };
   const LRUCacheCtor =
     globalThis.Utils && typeof globalThis.Utils.LRUCache === 'function'
       ? globalThis.Utils.LRUCache
@@ -81,21 +120,11 @@
         };
   const translationCache = new LRUCacheCtor(TRANSLATION_CACHE_LIMIT);
   let boundVideo = null;
-  const subtitleNavigationPorts = new Set();
-  const subtitleNavigationPortSnapshotKeys = new WeakMap();
-  const overlaySubtitleNavigationListeners = new Set();
-  let subtitleNavigationBroadcastPromise = null;
-  let subtitleNavigationBroadcastQueued = false;
-  let subtitleNavigationSnapshotSignature = '';
-  let subtitleNavigationSnapshotVideoKey = '';
-  let overlaySubtitleNavigationSignature = '';
-  let overlaySubtitleNavigationPayload = null;
-  let webTextProcessTimer = null;
-  let webTextProcessing = false;
-  let lastWebTextProcessAt = 0;
+  let subtitleNavigationController = null;
+  let runtimeSettingsSyncController = null;
+  let webTextReplacementController = null;
   let renderGeneration = 0;
-  let overlayModuleCache = null;
-  let overlayModulePromise = null;
+  let overlayLoaderController = null;
   const HIT_SIGNATURE_DATA_KEY = 'biliVocabHitSignature';
   const RENDER_SIGNATURE_DATA_KEY = 'biliVocabRenderSignature';
   const LEARNING_WORD_STATS_STORAGE_KEY = globalThis.LearningState
@@ -117,9 +146,16 @@
   const logError =
     (globalThis.Utils && globalThis.Utils.logError) ||
     ((context, error) => console.error(`[BiliVocab] ${context}:`, error));
+  const DEBUG_LOG_FLAG = '__BILI_VOCAB_DEBUG_LOGS__';
 
-  if (sharedSettings) {
-    Object.assign(DEFAULT_SETTINGS, sharedSettings.DEFAULT_SETTINGS);
+  function shouldLogDebug() {
+    return globalThis[DEBUG_LOG_FLAG] === true;
+  }
+
+  function logDebug(...args) {
+    if (shouldLogDebug()) {
+      console.debug(...args);
+    }
   }
 
   function normalizeReviewDanmakuSpeed(speed) {
@@ -127,12 +163,25 @@
       return sharedSettings.normalizeReviewDanmakuSpeed(speed);
     }
 
-    const normalized = String(speed || DEFAULT_SETTINGS.reviewDanmakuSpeed)
+    const normalized = String(speed || EFFECTIVE_DEFAULTS.reviewDanmakuSpeed)
       .trim()
       .toLowerCase();
     return ['slow', 'normal', 'fast'].includes(normalized)
       ? normalized
-      : DEFAULT_SETTINGS.reviewDanmakuSpeed;
+      : EFFECTIVE_DEFAULTS.reviewDanmakuSpeed;
+  }
+
+  function normalizeReviewDanmakuDensity(density) {
+    if (sharedSettings && typeof sharedSettings.normalizeReviewDanmakuDensity === 'function') {
+      return sharedSettings.normalizeReviewDanmakuDensity(density);
+    }
+
+    const normalized = String(density || EFFECTIVE_DEFAULTS.reviewDanmakuDensity)
+      .trim()
+      .toLowerCase();
+    return ['sparse', 'normal', 'dense'].includes(normalized)
+      ? normalized
+      : EFFECTIVE_DEFAULTS.reviewDanmakuDensity;
   }
 
   function hasMethod(obj, method) {
@@ -142,6 +191,14 @@
   function isVideoSiteHost(hostname) {
     const normalized = String(hostname || '').toLowerCase();
     return VIDEO_SITE_HOSTS.some((site) => normalized === site || normalized.endsWith(`.${site}`));
+  }
+
+  function shouldLoadOverlayModuleForHost(hostname) {
+    const normalized = String(hostname || '').toLowerCase();
+    if (!normalized) {
+      return true;
+    }
+    return DEFAULT_OVERLAY_HOSTS.includes(normalized);
   }
 
   function shouldEnableTimelinePolling() {
@@ -180,6 +237,15 @@
     return currentTarget !== nextTarget;
   }
 
+  function shouldRunMutationObserverRefresh(now = Date.now()) {
+    if (now - lastMutationObserverRefreshAt < MUTATION_OBSERVER_THROTTLE_MS) {
+      return false;
+    }
+
+    lastMutationObserverRefreshAt = now;
+    return true;
+  }
+
   function runInAnimationFrame(task) {
     const scheduleFrame =
       typeof globalThis.requestAnimationFrame === 'function'
@@ -210,12 +276,8 @@
     return globalThis[LEGACY_WEB_TEXT_PIPELINE_FLAG] === true;
   }
 
-  function normalizeSettings(rawSettings) {
-    if (sharedSettings) {
-      return sharedSettings.normalizeSettings(rawSettings);
-    }
-
-    const source = { ...DEFAULT_SETTINGS, ...(rawSettings || {}) };
+  function normalizeSettingsFallback(rawSettings) {
+    const source = { ...EFFECTIVE_DEFAULTS, ...(rawSettings || {}) };
     const activeLevels = Array.isArray(source.activeLevels)
       ? source.activeLevels
           .map((level) =>
@@ -224,26 +286,30 @@
               .toUpperCase()
           )
           .filter(Boolean)
-      : DEFAULT_SETTINGS.activeLevels.slice();
+      : EFFECTIVE_DEFAULTS.activeLevels.slice();
 
     return {
       enabled: source.enabled !== false,
       reviewDanmakuEnabled: source.reviewDanmakuEnabled === true,
       reviewDanmakuSpeed: normalizeReviewDanmakuSpeed(source.reviewDanmakuSpeed),
+      reviewDanmakuDensity: normalizeReviewDanmakuDensity(source.reviewDanmakuDensity),
       activeLevels: activeLevels.length
         ? Array.from(new Set(activeLevels))
-        : DEFAULT_SETTINGS.activeLevels.slice(),
+        : EFFECTIVE_DEFAULTS.activeLevels.slice(),
       replaceRatio: Math.min(
         0.3,
-        Math.max(0.1, Number(source.replaceRatio) || DEFAULT_SETTINGS.replaceRatio)
+        Math.max(0.1, Number(source.replaceRatio) || EFFECTIVE_DEFAULTS.replaceRatio)
       ),
       maxReplaceCount: Math.min(
         5,
-        Math.max(1, Math.floor(Number(source.maxReplaceCount) || DEFAULT_SETTINGS.maxReplaceCount))
+        Math.max(
+          1,
+          Math.floor(Number(source.maxReplaceCount) || EFFECTIVE_DEFAULTS.maxReplaceCount)
+        )
       ),
       targetCefr: hasMethod(globalThis.SubtitleTranslator, 'normalizeTargetCefr')
         ? globalThis.SubtitleTranslator.normalizeTargetCefr(source.targetCefr)
-        : DEFAULT_SETTINGS.targetCefr,
+        : EFFECTIVE_DEFAULTS.targetCefr,
       webPageEnabled: source.webPageEnabled !== false,
       domainRules:
         source.domainRules && typeof source.domainRules === 'object' ? source.domainRules : {},
@@ -251,15 +317,165 @@
     };
   }
 
-  function buildRuntimeSettings(baseSettings, updates) {
-    if (sharedSettings && typeof sharedSettings.buildSettingsPayload === 'function') {
-      return sharedSettings.buildSettingsPayload(baseSettings, updates);
+  function getRuntimeSettingsSyncController() {
+    if (runtimeSettingsSyncController) {
+      return runtimeSettingsSyncController;
     }
 
-    return normalizeSettings({
-      ...(baseSettings || {}),
-      ...(updates || {}),
+    if (
+      !runtimeSettingsSyncRuntime ||
+      typeof runtimeSettingsSyncRuntime.createRuntimeSettingsSyncController !== 'function'
+    ) {
+      throw new Error('Runtime settings synchronization runtime unavailable');
+    }
+
+    runtimeSettingsSyncController = runtimeSettingsSyncRuntime.createRuntimeSettingsSyncController({
+      sharedSettings,
+      runtimeSettingsKeys: RUNTIME_SETTINGS_KEYS,
+      settingsStorageKeyV3: SETTINGS_STORAGE_KEY_V3,
+      learningWordStatsStorageKey: LEARNING_WORD_STATS_STORAGE_KEY,
+      reviewQueueStorageKey: REVIEW_QUEUE_STORAGE_KEY,
+      learningSummaryStorageKey: LEARNING_SUMMARY_STORAGE_KEY,
+      normalizeSettingsFallback,
+      createTranslationRuntimeFingerprint,
+      resolveSettingsFromV3(nextV3Raw) {
+        if (
+          sharedSettings &&
+          typeof sharedSettings.normalizeSettingsV3 === 'function' &&
+          typeof sharedSettings.resolveEffectiveRuntime === 'function'
+        ) {
+          const nextV3 = sharedSettings.normalizeSettingsV3(nextV3Raw);
+          return sharedSettings.resolveEffectiveRuntime(nextV3, {
+            hostname: globalThis.location && globalThis.location.hostname,
+          });
+        }
+        return getRuntimeSettingsSyncController().buildRuntimeSettings(settings, nextV3Raw);
+      },
+      getCurrentSettings() {
+        return settings;
+      },
+      setCurrentSettings(nextSettings) {
+        settings = nextSettings;
+      },
+      bumpRenderGeneration() {
+        renderGeneration += 1;
+      },
+      handleReviewDanmakuSpeedChange() {
+        syncDanmakuSettings();
+      },
+      handleReviewDanmakuChange() {
+        syncEngineWithPlayback();
+      },
+      handleTranslationSettingsChange() {
+        clearTranslationCache();
+        if (webTextReplacementController) {
+          webTextReplacementController.clearPendingTimer();
+        }
+        invalidateRenderedSubtitles();
+        observeSubtitleChanges();
+        startTimelinePolling();
+        scheduleProcess();
+      },
+      handleLearningStateChange() {
+        if (hasMethod(globalThis.VocabularyModule, 'refreshLearningStateFromStorage')) {
+          return globalThis.VocabularyModule.refreshLearningStateFromStorage().then(() => {
+            clearTranslationCache();
+            invalidateRenderedSubtitles();
+            scheduleProcess();
+          });
+        }
+        return null;
+      },
+      logError,
     });
+    return runtimeSettingsSyncController;
+  }
+
+  function normalizeSettings(rawSettings) {
+    return getRuntimeSettingsSyncController().normalizeSettings(rawSettings);
+  }
+
+  function buildRuntimeSettings(baseSettings, updates) {
+    return getRuntimeSettingsSyncController().buildRuntimeSettings(baseSettings, updates);
+  }
+
+  function getWebTextReplacementController() {
+    if (webTextReplacementController) {
+      return webTextReplacementController;
+    }
+
+    if (
+      !webTextReplacementRuntime ||
+      typeof webTextReplacementRuntime.createWebTextReplacementController !== 'function'
+    ) {
+      throw new Error('Web text replacement runtime unavailable');
+    }
+
+    webTextReplacementController = webTextReplacementRuntime.createWebTextReplacementController({
+      processIntervalMs: WEB_TEXT_PROCESS_INTERVAL,
+      getSettings() {
+        return settings;
+      },
+      getRenderGeneration() {
+        return renderGeneration;
+      },
+      createCacheKey,
+      readCache(cacheKey) {
+        return translationCache.get(cacheKey);
+      },
+      writeCache(cacheKey, result) {
+        translationCache.set(cacheKey, result);
+      },
+      translateText(text, runtimeSettings) {
+        return SubtitleTranslator.processSubtitle(text, runtimeSettings);
+      },
+      renderToHtml(result, sourceText, runtimeSettings) {
+        return renderWebTextReplacementHtml(result, sourceText, runtimeSettings);
+      },
+      normalizeText,
+      isVideoSiteHost,
+      scheduleProcess,
+      logError,
+      getDocument() {
+        return globalThis.document;
+      },
+      getHostname() {
+        return globalThis.location && globalThis.location.hostname;
+      },
+    });
+    return webTextReplacementController;
+  }
+
+  function importOverlayModuleBundle() {
+    if (
+      typeof chrome === 'undefined' ||
+      !chrome.runtime ||
+      typeof chrome.runtime.getURL !== 'function'
+    ) {
+      return null;
+    }
+
+    return import(chrome.runtime.getURL('dist/overlay.js'));
+  }
+
+  function getOverlayLoaderController() {
+    if (overlayLoaderController) {
+      return overlayLoaderController;
+    }
+
+    if (!overlayLoaderRuntime || typeof overlayLoaderRuntime.createOverlayLoader !== 'function') {
+      throw new Error('Overlay loader runtime unavailable');
+    }
+
+    overlayLoaderController = overlayLoaderRuntime.createOverlayLoader({
+      shouldLoadForHost: shouldLoadOverlayModuleForHost,
+      importOverlayModule: importOverlayModuleBundle,
+      getHostname() {
+        return globalThis.location && globalThis.location.hostname;
+      },
+      logError,
+    });
+    return overlayLoaderController;
   }
 
   function isCurrentSiteEnabled(runtimeSettings) {
@@ -289,34 +505,57 @@
     });
   }
 
+  function applyStoredSettings(stored) {
+    if (
+      sharedSettings &&
+      typeof sharedSettings.migrateToV3 === 'function' &&
+      typeof sharedSettings.resolveEffectiveRuntime === 'function'
+    ) {
+      const nextV3 = sharedSettings.migrateToV3(stored);
+      if (
+        typeof chrome !== 'undefined' &&
+        chrome.storage &&
+        chrome.storage.local &&
+        typeof chrome.storage.local.set === 'function'
+      ) {
+        chrome.storage.local.set({
+          [SETTINGS_STORAGE_KEY_V3]: nextV3,
+        });
+      }
+      settings = sharedSettings.resolveEffectiveRuntime(nextV3, {
+        hostname: globalThis.location && globalThis.location.hostname,
+      });
+      return settings;
+    }
+
+    settings = buildRuntimeSettings(EFFECTIVE_DEFAULTS, stored);
+    return settings;
+  }
+
   function getSettings() {
     return new Promise((resolve) => {
-      chrome.storage.local.get(null, (stored) => {
-        if (
-          sharedSettings &&
-          typeof sharedSettings.migrateToV3 === 'function' &&
-          typeof sharedSettings.resolveEffectiveRuntime === 'function'
-        ) {
-          const nextV3 = sharedSettings.migrateToV3(stored);
-          if (
-            chrome.storage &&
-            chrome.storage.local &&
-            typeof chrome.storage.local.set === 'function'
-          ) {
-            chrome.storage.local.set({
-              [SETTINGS_STORAGE_KEY_V3]: nextV3,
-            });
-          }
-          settings = sharedSettings.resolveEffectiveRuntime(nextV3, {
-            hostname: globalThis.location && globalThis.location.hostname,
-          });
-          resolve(settings);
-          return;
-        }
+      const storageApi =
+        typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local
+          ? chrome.storage.local
+          : null;
+      if (!storageApi || typeof storageApi.get !== 'function') {
+        resolve(applyStoredSettings(null));
+        return;
+      }
 
-        settings = buildRuntimeSettings(DEFAULT_SETTINGS, stored);
-        resolve(settings);
-      });
+      try {
+        storageApi.get(null, (stored) => {
+          if (chrome.runtime && chrome.runtime.lastError) {
+            logError('Settings read failed', chrome.runtime.lastError);
+            resolve(applyStoredSettings(null));
+            return;
+          }
+          resolve(applyStoredSettings(stored));
+        });
+      } catch (error) {
+        logError('Settings read failed', error);
+        resolve(applyStoredSettings(null));
+      }
     });
   }
 
@@ -371,14 +610,10 @@
   }
 
   function classifyRuntimeSettingsChange(previousSettings, nextSettings) {
-    const previous = normalizeSettings(previousSettings);
-    const next = normalizeSettings(nextSettings);
-    return {
-      translationChanged:
-        createTranslationRuntimeFingerprint(previous) !== createTranslationRuntimeFingerprint(next),
-      reviewDanmakuChanged: previous.reviewDanmakuEnabled !== next.reviewDanmakuEnabled,
-      reviewDanmakuSpeedChanged: previous.reviewDanmakuSpeed !== next.reviewDanmakuSpeed,
-    };
+    return getRuntimeSettingsSyncController().classifyRuntimeSettingsChange(
+      previousSettings,
+      nextSettings
+    );
   }
 
   function isRenderUpToDate(element, sourceText, runtimeSettings) {
@@ -526,17 +761,23 @@
       return;
     }
 
+    const renderedWordKeys = new Set();
     result.tokens.forEach((token) => {
       if (!token || token.type !== 'word') {
         return;
       }
 
       const word = String(token.word || '').trim();
-      if (!word) {
+      const wordKey = word.toLowerCase();
+      if (!word || renderedWordKeys.has(wordKey)) {
         return;
       }
 
+      renderedWordKeys.add(wordKey);
       globalThis.VocabularyModule.recordHit(word);
+      if (hasMethod(globalThis.SubtitleTranslator, 'reportRenderedExposure')) {
+        globalThis.SubtitleTranslator.reportRenderedExposure(word);
+      }
     });
 
     if (element && element.dataset) {
@@ -573,6 +814,12 @@
   function syncDanmakuSettings() {
     if (hasMethod(globalThis.DanmakuModule, 'setSpeedPreset')) {
       globalThis.DanmakuModule.setSpeedPreset(settings.reviewDanmakuSpeed);
+    }
+    if (hasMethod(globalThis.DanmakuModule, 'setDensityPreset')) {
+      globalThis.DanmakuModule.setDensityPreset(settings.reviewDanmakuDensity);
+    }
+    if (hasMethod(globalThis.SchedulerModule, 'setDensityPreset')) {
+      globalThis.SchedulerModule.setDensityPreset(settings.reviewDanmakuDensity);
     }
   }
 
@@ -659,16 +906,38 @@
 
   function syncEngineWithPlayback() {
     const playbackState = getPlaybackState();
-    if (!settings.reviewDanmakuEnabled || !playbackState.hasVideo || playbackState.ended) {
+    if (!settings.reviewDanmakuEnabled) {
       stopReviewEngine(true);
       return;
     }
 
+    if (!playbackState.hasVideo || playbackState.ended) {
+      logDebug(
+        '[DanmakuReview] syncEngine: no video or ended, stopping. hasVideo:',
+        playbackState.hasVideo,
+        'ended:',
+        playbackState.ended
+      );
+      stopReviewEngine(!playbackState.hasVideo);
+      return;
+    }
+
     if (!shouldRunReviewDanmaku(settings, playbackState)) {
+      logDebug(
+        '[DanmakuReview] syncEngine: paused. reviewDanmakuEnabled:',
+        settings.reviewDanmakuEnabled,
+        'hasVideo:',
+        playbackState.hasVideo,
+        'paused:',
+        playbackState.paused,
+        'ended:',
+        playbackState.ended
+      );
       pauseReviewEngine();
       return;
     }
 
+    logDebug('[DanmakuReview] syncEngine: starting engine');
     startReviewEngine();
   }
 
@@ -758,136 +1027,53 @@
     }
   }
 
-  // 全网页文本词汇替换功能（Toucan模式）
   async function processWebPageText() {
-    if (!settings.webPageEnabled || !settings.enabled) {
-      return;
-    }
-
-    const now = Date.now();
-    if (webTextProcessing) {
-      return;
-    }
-
-    const elapsed = now - lastWebTextProcessAt;
-    if (elapsed < WEB_TEXT_PROCESS_INTERVAL) {
-      if (!webTextProcessTimer) {
-        webTextProcessTimer = setTimeout(() => {
-          webTextProcessTimer = null;
-          scheduleProcess();
-        }, WEB_TEXT_PROCESS_INTERVAL - elapsed);
-      }
-      return;
-    }
-
-    webTextProcessing = true;
-    lastWebTextProcessAt = now;
-    try {
-      // 只在视频站外的普通网页启用
-      const hostname = window.location.hostname.toLowerCase();
-      if (isVideoSiteHost(hostname)) {
-        return;
-      }
-
-      // 选择所有正文文本节点
-      const textNodes = [];
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-        acceptNode: (node) => {
-          // 过滤掉非正文内容
-          if (
-            !node.parentElement ||
-            node.parentElement.tagName.match(
-              /^(SCRIPT|STYLE|NOSCRIPT|IFRAME|BUTTON|A|INPUT|TEXTAREA|SELECT|LABEL|NAV|HEADER|FOOTER|ASIDE|PRE|CODE)$/
-            )
-          ) {
-            return NodeFilter.FILTER_REJECT;
-          }
-          // 跳过已处理的内容
-          if (node.parentElement.closest('.bili-vocab-word, .bili-vocab-tooltip')) {
-            return NodeFilter.FILTER_REJECT;
-          }
-          // 只处理包含中文的文本
-          const text = node.textContent.trim();
-          if (text.length < 2 || !/[\u4e00-\u9fff]/.test(text)) {
-            return NodeFilter.FILTER_REJECT;
-          }
-          return NodeFilter.FILTER_ACCEPT;
-        },
-      });
-
-      let node;
-      while ((node = walker.nextNode())) {
-        textNodes.push(node);
-      }
-
-      // 分批处理，避免阻塞页面
-      const batchSize = 20;
-      for (let i = 0; i < textNodes.length; i += batchSize) {
-        const batch = textNodes.slice(i, i + batchSize);
-        await Promise.all(batch.map((node) => processTextNode(node)));
-        // 给浏览器喘息时间
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    } finally {
-      webTextProcessing = false;
-    }
+    await getWebTextReplacementController().processPageText();
   }
 
-  async function processTextNode(textNode) {
-    try {
-      const generationAtStart = renderGeneration;
-      const text = textNode.textContent;
-      if (!text || text.length < 2) return;
-
-      const cacheKey = createCacheKey(`web:${text}`, settings);
-      let result = translationCache.get(cacheKey);
-      if (!result) {
-        result = await SubtitleTranslator.processSubtitle(text, settings);
-        translationCache.set(cacheKey, result);
-      }
-
-      if (generationAtStart !== renderGeneration) {
-        return;
-      }
-
-      if (shouldReplaceWebTextNode(result, text) && textNode.parentNode) {
-        const span = document.createElement('span');
-        span.innerHTML = renderWebTextReplacementHtml(result, text, settings);
-        textNode.parentNode.replaceChild(span, textNode);
-      }
-    } catch (e) {
-      // 单个节点处理失败不影响整体
-      logError('processTextNode', e);
+  function containsUnsafeContent(root) {
+    if (
+      !webTextReplacementRuntime ||
+      typeof webTextReplacementRuntime.containsUnsafeContent !== 'function'
+    ) {
+      return true;
     }
+    return webTextReplacementRuntime.containsUnsafeContent(root);
   }
 
   function shouldReplaceWebTextNode(result, sourceText) {
-    if (!result || typeof result !== 'object') {
+    if (
+      !webTextReplacementRuntime ||
+      typeof webTextReplacementRuntime.shouldReplaceWebTextNode !== 'function'
+    ) {
       return false;
     }
-
-    const normalizedSource = normalizeText(sourceText);
-    const normalizedMixedText = normalizeText(result.mixedText);
-    if (normalizedMixedText) {
-      return normalizedMixedText !== normalizedSource;
-    }
-
-    if (!Array.isArray(result.tokens)) {
-      return false;
-    }
-
-    return result.tokens.some((token) => token && token.type === 'word');
+    return webTextReplacementRuntime.shouldReplaceWebTextNode(result, sourceText, normalizeText);
   }
 
   function renderWebTextReplacementHtml(result, sourceText, runtimeSettings) {
     if (
-      !globalThis.SubtitleRenderer ||
-      typeof globalThis.SubtitleRenderer.renderToHtml !== 'function'
+      !webTextReplacementRuntime ||
+      typeof webTextReplacementRuntime.renderWebTextReplacementHtml !== 'function'
     ) {
       return '';
     }
-
-    return globalThis.SubtitleRenderer.renderToHtml(result, sourceText, runtimeSettings);
+    return webTextReplacementRuntime.renderWebTextReplacementHtml(
+      result,
+      sourceText,
+      runtimeSettings,
+      {
+        renderToHtml(nextResult, nextSourceText, nextSettings) {
+          if (
+            !globalThis.SubtitleRenderer ||
+            typeof globalThis.SubtitleRenderer.renderToHtml !== 'function'
+          ) {
+            return '';
+          }
+          return globalThis.SubtitleRenderer.renderToHtml(nextResult, nextSourceText, nextSettings);
+        },
+      }
+    );
   }
 
   function observeSubtitleChanges() {
@@ -896,6 +1082,7 @@
       observer = null;
     }
     observerTarget = null;
+    lastMutationObserverRefreshAt = 0;
 
     const observeTarget = resolveSubtitleObserverTarget(settings);
     if (!observeTarget) {
@@ -904,15 +1091,20 @@
     observerTarget = observeTarget;
 
     observer = new MutationObserver(() => {
-      ensureRuntimeBindings();
-      startTimelinePolling();
       const latestTarget = resolveSubtitleObserverTarget(settings);
       if (shouldRefreshSubtitleObserver(observerTarget, latestTarget)) {
         // Why: keep observer target aligned with SPA DOM changes (body <-> subtitle container).
         observeSubtitleChanges();
       }
+
+      if (!shouldRunMutationObserverRefresh()) {
+        return;
+      }
+
+      ensureRuntimeBindings();
+      startTimelinePolling();
       queueSubtitleNavigationBroadcast();
-      scheduleProcess();
+      processAll().catch((error) => logError('Process failed', error));
     });
 
     observer.observe(observeTarget, {
@@ -938,7 +1130,6 @@
     }
 
     timelinePollTimer = setInterval(() => {
-      startTimelinePolling();
       const latestTarget = resolveSubtitleObserverTarget(settings);
       if (shouldRefreshSubtitleObserver(observerTarget, latestTarget)) {
         observeSubtitleChanges();
@@ -949,808 +1140,125 @@
     }, TIMELINE_POLL_MS);
   }
 
-  function toMessageError(error, fallbackMessage) {
-    if (!error) {
-      return fallbackMessage;
+  function getSubtitleNavigationController() {
+    if (subtitleNavigationController) {
+      return subtitleNavigationController;
     }
-    const message = String(error.message || error).trim();
-    return message || fallbackMessage;
+
+    if (
+      !subtitleNavigationControllerRuntime ||
+      typeof subtitleNavigationControllerRuntime.createSubtitleNavigationController !== 'function'
+    ) {
+      throw new Error('Subtitle navigation controller runtime unavailable');
+    }
+
+    subtitleNavigationController =
+      subtitleNavigationControllerRuntime.createSubtitleNavigationController({
+        subtitleNavigation,
+        overlayBridgeRuntime: overlaySubtitleNavigationBridgeRuntime,
+        readMessageType: ACTIVE_TAB_SUBTITLE_NAVIGATION_READ,
+        navigateMessageType: ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE,
+        subscribeMessageType: ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE,
+        bridgeKey: OVERLAY_SUBTITLE_NAVIGATION_BRIDGE_KEY,
+        getHostname() {
+          return String((globalThis.location && globalThis.location.hostname) || '');
+        },
+        getVideo() {
+          return document.querySelector('video');
+        },
+        getVideoKey() {
+          if (hasMethod(globalThis.SubtitleParser, 'getCurrentSubtitleTimelineCacheKey')) {
+            return globalThis.SubtitleParser.getCurrentSubtitleTimelineCacheKey();
+          }
+          return '';
+        },
+        loadTimeline() {
+          if (hasMethod(globalThis.SubtitleParser, 'loadSubtitleTimeline')) {
+            return globalThis.SubtitleParser.loadSubtitleTimeline();
+          }
+          return [];
+        },
+        isSupportedHostFallback(hostname) {
+          return Boolean(
+            globalThis.SubtitleParser &&
+            typeof globalThis.SubtitleParser.isBilibiliHost === 'function' &&
+            globalThis.SubtitleParser.isBilibiliHost(hostname)
+          );
+        },
+        logError,
+      });
+    return subtitleNavigationController;
   }
 
   function normalizeSubtitleNavigationAction(value) {
-    const normalized = String(value || '')
-      .trim()
-      .toLowerCase();
-    return ['previous', 'replay', 'next'].includes(normalized) ? normalized : '';
-  }
-
-  function getSubtitleNavigationHostname() {
-    return String((globalThis.location && globalThis.location.hostname) || '');
-  }
-
-  function normalizeSubtitleNavigationTimeline(timeline) {
-    if (subtitleNavigation && typeof subtitleNavigation.normalizeSubtitleTimeline === 'function') {
-      return subtitleNavigation.normalizeSubtitleTimeline(timeline);
-    }
-    return [];
-  }
-
-  function buildSharedSubtitleNavigationState(options) {
-    if (
-      subtitleNavigation &&
-      typeof subtitleNavigation.buildSubtitleNavigationState === 'function'
-    ) {
-      return subtitleNavigation.buildSubtitleNavigationState(options);
-    }
-
-    return {
-      supported: false,
-      loading: false,
-      total: 0,
-      currentIndex: null,
-      progressLabel: '未支持',
-      headline: '当前站点暂不支持句级跳转',
-      description: '现阶段仅在 Bilibili 字幕时间轴上提供上一句、重播本句和下一句导航。',
-      currentText: '切到支持的视频页后即可使用句级字幕导航。',
-      previousIndex: null,
-      replayIndex: null,
-      nextIndex: null,
-    };
-  }
-
-  function createSubtitleNavigationSnapshotFromState(state) {
-    if (
-      subtitleNavigation &&
-      typeof subtitleNavigation.createActiveTabSubtitleNavigationSnapshot === 'function'
-    ) {
-      return subtitleNavigation.createActiveTabSubtitleNavigationSnapshot(state);
-    }
-
-    return {
-      supported: state && state.supported === true,
-      progressLabel: String((state && state.progressLabel) || '未支持'),
-      headline: String((state && state.headline) || '当前标签页暂无字幕导航'),
-      description: String((state && state.description) || '请先打开支持字幕的 Bilibili 视频页。'),
-      currentText: String((state && state.currentText) || '还没有可直接跳转的字幕句段。'),
-      canGoPrevious: Boolean(state && state.previousIndex != null),
-      canReplay: Boolean(state && state.replayIndex != null),
-      canGoNext: Boolean(state && state.nextIndex != null),
-    };
-  }
-
-  function isSubtitleNavigationSupportedHost() {
-    if (
-      subtitleNavigation &&
-      typeof subtitleNavigation.isSubtitleTimelineHostSupported === 'function'
-    ) {
-      return subtitleNavigation.isSubtitleTimelineHostSupported(getSubtitleNavigationHostname());
-    }
-
-    return Boolean(
-      globalThis.SubtitleParser &&
-      typeof globalThis.SubtitleParser.isBilibiliHost === 'function' &&
-      globalThis.SubtitleParser.isBilibiliHost(getSubtitleNavigationHostname())
-    );
+    return getSubtitleNavigationController().normalizeSubtitleNavigationAction(value);
   }
 
   function findSubtitleNavigationIndices(timeline, currentTime) {
-    const normalizedTimeline = normalizeSubtitleNavigationTimeline(timeline);
-    if (
-      !subtitleNavigation ||
-      typeof subtitleNavigation.findSubtitleIndexAtTime !== 'function' ||
-      typeof subtitleNavigation.resolveSubtitleNavigationTargets !== 'function'
-    ) {
-      return {
-        currentIndex: -1,
-        previousIndex: null,
-        replayIndex: null,
-        nextIndex: null,
-      };
-    }
-
-    const currentIndex = subtitleNavigation.findSubtitleIndexAtTime(
-      normalizedTimeline,
-      currentTime
-    );
-    const targets = subtitleNavigation.resolveSubtitleNavigationTargets(
-      normalizedTimeline,
-      currentTime
-    );
-
-    return {
-      currentIndex,
-      previousIndex: targets.previousIndex,
-      replayIndex: targets.replayIndex,
-      nextIndex: targets.nextIndex,
-    };
+    return getSubtitleNavigationController().findSubtitleNavigationIndices(timeline, currentTime);
   }
 
   function buildSubtitleNavigationSnapshot(timeline, currentTime) {
-    const normalizedTimeline = normalizeSubtitleNavigationTimeline(timeline);
-    const state = buildSharedSubtitleNavigationState({
-      hostname: getSubtitleNavigationHostname() || 'www.bilibili.com',
-      loading: false,
-      hasVideo: true,
-      currentTime,
-      timeline: normalizedTimeline,
-    });
-    return createSubtitleNavigationSnapshotFromState(state);
-  }
-
-  function isSubtitleNavigationStreamPort(port) {
-    return Boolean(port && port.name === ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE);
-  }
-
-  function isActiveSubtitleNavigationStreamPort(port) {
-    return (
-      isSubtitleNavigationStreamPort(port) &&
-      typeof port.postMessage === 'function' &&
-      subtitleNavigationPorts.has(port)
-    );
+    return getSubtitleNavigationController().buildSubtitleNavigationSnapshot(timeline, currentTime);
   }
 
   function createSubtitleNavigationSnapshotSignature(snapshot) {
-    const normalized = snapshot && typeof snapshot === 'object' ? snapshot : {};
-    return [
-      normalized.supported === true ? '1' : '0',
-      String(normalized.progressLabel || ''),
-      String(normalized.headline || ''),
-      String(normalized.description || ''),
-      String(normalized.currentText || ''),
-      normalized.canGoPrevious === true ? '1' : '0',
-      normalized.canReplay === true ? '1' : '0',
-      normalized.canGoNext === true ? '1' : '0',
-    ].join('::');
-  }
-
-  function getCurrentSubtitleNavigationVideoKey() {
-    if (
-      globalThis.SubtitleParser &&
-      typeof globalThis.SubtitleParser.getCurrentSubtitleTimelineCacheKey === 'function'
-    ) {
-      return String(globalThis.SubtitleParser.getCurrentSubtitleTimelineCacheKey() || '');
-    }
-    return '';
-  }
-
-  function createOverlaySubtitleNavigationPayload(
-    state,
-    videoKey = getCurrentSubtitleNavigationVideoKey()
-  ) {
-    return {
-      videoKey: String(videoKey || ''),
-      state:
-        state && typeof state === 'object'
-          ? { ...state }
-          : buildSubtitleNavigationContext(null, []).state,
-    };
-  }
-
-  function cloneOverlaySubtitleNavigationPayload(payload) {
-    const source =
-      payload && typeof payload === 'object'
-        ? payload
-        : createOverlaySubtitleNavigationPayload(buildSubtitleNavigationContext(null, []).state);
-    return {
-      videoKey: String(source.videoKey || ''),
-      state:
-        source.state && typeof source.state === 'object'
-          ? { ...source.state }
-          : buildSubtitleNavigationContext(null, []).state,
-    };
+    return getSubtitleNavigationController().createSubtitleNavigationSnapshotSignature(snapshot);
   }
 
   function createOverlaySubtitleNavigationSignature(payload) {
-    const normalized =
-      payload && typeof payload === 'object'
-        ? payload
-        : createOverlaySubtitleNavigationPayload(buildSubtitleNavigationContext(null, []).state);
-    const state = normalized.state && typeof normalized.state === 'object' ? normalized.state : {};
-    return [
-      String(normalized.videoKey || ''),
-      state.supported === true ? '1' : '0',
-      state.loading === true ? '1' : '0',
-      String(state.progressLabel || ''),
-      String(state.headline || ''),
-      String(state.description || ''),
-      String(state.currentText || ''),
-      state.previousIndex != null ? String(state.previousIndex) : '',
-      state.replayIndex != null ? String(state.replayIndex) : '',
-      state.nextIndex != null ? String(state.nextIndex) : '',
-    ].join('::');
+    return getSubtitleNavigationController().createOverlaySubtitleNavigationSignature(payload);
   }
 
-  function publishOverlaySubtitleNavigationPayload(payload) {
-    const nextPayload = cloneOverlaySubtitleNavigationPayload(payload);
-    overlaySubtitleNavigationPayload = nextPayload;
-    overlaySubtitleNavigationSignature = createOverlaySubtitleNavigationSignature(nextPayload);
-    overlaySubtitleNavigationListeners.forEach((listener) => {
-      try {
-        listener(cloneOverlaySubtitleNavigationPayload(nextPayload));
-      } catch (error) {
-        logError('Overlay subtitle navigation bridge update failed', error);
-      }
-    });
-  }
-
-  function buildPendingOverlaySubtitleNavigationPayload(
-    videoKey = getCurrentSubtitleNavigationVideoKey()
-  ) {
-    const video = document.querySelector('video');
-    const hasVideo = isSubtitleNavigationVideo(video);
-    const state = buildSharedSubtitleNavigationState({
-      hostname: getSubtitleNavigationHostname(),
-      loading: isSubtitleNavigationSupportedHost() && hasVideo,
-      hasVideo,
-      currentTime: hasVideo ? Number(video.currentTime) : Number.NaN,
-      timeline: [],
-    });
-    return createOverlaySubtitleNavigationPayload(state, videoKey);
-  }
-
-  function createSubtitleNavigationRuntimePayload(context, videoKey) {
-    return {
-      context,
-      videoKey: String(videoKey || ''),
-      snapshot: context.snapshot,
-      overlayPayload: createOverlaySubtitleNavigationPayload(context.state, videoKey),
-    };
-  }
-
-  function buildPendingSubtitleNavigationRuntimePayload(
-    videoKey = getCurrentSubtitleNavigationVideoKey()
-  ) {
-    const overlayPayload = buildPendingOverlaySubtitleNavigationPayload(videoKey);
-    const snapshot = createSubtitleNavigationSnapshotFromState(overlayPayload.state);
-    return {
-      context: {
-        timeline: [],
-        video: null,
-        state: { ...overlayPayload.state },
-        snapshot,
-      },
-      videoKey: String(overlayPayload.videoKey || ''),
-      snapshot,
-      overlayPayload,
-    };
-  }
-
-  function buildPendingSubtitleNavigationSnapshot() {
-    return buildPendingSubtitleNavigationRuntimePayload().snapshot;
-  }
-
-  function createSubtitleNavigationPortSnapshotKey(snapshot, videoKey) {
-    return `${String(videoKey || '')}::${createSubtitleNavigationSnapshotSignature(snapshot)}`;
-  }
-
-  function postSubtitleNavigationSnapshot(
-    port,
-    snapshot,
-    videoKey = getCurrentSubtitleNavigationVideoKey()
-  ) {
-    if (!isActiveSubtitleNavigationStreamPort(port)) {
-      return false;
-    }
-
-    const nextSnapshotKey = createSubtitleNavigationPortSnapshotKey(snapshot, videoKey);
-    if (subtitleNavigationPortSnapshotKeys.get(port) === nextSnapshotKey) {
-      return false;
-    }
-
-    port.postMessage({
-      type: ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE,
-      payload: snapshot,
-    });
-    subtitleNavigationPortSnapshotKeys.set(port, nextSnapshotKey);
-    return true;
-  }
-
-  function rememberSubtitleNavigationSnapshot(snapshot, videoKey) {
-    subtitleNavigationSnapshotSignature = createSubtitleNavigationSnapshotSignature(snapshot);
-    subtitleNavigationSnapshotVideoKey = String(videoKey || '');
-  }
-
-  function broadcastSubtitleNavigationSnapshot(snapshot, videoKey) {
-    rememberSubtitleNavigationSnapshot(snapshot, videoKey);
-    subtitleNavigationPorts.forEach((port) => {
-      try {
-        postSubtitleNavigationSnapshot(port, snapshot, videoKey);
-      } catch (error) {
-        logError('Subtitle navigation stream update failed', error);
-      }
-    });
+  function isSubtitleNavigationStreamPort(port) {
+    return getSubtitleNavigationController().isSubtitleNavigationStreamPort(port);
   }
 
   function queueSubtitleNavigationBroadcast() {
-    if (subtitleNavigationPorts.size === 0 && overlaySubtitleNavigationListeners.size === 0) {
-      return;
-    }
-
-    const pendingOverlayPayload = buildPendingOverlaySubtitleNavigationPayload();
-    const pendingVideoKey = String(pendingOverlayPayload.videoKey || '');
-    const pendingOverlaySignature = createOverlaySubtitleNavigationSignature(pendingOverlayPayload);
-    if (
-      pendingOverlaySignature !== overlaySubtitleNavigationSignature &&
-      pendingOverlayPayload.videoKey !==
-        String(
-          overlaySubtitleNavigationPayload && overlaySubtitleNavigationPayload.videoKey
-            ? overlaySubtitleNavigationPayload.videoKey
-            : ''
-        )
-    ) {
-      publishOverlaySubtitleNavigationPayload(pendingOverlayPayload);
-    }
-
-    const pendingSnapshot = createSubtitleNavigationSnapshotFromState(pendingOverlayPayload.state);
-    const pendingSnapshotSignature = createSubtitleNavigationSnapshotSignature(pendingSnapshot);
-    if (
-      subtitleNavigationPorts.size > 0 &&
-      pendingSnapshotSignature !== subtitleNavigationSnapshotSignature &&
-      pendingVideoKey !== subtitleNavigationSnapshotVideoKey
-    ) {
-      broadcastSubtitleNavigationSnapshot(pendingSnapshot, pendingVideoKey);
-    }
-
-    if (subtitleNavigationBroadcastPromise) {
-      subtitleNavigationBroadcastQueued = true;
-      return;
-    }
-
-    subtitleNavigationBroadcastPromise = readSubtitleNavigationRuntimePayload()
-      .then((runtimePayload) => {
-        const nextSnapshotSignature = createSubtitleNavigationSnapshotSignature(
-          runtimePayload.snapshot
-        );
-        if (nextSnapshotSignature !== subtitleNavigationSnapshotSignature) {
-          broadcastSubtitleNavigationSnapshot(runtimePayload.snapshot, runtimePayload.videoKey);
-        }
-
-        const nextOverlaySignature = createOverlaySubtitleNavigationSignature(
-          runtimePayload.overlayPayload
-        );
-        if (nextOverlaySignature !== overlaySubtitleNavigationSignature) {
-          publishOverlaySubtitleNavigationPayload(runtimePayload.overlayPayload);
-          return;
-        }
-        overlaySubtitleNavigationPayload = cloneOverlaySubtitleNavigationPayload(
-          runtimePayload.overlayPayload
-        );
-        overlaySubtitleNavigationSignature = nextOverlaySignature;
-      })
-      .catch((error) => {
-        logError('Subtitle navigation stream refresh failed', error);
-      })
-      .finally(() => {
-        subtitleNavigationBroadcastPromise = null;
-        if (!subtitleNavigationBroadcastQueued) {
-          return;
-        }
-        subtitleNavigationBroadcastQueued = false;
-        queueSubtitleNavigationBroadcast();
-      });
-  }
-
-  function isSubtitleNavigationVideo(value) {
-    return Boolean(value && typeof value.currentTime === 'number');
-  }
-
-  function buildSubtitleNavigationContext(video, timeline) {
-    const normalizedTimeline = normalizeSubtitleNavigationTimeline(timeline);
-    const state = buildSharedSubtitleNavigationState({
-      hostname: getSubtitleNavigationHostname(),
-      loading: false,
-      hasVideo: isSubtitleNavigationVideo(video),
-      currentTime: isSubtitleNavigationVideo(video) ? Number(video.currentTime) : Number.NaN,
-      timeline: normalizedTimeline,
-    });
-
-    return {
-      timeline: normalizedTimeline,
-      video: isSubtitleNavigationVideo(video) ? video : null,
-      state,
-      snapshot: createSubtitleNavigationSnapshotFromState(state),
-    };
-  }
-
-  async function readSubtitleNavigationContext() {
-    if (!isSubtitleNavigationSupportedHost()) {
-      return buildSubtitleNavigationContext(null, []);
-    }
-
-    const video = document.querySelector('video');
-    if (!isSubtitleNavigationVideo(video)) {
-      return buildSubtitleNavigationContext(null, []);
-    }
-
-    const timeline = hasMethod(globalThis.SubtitleParser, 'loadSubtitleTimeline')
-      ? await globalThis.SubtitleParser.loadSubtitleTimeline()
-      : [];
-    return buildSubtitleNavigationContext(video, timeline);
-  }
-
-  async function readSubtitleNavigationSnapshot() {
-    return (await readSubtitleNavigationRuntimePayload()).snapshot;
-  }
-
-  async function readStableSubtitleNavigationContext(
-    requestedVideoKey = getCurrentSubtitleNavigationVideoKey()
-  ) {
-    const context = await readSubtitleNavigationContext();
-    const latestVideoKey = getCurrentSubtitleNavigationVideoKey();
-    return {
-      context,
-      requestedVideoKey: String(requestedVideoKey || ''),
-      latestVideoKey: String(latestVideoKey || ''),
-      isStale: latestVideoKey !== requestedVideoKey,
-    };
-  }
-
-  async function readSubtitleNavigationRuntimePayload() {
-    const requestedVideoKey = getCurrentSubtitleNavigationVideoKey();
-    try {
-      const stableContext = await readStableSubtitleNavigationContext(requestedVideoKey);
-      if (stableContext.isStale) {
-        // Why: async timeline reads must not publish resolved data for a video that has already changed.
-        return buildPendingSubtitleNavigationRuntimePayload(stableContext.latestVideoKey);
-      }
-      return createSubtitleNavigationRuntimePayload(
-        stableContext.context,
-        stableContext.requestedVideoKey
-      );
-    } catch (error) {
-      // Why: bridge consumers should fall back to the current page pending state, not stale data.
-      logError('Subtitle navigation runtime payload read failed', error);
-      return buildPendingSubtitleNavigationRuntimePayload(getCurrentSubtitleNavigationVideoKey());
-    }
+    getSubtitleNavigationController().queueSubtitleNavigationBroadcast();
   }
 
   function readOverlaySubtitleNavigationPayload() {
-    if (overlaySubtitleNavigationPayload) {
-      return cloneOverlaySubtitleNavigationPayload(overlaySubtitleNavigationPayload);
-    }
-    const initialPayload = buildPendingOverlaySubtitleNavigationPayload();
-    overlaySubtitleNavigationPayload = cloneOverlaySubtitleNavigationPayload(initialPayload);
-    overlaySubtitleNavigationSignature = createOverlaySubtitleNavigationSignature(initialPayload);
-    return cloneOverlaySubtitleNavigationPayload(initialPayload);
-  }
-
-  function subscribeOverlaySubtitleNavigation(listener) {
-    if (typeof listener !== 'function') {
-      return () => {};
-    }
-
-    overlaySubtitleNavigationListeners.add(listener);
-    listener(readOverlaySubtitleNavigationPayload());
-    return () => {
-      overlaySubtitleNavigationListeners.delete(listener);
-    };
+    return getSubtitleNavigationController().readOverlaySubtitleNavigationPayload();
   }
 
   async function refreshOverlaySubtitleNavigation() {
-    const runtimePayload = await readSubtitleNavigationRuntimePayload();
-    const nextOverlaySignature = createOverlaySubtitleNavigationSignature(
-      runtimePayload.overlayPayload
-    );
-    if (nextOverlaySignature !== overlaySubtitleNavigationSignature) {
-      publishOverlaySubtitleNavigationPayload(runtimePayload.overlayPayload);
-    } else {
-      overlaySubtitleNavigationPayload = cloneOverlaySubtitleNavigationPayload(
-        runtimePayload.overlayPayload
-      );
-      overlaySubtitleNavigationSignature = nextOverlaySignature;
-    }
-    return cloneOverlaySubtitleNavigationPayload(runtimePayload.overlayPayload);
+    return getSubtitleNavigationController().refreshOverlaySubtitleNavigation();
+  }
+
+  function subscribeOverlaySubtitleNavigation(listener) {
+    return getSubtitleNavigationController().subscribeOverlaySubtitleNavigation(listener);
   }
 
   function ensureOverlaySubtitleNavigationBridge() {
-    globalThis[OVERLAY_SUBTITLE_NAVIGATION_BRIDGE_KEY] = {
-      read() {
-        return readOverlaySubtitleNavigationPayload();
-      },
-      refresh() {
-        return refreshOverlaySubtitleNavigation();
-      },
-      subscribe(listener) {
-        return subscribeOverlaySubtitleNavigation(listener);
-      },
-    };
-  }
-
-  async function navigateSubtitleByAction(action) {
-    const normalizedAction = normalizeSubtitleNavigationAction(action);
-    if (!normalizedAction) {
-      throw new Error('Invalid subtitle navigation action');
-    }
-
-    let stableContext;
-    try {
-      stableContext = await readStableSubtitleNavigationContext();
-    } catch (error) {
-      // Why: actionable navigation errors should be about invalid actions, not transient timeline reads.
-      logError('Subtitle navigation action read failed', error);
-      return buildPendingSubtitleNavigationSnapshot();
-    }
-    if (stableContext.isStale) {
-      // Why: user actions should never seek a newly-mounted video with the previous video's timeline.
-      return buildPendingSubtitleNavigationRuntimePayload(stableContext.latestVideoKey).snapshot;
-    }
-    const context = stableContext.context;
-    if (!context.video) {
-      return context.snapshot;
-    }
-
-    const targetIndex =
-      normalizedAction === 'previous'
-        ? context.state.previousIndex
-        : normalizedAction === 'replay'
-          ? context.state.replayIndex
-          : context.state.nextIndex;
-    if (
-      !subtitleNavigation ||
-      typeof subtitleNavigation.seekVideoToSubtitle !== 'function' ||
-      subtitleNavigation.seekVideoToSubtitle(context.video, context.timeline, targetIndex) == null
-    ) {
-      return context.snapshot;
-    }
-
-    const snapshot = buildSubtitleNavigationSnapshot(context.timeline, context.video.currentTime);
-    queueSubtitleNavigationBroadcast();
-    return snapshot;
+    getSubtitleNavigationController().ensureOverlaySubtitleNavigationBridge(globalThis);
   }
 
   function watchRuntimePorts() {
-    if (
-      typeof chrome === 'undefined' ||
-      !chrome.runtime ||
-      !chrome.runtime.onConnect ||
-      typeof chrome.runtime.onConnect.addListener !== 'function'
-    ) {
-      return;
-    }
-
-    chrome.runtime.onConnect.addListener((port) => {
-      if (!isSubtitleNavigationStreamPort(port)) {
-        return;
-      }
-
-      subtitleNavigationPorts.add(port);
-      port.onDisconnect.addListener(() => {
-        subtitleNavigationPorts.delete(port);
-        subtitleNavigationPortSnapshotKeys.delete(port);
-      });
-
-      Promise.resolve()
-        .then(() => readSubtitleNavigationRuntimePayload())
-        .then((runtimePayload) => {
-          if (
-            !postSubtitleNavigationSnapshot(port, runtimePayload.snapshot, runtimePayload.videoKey)
-          ) {
-            return;
-          }
-          rememberSubtitleNavigationSnapshot(runtimePayload.snapshot, runtimePayload.videoKey);
-        })
-        .catch((error) => {
-          if (!subtitleNavigationPorts.has(port)) {
-            return;
-          }
-          logError('Subtitle navigation stream init failed', error);
-          try {
-            const pendingRuntimePayload = buildPendingSubtitleNavigationRuntimePayload();
-            if (
-              !postSubtitleNavigationSnapshot(
-                port,
-                pendingRuntimePayload.snapshot,
-                pendingRuntimePayload.videoKey
-              )
-            ) {
-              return;
-            }
-            rememberSubtitleNavigationSnapshot(
-              pendingRuntimePayload.snapshot,
-              pendingRuntimePayload.videoKey
-            );
-          } catch (fallbackError) {
-            logError('Subtitle navigation stream fallback failed', fallbackError);
-          }
-        });
-    });
+    getSubtitleNavigationController().watchRuntimePorts(
+      typeof chrome !== 'undefined' ? chrome.runtime : null
+    );
   }
 
   function watchRuntimeMessages() {
-    if (
-      typeof chrome === 'undefined' ||
-      !chrome.runtime ||
-      !chrome.runtime.onMessage ||
-      typeof chrome.runtime.onMessage.addListener !== 'function'
-    ) {
-      return;
-    }
-
-    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-      const messageType = String(message && message.type ? message.type : '').trim();
-      let task = null;
-
-      if (messageType === ACTIVE_TAB_SUBTITLE_NAVIGATION_READ) {
-        task = () => readSubtitleNavigationSnapshot();
-      } else if (messageType === ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE) {
-        task = () => navigateSubtitleByAction(message && message.payload && message.payload.action);
-      }
-
-      if (!task) {
-        return false;
-      }
-
-      Promise.resolve()
-        .then(task)
-        .then(
-          (payload) => {
-            sendResponse({ ok: true, payload });
-          },
-          (error) => {
-            sendResponse({
-              ok: false,
-              error: toMessageError(error, `Failed to process ${messageType}`),
-            });
-          }
-        );
-      return true;
-    });
+    getSubtitleNavigationController().watchRuntimeMessages(
+      typeof chrome !== 'undefined' ? chrome.runtime : null
+    );
   }
 
   function hasRuntimeSettingsChange(changes) {
-    if (changes && changes[SETTINGS_STORAGE_KEY_V3]) {
-      return true;
-    }
-    return RUNTIME_SETTINGS_KEYS.some((key) => Boolean(changes && changes[key]));
+    return getRuntimeSettingsSyncController().hasRuntimeSettingsChange(changes);
   }
 
   function watchStorageChanges() {
-    chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName !== 'local') {
-        return;
-      }
-
-      const v3Changed = Boolean(changes[SETTINGS_STORAGE_KEY_V3]);
-      const learningStateChanged = Boolean(
-        changes[LEARNING_WORD_STATS_STORAGE_KEY] ||
-        changes[REVIEW_QUEUE_STORAGE_KEY] ||
-        changes[LEARNING_SUMMARY_STORAGE_KEY]
-      );
-      if (!hasRuntimeSettingsChange(changes) && !learningStateChanged) {
-        return;
-      }
-
-      const previousSettings = settings;
-      let nextSettings = previousSettings;
-      if (
-        v3Changed &&
-        sharedSettings &&
-        typeof sharedSettings.normalizeSettingsV3 === 'function' &&
-        typeof sharedSettings.resolveEffectiveRuntime === 'function'
-      ) {
-        const nextV3 = sharedSettings.normalizeSettingsV3(
-          changes[SETTINGS_STORAGE_KEY_V3].newValue
-        );
-        nextSettings = sharedSettings.resolveEffectiveRuntime(nextV3, {
-          hostname: globalThis.location && globalThis.location.hostname,
-        });
-      } else {
-        const updates = {};
-        RUNTIME_SETTINGS_KEYS.forEach((key) => {
-          if (!changes[key]) {
-            return;
-          }
-          updates[key] = changes[key].newValue;
-        });
-        nextSettings = buildRuntimeSettings(previousSettings, updates);
-      }
-
-      const {
-        translationChanged: hasTranslationChange,
-        reviewDanmakuChanged,
-        reviewDanmakuSpeedChanged,
-      } = classifyRuntimeSettingsChange(previousSettings, nextSettings);
-      settings = nextSettings;
-
-      if (
-        !reviewDanmakuChanged &&
-        !reviewDanmakuSpeedChanged &&
-        !hasTranslationChange &&
-        !learningStateChanged
-      ) {
-        return;
-      }
-
-      renderGeneration += 1;
-
-      if (reviewDanmakuSpeedChanged) {
-        syncDanmakuSettings();
-      }
-
-      if (reviewDanmakuChanged) {
-        syncEngineWithPlayback();
-      }
-
-      if (hasTranslationChange) {
-        clearTranslationCache();
-        if (webTextProcessTimer) {
-          clearTimeout(webTextProcessTimer);
-          webTextProcessTimer = null;
-        }
-        invalidateRenderedSubtitles();
-        observeSubtitleChanges();
-        startTimelinePolling();
-        scheduleProcess();
-      }
-
-      if (
-        learningStateChanged &&
-        hasMethod(globalThis.VocabularyModule, 'refreshLearningStateFromStorage')
-      ) {
-        globalThis.VocabularyModule.refreshLearningStateFromStorage()
-          .then(() => {
-            clearTranslationCache();
-            invalidateRenderedSubtitles();
-            scheduleProcess();
-          })
-          .catch((error) => logError('Learning state refresh failed', error));
-      }
-    });
-  }
-
-  function getOverlayModuleFromGlobal() {
-    const module = globalThis.ReactOverlayModule || globalThis.OverlayPanelModule;
-    if (module && typeof module.mountOverlayPanel === 'function') {
-      return module;
+    if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.onChanged) {
+      return;
     }
-    return null;
+    getRuntimeSettingsSyncController().watchStorageChanges(chrome.storage);
   }
 
   async function loadOverlayModule() {
-    const existing = getOverlayModuleFromGlobal();
-    if (existing) {
-      overlayModuleCache = existing;
-      return existing;
-    }
-
-    if (overlayModuleCache) {
-      return overlayModuleCache;
-    }
-
-    if (overlayModulePromise) {
-      return overlayModulePromise;
-    }
-
-    if (
-      typeof chrome === 'undefined' ||
-      !chrome.runtime ||
-      typeof chrome.runtime.getURL !== 'function'
-    ) {
-      return null;
-    }
-
-    overlayModulePromise = import(chrome.runtime.getURL('dist/overlay.js'))
-      .then((module) => {
-        const globalModule = getOverlayModuleFromGlobal();
-        if (globalModule) {
-          overlayModuleCache = globalModule;
-          return globalModule;
-        }
-        if (module && typeof module.mountOverlayPanel === 'function') {
-          overlayModuleCache = module;
-          return module;
-        }
-        return null;
-      })
-      .catch((error) => {
-        logError('Overlay module load failed', error);
-        return null;
-      })
-      .finally(() => {
-        overlayModulePromise = null;
-      });
-
-    return overlayModulePromise;
+    return getOverlayLoaderController().load();
   }
 
   async function init() {
@@ -1760,8 +1268,7 @@
       !globalThis.SubtitleTranslator ||
       !globalThis.VocabularyModule ||
       !globalThis.SubtitleRenderer ||
-      !globalThis.TooltipModule ||
-      !overlayModule
+      !globalThis.TooltipModule
     ) {
       console.error('[BiliVocab] Required modules are missing.');
       return;
@@ -1778,14 +1285,20 @@
     clearTranslationCache();
 
     TooltipModule.init();
-    overlayModule.mountOverlayPanel();
+    if (overlayModule) {
+      try {
+        overlayModule.mountOverlayPanel();
+      } catch (error) {
+        logError('Overlay module mount failed', error);
+      }
+    }
     ensureRuntimeBindings();
     watchStorageChanges();
     observeSubtitleChanges();
     startTimelinePolling();
     scheduleProcess();
 
-    console.log('[BiliVocab] Running with settings:', settings);
+    logDebug('[BiliVocab] Running with settings:', settings);
   }
 
   ensureOverlaySubtitleNavigationBridge();
@@ -1818,8 +1331,13 @@
       resetHitTrackingIfSourceChanged,
       recordRenderedHits,
       loadOverlayModule,
+      init,
+      applyTranslation,
+      processSubtitles,
+      processAll,
       runInAnimationFrame,
       isVideoSiteHost,
+      shouldLoadOverlayModuleForHost,
       shouldEnableTimelinePolling,
       shouldObserveDomMutations,
       shouldRetargetSubtitleObserver,
@@ -1828,6 +1346,7 @@
       shouldRunLegacyWebTextPipeline,
       shouldReplaceWebTextNode,
       renderWebTextReplacementHtml,
+      containsUnsafeContent,
       normalizeSubtitleNavigationAction,
       findSubtitleNavigationIndices,
       buildSubtitleNavigationSnapshot,
@@ -1841,8 +1360,10 @@
       __writeToCacheForTest: writeToCache,
       __clearTranslationCacheForTest: clearTranslationCache,
       __resetOverlayModuleStateForTest() {
-        overlayModuleCache = null;
-        overlayModulePromise = null;
+        if (overlayLoaderController) {
+          overlayLoaderController.reset();
+        }
+        overlayLoaderController = null;
       },
     };
   }

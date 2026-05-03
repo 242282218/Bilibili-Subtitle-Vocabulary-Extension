@@ -311,11 +311,16 @@
   }
 
   function getChromeRuntimeError() {
-    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.lastError) {
+    if (typeof chrome === 'undefined' || !chrome.runtime) {
       return null;
     }
 
-    const message = String(chrome.runtime.lastError.message || '').trim();
+    const runtimeError = chrome.runtime.lastError;
+    if (!runtimeError) {
+      return null;
+    }
+
+    const message = String(runtimeError.message || '').trim();
     return new Error(message || 'Chrome runtime error');
   }
 
@@ -616,10 +621,16 @@
     }
 
     try {
-      const result = chrome.tabs.sendMessage(tabId, {
-        type: 'SETTINGS_UPDATED',
-        payload: settings,
-      });
+      const result = chrome.tabs.sendMessage(
+        tabId,
+        {
+          type: 'SETTINGS_UPDATED',
+          payload: settings,
+        },
+        () => {
+          void getChromeRuntimeError();
+        }
+      );
       if (result && typeof result.catch === 'function') {
         result.catch(() => {});
       }

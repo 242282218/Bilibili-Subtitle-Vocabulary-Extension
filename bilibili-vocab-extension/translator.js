@@ -47,7 +47,10 @@
   ]);
   const CONTEXT_COOLDOWN_BASE_MS = 15 * 60 * 1000;
   const CONTEXT_COOLDOWN_MAX_MS = 24 * 60 * 60 * 1000;
+  const RECENT_EXPOSURE_WINDOW_MS = 3 * 60 * 1000;
+  const RECENT_EXPOSURE_PENALTY = -80;
   const WORD_CONTEXT_FEEDBACK_STATE = new Map();
+  const WORD_RECENT_EXPOSURE_STATE = new Map();
 
   const escapeHtml =
     (globalThis.Utils && globalThis.Utils.escapeHtml) ||
@@ -323,6 +326,37 @@
     return -200;
   }
 
+  function clearExpiredRecentExposure(now = Date.now()) {
+    const nowTimestamp = normalizeTimestamp(now) || Date.now();
+    WORD_RECENT_EXPOSURE_STATE.forEach((state, key) => {
+      const lastExposedAt = normalizeTimestamp(state && state.lastExposedAt);
+      if (lastExposedAt == null || nowTimestamp - lastExposedAt > RECENT_EXPOSURE_WINDOW_MS) {
+        WORD_RECENT_EXPOSURE_STATE.delete(key);
+      }
+    });
+  }
+
+  function getRecentExposurePenalty(candidate, now = Date.now()) {
+    const wordKey = normalizeWordKey(candidate && candidate.word);
+    if (!wordKey) {
+      return 0;
+    }
+
+    const nowTimestamp = normalizeTimestamp(now) || Date.now();
+    const state = WORD_RECENT_EXPOSURE_STATE.get(wordKey);
+    if (!state) {
+      return 0;
+    }
+
+    const lastExposedAt = normalizeTimestamp(state.lastExposedAt);
+    if (lastExposedAt == null || nowTimestamp - lastExposedAt > RECENT_EXPOSURE_WINDOW_MS) {
+      return 0;
+    }
+
+    const exposureCount = Math.max(1, Number(state.count) || 1);
+    return RECENT_EXPOSURE_PENALTY * Math.min(3, exposureCount);
+  }
+
   function calculateReplacementCount(totalMatches, settings) {
     if (!totalMatches) {
       return 0;
@@ -440,6 +474,11 @@
       getContextCooldownPenalty(a, selectionContext.now);
     if (cooldownDiff !== 0) return cooldownDiff;
 
+    const exposureDiff =
+      getRecentExposurePenalty(b, selectionContext.now) -
+      getRecentExposurePenalty(a, selectionContext.now);
+    if (exposureDiff !== 0) return exposureDiff;
+
     const learningDiff = getLearningStatusScore(b) - getLearningStatusScore(a);
     if (learningDiff !== 0) return learningDiff;
 
@@ -469,6 +508,7 @@
     const normalizedSettings = normalizeSettings(settings);
     const selectionContext = resolveSelectionContext(sourceTextOrContext);
     clearExpiredContextCooldown(selectionContext.now);
+    clearExpiredRecentExposure(selectionContext.now);
 
     const filteredCandidates = matches.filter((candidate) => {
       return !shouldBlockByContextRule(candidate, selectionContext.sourceText);
@@ -602,6 +642,58 @@
       .join('');
   }
 
+  function reportRenderedExposure(word, options = {}) {
+    const wordKey = normalizeWordKey(word);
+    if (!wordKey) {
+      return null;
+    }
+
+    const now = normalizeTimestamp(options.now) || Date.now();
+    const previous = WORD_RECENT_EXPOSURE_STATE.get(wordKey) || {
+      count: 0,
+      lastExposedAt: null,
+    };
+    const nextState = {
+      count: Math.min(12, Math.max(0, Number(previous.count) || 0) + 1),
+      lastExposedAt: now,
+    };
+    WORD_RECENT_EXPOSURE_STATE.set(wordKey, nextState);
+
+    return {
+      word: wordKey,
+      ...nextState,
+      inRecentWindow: true,
+    };
+  }
+
+  function getWordExposureState(word, now = Date.now()) {
+    const wordKey = normalizeWordKey(word);
+    if (!wordKey) {
+      return {
+        word: '',
+        count: 0,
+        lastExposedAt: null,
+        inRecentWindow: false,
+      };
+    }
+
+    clearExpiredRecentExposure(now);
+    const state = WORD_RECENT_EXPOSURE_STATE.get(wordKey) || {
+      count: 0,
+      lastExposedAt: null,
+    };
+    const nowTimestamp = normalizeTimestamp(now) || Date.now();
+    const lastExposedAt = normalizeTimestamp(state.lastExposedAt);
+
+    return {
+      word: wordKey,
+      count: Number(state.count) || 0,
+      lastExposedAt,
+      inRecentWindow:
+        lastExposedAt != null && nowTimestamp - lastExposedAt <= RECENT_EXPOSURE_WINDOW_MS,
+    };
+  }
+
   function reportContextMisreplace(word, options = {}) {
     const wordKey = normalizeWordKey(word);
     if (!wordKey) {
@@ -676,6 +768,7 @@
 
   function resetContextFeedbackForTest() {
     WORD_CONTEXT_FEEDBACK_STATE.clear();
+    WORD_RECENT_EXPOSURE_STATE.clear();
   }
 
   async function processSubtitle(text, settings) {
@@ -743,6 +836,8 @@
     buildTokens,
     getWordDisplayText,
     buildMixedText,
+    reportRenderedExposure,
+    getWordExposureState,
     reportContextMisreplace,
     getWordCooldownState,
     __resetContextFeedbackForTest: resetContextFeedbackForTest,

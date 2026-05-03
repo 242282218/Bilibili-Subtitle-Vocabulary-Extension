@@ -287,6 +287,54 @@ test('contentScript overlay bridge: refresh should not re-publish identical payl
   unsubscribe();
 });
 
+test('contentScript overlay bridge: refresh should not regress loaded state to stale loading payload for the same video', async () => {
+  const contentScript = loadContentScript();
+  const video = { currentTime: 2.5 };
+  let shouldFailTimeline = false;
+
+  global.location = { hostname: 'www.bilibili.com' };
+  global.document.querySelector = (selector) => {
+    if (selector === 'video') {
+      return video;
+    }
+    return null;
+  };
+  global.SubtitleParser.getCurrentSubtitleTimelineCacheKey = () => 'BV1sameVideo:cid:42';
+  global.SubtitleParser.loadSubtitleTimeline = async () => {
+    if (shouldFailTimeline) {
+      throw new Error('timeline temporarily unavailable');
+    }
+    return [
+      { from: 0, to: 1.5, content: '第一句' },
+      { from: 2.2, to: 3.7, content: '第二句' },
+    ];
+  };
+
+  const loadedPayload = await contentScript.refreshOverlaySubtitleNavigation();
+  assert.equal(loadedPayload.videoKey, 'BV1sameVideo:cid:42');
+  assert.equal(loadedPayload.state.loading, false);
+  assert.equal(loadedPayload.state.progressLabel, '2 / 2');
+
+  shouldFailTimeline = true;
+
+  const originalConsoleError = console.error;
+  let nextPayload = null;
+  console.error = () => {};
+  try {
+    nextPayload = await contentScript.refreshOverlaySubtitleNavigation();
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.equal(nextPayload.videoKey, 'BV1sameVideo:cid:42');
+  assert.equal(nextPayload.state.loading, false);
+  assert.equal(nextPayload.state.progressLabel, '2 / 2');
+
+  const latestPayload = contentScript.readOverlaySubtitleNavigationPayload();
+  assert.equal(latestPayload.state.loading, false);
+  assert.equal(latestPayload.state.progressLabel, '2 / 2');
+});
+
 test.after(() => {
   global.document = previousDocument;
   global.chrome = previousChrome;

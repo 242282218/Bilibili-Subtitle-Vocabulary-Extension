@@ -28,6 +28,32 @@ const ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE =
   'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE';
 const ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE =
   'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_SUBSCRIBE';
+export const CONTENT_RUNTIME_SCRIPT_FILES = [
+  'config.js',
+  'settingsUiStateMachine.js',
+  'sharedSettings.js',
+  'experienceMetrics.js',
+  'adaptiveTuning.js',
+  'learningState.js',
+  'utils.js',
+  'segmenter.js',
+  'vocabulary.js',
+  'translator.js',
+  'renderer.js',
+  'subtitleParser.js',
+  'scripts/danmaku.js',
+  'scripts/scheduler.js',
+  'tooltip.js',
+  'subtitleNavigation.js',
+  'overlaySubtitleNavigationBridge.js',
+  'subtitleNavigationController.js',
+  'runtimeSettingsSync.js',
+  'webTextReplacement.js',
+  'overlayLoader.js',
+  'contentScript.js',
+] as const;
+export const CONTENT_RUNTIME_STYLE_FILES = ['styles.css'] as const;
+const STORAGE_MUTATION_TIMEOUT_MS = 10000;
 const METRIC_COUNTER_KEYS = [
   'contextMisreplaceReported',
   'contextMisreplaceHigh',
@@ -157,6 +183,16 @@ export interface ActiveTabSubtitleStatus {
   subtitleNavigation: ActiveTabSubtitleNavigation;
 }
 
+export interface ActiveTabSitePermissionState {
+  hostname: string;
+  originPattern: string;
+  defaultSupported: boolean;
+  authorized: boolean;
+  canRequest: boolean;
+  canRevoke: boolean;
+  message: string;
+}
+
 function normalizeVocabularyWord(input: unknown): VocabularyWord | null {
   if (!input || typeof input !== 'object') {
     return null;
@@ -251,8 +287,49 @@ function getChromeRuntimeError(fallbackMessage: string): Error | null {
 
 let storageMutationQueue = Promise.resolve();
 
+function createStorageMutationTimeoutError(): Error {
+  return new Error(`Storage mutation timed out after ${STORAGE_MUTATION_TIMEOUT_MS}ms`);
+}
+
+function runStorageMutationWithTimeout<T>(task: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(createStorageMutationTimeoutError());
+    }, STORAGE_MUTATION_TIMEOUT_MS);
+
+    Promise.resolve()
+      .then(task)
+      .then(
+        (result) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          clearTimeout(timeoutId);
+          resolve(result);
+        },
+        (error) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          clearTimeout(timeoutId);
+          reject(error);
+        }
+      );
+  });
+}
+
 function enqueueStorageMutation<T>(task: () => Promise<T>): Promise<T> {
-  const nextTask = storageMutationQueue.then(task, task);
+  const nextTask = storageMutationQueue.then(
+    () => runStorageMutationWithTimeout(task),
+    () => runStorageMutationWithTimeout(task)
+  );
   storageMutationQueue = nextTask.then(
     () => undefined,
     () => undefined
@@ -272,6 +349,32 @@ function hasChromeTabMessaging(): boolean {
 
 function hasChromeTabConnections(): boolean {
   return hasChromeTabs() && typeof chrome.tabs.connect === 'function';
+}
+
+function hasChromePermissions(): boolean {
+  return (
+    typeof chrome !== 'undefined' &&
+    Boolean(chrome.permissions) &&
+    typeof chrome.permissions.contains === 'function' &&
+    typeof chrome.permissions.request === 'function'
+  );
+}
+
+function hasChromePermissionRemoval(): boolean {
+  return (
+    typeof chrome !== 'undefined' &&
+    Boolean(chrome.permissions) &&
+    typeof chrome.permissions.remove === 'function'
+  );
+}
+
+function hasChromeScripting(): boolean {
+  return (
+    typeof chrome !== 'undefined' &&
+    Boolean(chrome.scripting) &&
+    typeof chrome.scripting.executeScript === 'function' &&
+    typeof chrome.scripting.insertCSS === 'function'
+  );
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -1063,6 +1166,240 @@ export async function getCurrentTabHostname(): Promise<string> {
   return resolveHostnameFromTabUrl(activeTab && activeTab.url);
 }
 
+function resolveActiveTabOriginPattern(rawUrl: unknown): {
+  hostname: string;
+  originPattern: string;
+  defaultSupported: boolean;
+  validOptionalOrigin: boolean;
+} {
+  try {
+    const url = new URL(String(rawUrl || ''));
+    const hostname = url.hostname.toLowerCase();
+    const protocol = url.protocol.toLowerCase();
+    const originPattern =
+      hostname && (protocol === 'http:' || protocol === 'https:')
+        ? `${protocol}//${hostname}/*`
+        : '';
+    return {
+      hostname,
+      originPattern,
+      defaultSupported:
+        protocol === 'https:' &&
+        (hostname === 'www.bilibili.com' || hostname === 'www.youtube.com'),
+      validOptionalOrigin: Boolean(originPattern),
+    };
+  } catch {
+    return {
+      hostname: '',
+      originPattern: '',
+      defaultSupported: false,
+      validOptionalOrigin: false,
+    };
+  }
+}
+
+function createInactiveSitePermissionState(message: string): ActiveTabSitePermissionState {
+  return {
+    hostname: '',
+    originPattern: '',
+    defaultSupported: false,
+    authorized: false,
+    canRequest: false,
+    canRevoke: false,
+    message,
+  };
+}
+
+function containsHostPermission(originPattern: string): Promise<boolean> {
+  if (!hasChromePermissions() || !originPattern) {
+    return Promise.resolve(false);
+  }
+
+  return new Promise<boolean>((resolve) => {
+    chrome.permissions.contains({ origins: [originPattern] }, (result) => {
+      const runtimeError = getChromeRuntimeError('chrome.permissions.contains failed');
+      resolve(!runtimeError && result === true);
+    });
+  });
+}
+
+function requestHostPermission(originPattern: string): Promise<boolean> {
+  if (!hasChromePermissions() || !originPattern) {
+    return Promise.resolve(false);
+  }
+
+  return new Promise<boolean>((resolve) => {
+    chrome.permissions.request({ origins: [originPattern] }, (granted) => {
+      const runtimeError = getChromeRuntimeError('chrome.permissions.request failed');
+      resolve(!runtimeError && granted === true);
+    });
+  });
+}
+
+function removeHostPermission(originPattern: string): Promise<boolean> {
+  if (!hasChromePermissionRemoval() || !originPattern) {
+    return Promise.resolve(false);
+  }
+
+  return new Promise<boolean>((resolve) => {
+    chrome.permissions.remove({ origins: [originPattern] }, (removed) => {
+      const runtimeError = getChromeRuntimeError('chrome.permissions.remove failed');
+      resolve(!runtimeError && removed === true);
+    });
+  });
+}
+
+function insertContentRuntimeCss(tabId: number): Promise<void> {
+  if (!hasChromeScripting()) {
+    return Promise.reject(new Error('chrome.scripting unavailable'));
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    chrome.scripting.insertCSS(
+      {
+        target: { tabId },
+        files: CONTENT_RUNTIME_STYLE_FILES.slice(),
+      },
+      () => {
+        const runtimeError = getChromeRuntimeError('chrome.scripting.insertCSS failed');
+        if (runtimeError) {
+          reject(runtimeError);
+          return;
+        }
+        resolve();
+      }
+    );
+  });
+}
+
+function executeContentRuntimeScripts(tabId: number): Promise<void> {
+  if (!hasChromeScripting()) {
+    return Promise.reject(new Error('chrome.scripting unavailable'));
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    chrome.scripting.executeScript(
+      {
+        target: { tabId },
+        files: CONTENT_RUNTIME_SCRIPT_FILES.slice(),
+      },
+      () => {
+        const runtimeError = getChromeRuntimeError('chrome.scripting.executeScript failed');
+        if (runtimeError) {
+          reject(runtimeError);
+          return;
+        }
+        resolve();
+      }
+    );
+  });
+}
+
+async function injectContentRuntimeIntoActiveTab(): Promise<boolean> {
+  const activeTab = await queryActiveTab().catch(() => null);
+  if (!activeTab || typeof activeTab.id !== 'number' || !hasChromeScripting()) {
+    return false;
+  }
+
+  try {
+    await insertContentRuntimeCss(activeTab.id);
+    await executeContentRuntimeScripts(activeTab.id);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function readActiveTabSitePermissionState(): Promise<ActiveTabSitePermissionState> {
+  const activeTab = await queryActiveTab().catch(() => null);
+  const target = resolveActiveTabOriginPattern(activeTab && activeTab.url);
+
+  if (!target.hostname) {
+    return createInactiveSitePermissionState('当前页面无法识别域名，无法请求站点授权。');
+  }
+
+  if (target.defaultSupported) {
+    return {
+      hostname: target.hostname,
+      originPattern: target.originPattern,
+      defaultSupported: true,
+      authorized: true,
+      canRequest: false,
+      canRevoke: false,
+      message: '默认支持站点已随扩展安装授权。',
+    };
+  }
+
+  if (!target.validOptionalOrigin) {
+    return {
+      hostname: target.hostname,
+      originPattern: '',
+      defaultSupported: false,
+      authorized: false,
+      canRequest: false,
+      canRevoke: false,
+      message: '当前页面不是可授权的 http/https 站点。',
+    };
+  }
+
+  const authorized = await containsHostPermission(target.originPattern);
+  return {
+    hostname: target.hostname,
+    originPattern: target.originPattern,
+    defaultSupported: false,
+    authorized,
+    canRequest: !authorized && hasChromePermissions(),
+    canRevoke: authorized && hasChromePermissionRemoval(),
+    message: authorized
+      ? '当前站点已获得 optional host permission。'
+      : '当前站点尚未授权，网页正文模式不会在此站点运行。',
+  };
+}
+
+export async function requestActiveTabSitePermission(): Promise<ActiveTabSitePermissionState> {
+  const current = await readActiveTabSitePermissionState();
+  if (!current.canRequest || !current.originPattern) {
+    return current;
+  }
+
+  const granted = await requestHostPermission(current.originPattern);
+  const injected = granted ? await injectContentRuntimeIntoActiveTab() : false;
+  return {
+    ...current,
+    authorized: granted,
+    canRequest: !granted && hasChromePermissions(),
+    canRevoke: granted && hasChromePermissionRemoval(),
+    message: granted
+      ? injected
+        ? '已获得当前站点授权，并已注入当前页面。'
+        : '已获得当前站点授权；当前页面需要刷新或重新打开后再试。'
+      : '用户未授予当前站点权限，站点规则保持不变。',
+  };
+}
+
+export async function removeActiveTabSitePermission(): Promise<ActiveTabSitePermissionState> {
+  const current = await readActiveTabSitePermissionState();
+  if (!current.canRevoke || !current.originPattern) {
+    return current;
+  }
+
+  const removed = await removeHostPermission(current.originPattern);
+  if (!removed) {
+    return {
+      ...current,
+      message: '当前站点授权撤销失败，请稍后重试。',
+    };
+  }
+
+  return {
+    ...current,
+    authorized: false,
+    canRequest: hasChromePermissions(),
+    canRevoke: false,
+    message: '已撤销当前站点授权；当前页面刷新后会完全停止运行。',
+  };
+}
+
 function createEmptyActiveTabSubtitleNavigation(
   description = '请先打开支持字幕的 Bilibili 视频页。'
 ): ActiveTabSubtitleNavigation {
@@ -1337,6 +1674,7 @@ export function subscribeActiveTabSubtitleStatus(
       });
     });
     port.onDisconnect.addListener(() => {
+      void getChromeRuntimeError('chrome.tabs.connect disconnected');
       if (currentPort !== port) {
         return;
       }

@@ -15,7 +15,7 @@ const DEFAULT_REPORT_DIR = path.join(
 );
 const DEFAULT_MAX_LOG_CHARS = 4000;
 const LEGACY_DEFERRED_TEST_PATTERNS = [/^options-.*\.test\.js$/, /^popup(?:-.*)?\.test\.js$/];
-const OUT_OF_BAND_BROWSER_SMOKE_TESTS = ['browser-extension-smoke.test.js'];
+const OUT_OF_BAND_BROWSER_SMOKE_TESTS = ['browser-extension-smoke.spec.js'];
 const LEGACY_COMPAT_TESTS_IN_OPTIMIZE_LANE = [
   'shared-settings-integration.test.js',
   'standalone-init.test.js',
@@ -94,6 +94,8 @@ const TEST_SHARD_DEFINITIONS = [
       /^test-coverage-entry-contract\.test\.js$/,
       /^test-ui-entry-contract\.test\.js$/,
       /^workflow-lockfile-contract\.test\.js$/,
+      /^release-candidate-entry-contract\.test\.js$/,
+      /^permission-strategy-contract\.test\.js$/,
       /^check-overlay-size\.test\.js$/,
       /^refresh-overlay-size-baseline\.test\.js$/,
       /^pack-extension\.test\.js$/,
@@ -113,7 +115,11 @@ function getPnpmCommand(platform = process.platform) {
 function listTestFiles(targetTestsDir = DEFAULT_TESTS_DIR) {
   return fs
     .readdirSync(targetTestsDir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.test.js'))
+    .filter(
+      (entry) =>
+        entry.isFile() &&
+        (entry.name.endsWith('.test.js') || OUT_OF_BAND_BROWSER_SMOKE_TESTS.includes(entry.name))
+    )
     .map((entry) => entry.name)
     .sort((left, right) => left.localeCompare(right));
 }

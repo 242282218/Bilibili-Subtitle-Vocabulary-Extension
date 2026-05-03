@@ -1,9 +1,14 @@
+// @legacy - shipped overlay entry is the React bundle in dist/overlay.js.
 (function (globalScope) {
-  const DEFAULT_SETTINGS = {
+  const sharedSettings =
+    globalScope.SharedSettings ||
+    (typeof require === 'function' ? require('./sharedSettings.js') : null);
+  const FALLBACK_RUNTIME_SETTINGS = {
     enabled: true,
     schemaVersion: 2,
     reviewDanmakuEnabled: false,
     reviewDanmakuSpeed: 'normal',
+    reviewDanmakuDensity: 'normal',
     webPageEnabled: true,
     domainRules: {},
     vocabularyMode: 'core',
@@ -12,6 +17,10 @@
     replaceRatio: 0.2,
     maxReplaceCount: 2,
     targetCefr: 'B2',
+    bilingualMode: 'default',
+    themeMode: 'auto',
+  };
+  const OVERLAY_PANEL_DEFAULTS = {
     overlayPanelHidden: false,
     overlayPanelCollapsed: false,
     overlayPanelWidth: 420,
@@ -19,9 +28,12 @@
     overlayPanelOffsetRight: 24,
     overlayPanelOffsetBottom: 96,
   };
-  const sharedSettings =
-    globalScope.SharedSettings ||
-    (typeof require === 'function' ? require('./sharedSettings.js') : null);
+  const DEFAULT_SETTINGS = {
+    ...(sharedSettings && sharedSettings.DEFAULT_SETTINGS
+      ? sharedSettings.DEFAULT_SETTINGS
+      : FALLBACK_RUNTIME_SETTINGS),
+    ...OVERLAY_PANEL_DEFAULTS,
+  };
   const learningState =
     globalScope.LearningState ||
     (typeof require === 'function' ? require('./learningState.js') : null);
@@ -48,9 +60,6 @@
   ];
   const OVERLAY_INSTANCE_KEY = '__BILI_VOCAB_OVERLAY_INSTANCE__';
 
-  if (sharedSettings) {
-    Object.assign(DEFAULT_SETTINGS, sharedSettings.DEFAULT_SETTINGS);
-  }
   const LEARNING_STATE_KEYS = learningState
     ? learningState.STORAGE_KEYS
     : {
@@ -123,6 +132,35 @@
       : DEFAULT_SETTINGS.reviewDanmakuSpeed;
   }
 
+  function normalizeReviewDanmakuDensity(value) {
+    if (sharedSettings) {
+      return sharedSettings.normalizeReviewDanmakuDensity(value);
+    }
+
+    const normalized = String(value || DEFAULT_SETTINGS.reviewDanmakuDensity)
+      .trim()
+      .toLowerCase();
+    return ['sparse', 'normal', 'dense'].includes(normalized)
+      ? normalized
+      : DEFAULT_SETTINGS.reviewDanmakuDensity;
+  }
+
+  function normalizeBilingualMode(value) {
+    const normalized = String(value || DEFAULT_SETTINGS.bilingualMode)
+      .trim()
+      .toLowerCase();
+    return ['default', 'bilingual', 'english-only'].includes(normalized)
+      ? normalized
+      : DEFAULT_SETTINGS.bilingualMode;
+  }
+
+  function normalizeThemeMode(value) {
+    const normalized = String(value || DEFAULT_SETTINGS.themeMode)
+      .trim()
+      .toLowerCase();
+    return ['auto', 'light', 'dark'].includes(normalized) ? normalized : DEFAULT_SETTINGS.themeMode;
+  }
+
   function getReviewDanmakuSpeedLabel(speed) {
     if (sharedSettings) {
       return sharedSettings.getReviewDanmakuSpeedLabel(speed);
@@ -192,6 +230,7 @@
         replaceRatio: 0.15,
         maxReplaceCount: 1,
         reviewDanmakuSpeed: 'slow',
+        reviewDanmakuDensity: 'sparse',
       };
     }
 
@@ -200,6 +239,7 @@
         replaceRatio: 0.25,
         maxReplaceCount: 4,
         reviewDanmakuSpeed: 'fast',
+        reviewDanmakuDensity: 'dense',
       };
     }
 
@@ -207,6 +247,7 @@
       replaceRatio: 0.2,
       maxReplaceCount: 2,
       reviewDanmakuSpeed: 'normal',
+      reviewDanmakuDensity: 'normal',
     };
   }
 
@@ -250,10 +291,21 @@
     const normalizedShared = sharedSettings ? sharedSettings.normalizeSettings(source) : null;
     return {
       enabled: normalizedShared ? normalizedShared.enabled : source.enabled !== false,
+      webPageEnabled: normalizedShared
+        ? normalizedShared.webPageEnabled
+        : source.webPageEnabled !== false,
+      domainRules: normalizedShared
+        ? normalizedShared.domainRules
+        : source.domainRules && typeof source.domainRules === 'object'
+          ? source.domainRules
+          : {},
       reviewDanmakuEnabled: source.reviewDanmakuEnabled === true,
       reviewDanmakuSpeed: normalizedShared
         ? normalizedShared.reviewDanmakuSpeed
         : normalizeReviewDanmakuSpeed(source.reviewDanmakuSpeed),
+      reviewDanmakuDensity: normalizedShared
+        ? normalizedShared.reviewDanmakuDensity
+        : normalizeReviewDanmakuDensity(source.reviewDanmakuDensity),
       vocabularyMode: normalizedShared
         ? normalizedShared.vocabularyMode
         : DEFAULT_SETTINGS.vocabularyMode,
@@ -283,6 +335,12 @@
       targetCefr: normalizedShared
         ? normalizedShared.targetCefr
         : normalizeTargetCefr(source.targetCefr),
+      bilingualMode: normalizedShared
+        ? normalizedShared.bilingualMode
+        : normalizeBilingualMode(source.bilingualMode),
+      themeMode: normalizedShared
+        ? normalizedShared.themeMode
+        : normalizeThemeMode(source.themeMode),
       overlayPanelHidden: source.overlayPanelHidden === true,
       overlayPanelCollapsed: source.overlayPanelCollapsed === true,
       overlayPanelWidth: clampOverlayWidth(source.overlayPanelWidth),
