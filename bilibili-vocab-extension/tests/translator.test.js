@@ -438,6 +438,10 @@ test('buildTokens: 应透传 CEFR 与词频元数据到词 token', () => {
       cefrLevel: 'B1',
       cefrRank: 3,
       frequency: 123456,
+      coverageTier: 'core',
+      sourceFlags: ['kylebing', 'ecdict'],
+      isPhraseBacked: true,
+      phraseCount: 5,
     },
   ]);
 
@@ -446,6 +450,10 @@ test('buildTokens: 应透传 CEFR 与词频元数据到词 token', () => {
   assert.equal(wordToken.cefrLevel, 'B1');
   assert.equal(wordToken.cefrRank, 3);
   assert.equal(wordToken.frequency, 123456);
+  assert.equal(wordToken.coverageTier, 'core');
+  assert.deepEqual(wordToken.sourceFlags, ['kylebing', 'ecdict']);
+  assert.equal(wordToken.isPhraseBacked, true);
+  assert.equal(wordToken.phraseCount, 5);
 });
 
 test('buildMixedText: 词替换应使用 单词（原词语意思） 格式', () => {

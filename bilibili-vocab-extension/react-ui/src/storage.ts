@@ -4,6 +4,7 @@ import {
   migrateToV3,
   normalizeSettingsV3,
 } from './settings-bridge';
+import type { ScenePresetKey } from './settings-bridge';
 import {
   EncounteredWordRankingItem,
   EncounteredWordSortMode,
@@ -23,6 +24,7 @@ const REVIEW_QUEUE_STORAGE_KEY = 'bili_vocab_review_queue_v1';
 const LEARNING_STREAK_STORAGE_KEY = 'bili_vocab_learning_streak_v1';
 const ADAPTIVE_TUNING_STORAGE_KEY = 'bili_vocab_adaptive_tuning_v1';
 const EXPERIENCE_METRICS_STORAGE_KEY = 'bili_vocab_experience_metrics_v1';
+const ONBOARDING_STORAGE_KEY = 'bili_vocab_onboarding_v1';
 const ACTIVE_TAB_SUBTITLE_NAVIGATION_READ = 'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_READ';
 const ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE =
   'BILI_VOCAB_ACTIVE_TAB_SUBTITLE_NAVIGATION_NAVIGATE';
@@ -166,6 +168,13 @@ type VocabularyWordDetails = NonNullable<VocabularyWord['details']>;
 
 export type VocabularyExportFormat = 'json' | 'csv' | 'anki';
 export type ActiveTabSubtitleNavigationAction = 'previous' | 'replay' | 'next';
+export type OnboardingGoal = ScenePresetKey;
+
+export interface OnboardingState {
+  completedAt: number | null;
+  selectedGoal: OnboardingGoal | null;
+  updatedAt: number | null;
+}
 
 export interface ActiveTabSubtitleNavigation {
   supported: boolean;
@@ -731,6 +740,25 @@ function normalizeAdaptiveTuningState(input: unknown, now = Date.now()): Adaptiv
   };
 }
 
+function normalizeOnboardingGoal(value: unknown): OnboardingGoal | null {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'light' || normalized === 'balanced' || normalized === 'intensive') {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeOnboardingState(input: unknown): OnboardingState {
+  const source = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+  return {
+    completedAt: normalizeTimestamp(source.completedAt),
+    selectedGoal: normalizeOnboardingGoal(source.selectedGoal),
+    updatedAt: normalizeTimestamp(source.updatedAt),
+  };
+}
+
 export function readStorage<T extends Record<string, unknown>>(keys?: string[] | null): Promise<T> {
   if (!hasChromeStorage()) {
     return Promise.resolve({} as T);
@@ -816,6 +844,29 @@ export async function readExperienceMetricsSnapshot(days = 7): Promise<Experienc
   const payload = await readStorage<Record<string, unknown>>([EXPERIENCE_METRICS_STORAGE_KEY]);
   const state = normalizeExperienceMetricsState(payload[EXPERIENCE_METRICS_STORAGE_KEY]);
   return buildExperienceMetricsSnapshot(state, days, now);
+}
+
+export async function readOnboardingState(): Promise<OnboardingState> {
+  const payload = await readStorage<Record<string, unknown>>([ONBOARDING_STORAGE_KEY]);
+  return normalizeOnboardingState(payload[ONBOARDING_STORAGE_KEY]);
+}
+
+export async function completeOnboarding(
+  selectedGoal: OnboardingGoal | null = null,
+  now = Date.now()
+): Promise<OnboardingState> {
+  return enqueueStorageMutation(async () => {
+    const timestamp = normalizeTimestamp(now) || Date.now();
+    const nextState: OnboardingState = {
+      completedAt: timestamp,
+      selectedGoal: normalizeOnboardingGoal(selectedGoal),
+      updatedAt: timestamp,
+    };
+    await writeStorage({
+      [ONBOARDING_STORAGE_KEY]: nextState,
+    });
+    return nextState;
+  });
 }
 
 function normalizeLearningSummary(input: unknown): LearningSummary {
@@ -1941,6 +1992,27 @@ export function subscribeExperienceMetricsSnapshot(
       Date.now()
     );
     onUpdate(snapshot);
+  };
+  chrome.storage.onChanged.addListener(listener);
+  return () => {
+    chrome.storage.onChanged.removeListener(listener);
+  };
+}
+
+export function subscribeOnboardingState(onUpdate: (state: OnboardingState) => void): () => void {
+  if (
+    typeof chrome === 'undefined' ||
+    !chrome.storage ||
+    !chrome.storage.onChanged ||
+    typeof chrome.storage.onChanged.addListener !== 'function'
+  ) {
+    return () => {};
+  }
+  const listener = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+    if (areaName !== 'local' || !changes[ONBOARDING_STORAGE_KEY]) {
+      return;
+    }
+    onUpdate(normalizeOnboardingState(changes[ONBOARDING_STORAGE_KEY].newValue));
   };
   chrome.storage.onChanged.addListener(listener);
   return () => {

@@ -5,9 +5,11 @@ const path = require('node:path');
 
 const {
   RELEASE_CHECK_SCRIPT_NAMES,
+  REMOTE_REAL_SITE_SCRIPT_NAME,
   createSpawnSpec,
   createReleaseCheckSteps,
   runReleaseChecks,
+  shouldIncludeRemoteRealSite,
 } = require('../scripts/run-release-candidate-checks.js');
 
 function readPackageJson() {
@@ -35,6 +37,10 @@ test('release candidate contract: package should expose serial release and zip s
   assert.equal(
     normalizeScript(scripts['release:check']),
     'node scripts/run-release-candidate-checks.js'
+  );
+  assert.equal(
+    normalizeScript(scripts['release:check:real-site']),
+    'node scripts/run-release-candidate-checks.js --include-remote-real-site'
   );
   assert.equal(
     normalizeScript(scripts['test:extension-smoke']),
@@ -72,6 +78,25 @@ test('release candidate contract: runner should execute required scripts seriall
     args: ['run', 'lint'],
   });
   assert.equal(steps.at(-1).id, 'test:zip-smoke');
+});
+
+test('release candidate contract: runner should expose explicit real-site gate', () => {
+  const steps = createReleaseCheckSteps({
+    platform: 'linux',
+    pnpmCommand: 'pnpm',
+    includeRemoteRealSite: true,
+  });
+
+  assert.equal(REMOTE_REAL_SITE_SCRIPT_NAME, 'test:remote:real-site');
+  assert.equal(steps.at(-1).id, 'test:remote:real-site');
+  assert.deepEqual(steps.at(-1), {
+    id: 'test:remote:real-site',
+    title: 'test:remote:real-site',
+    command: 'pnpm',
+    args: ['run', 'test:remote:real-site'],
+  });
+  assert.equal(shouldIncludeRemoteRealSite({ includeRemoteRealSite: true }), true);
+  assert.equal(shouldIncludeRemoteRealSite({ includeRemoteRealSite: false }), false);
 });
 
 test('release candidate contract: runner should stop on first failed step', () => {

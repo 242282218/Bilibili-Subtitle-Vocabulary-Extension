@@ -61,12 +61,14 @@ test('react ui theme contract: theme helper should resolve explicit and auto mod
 
 test('react ui theme contract: shipped popup/options/overlay should expose theme mode in real entry', () => {
   const optionsSource = readProjectFile('react-ui/src/options-main.tsx');
+  const optionsSections = readProjectFile('react-ui/src/options-sections.tsx');
+  const combinedOptions = optionsSource + '\n' + optionsSections;
   const popupSource = readProjectFile('react-ui/src/popup-main.tsx');
   const overlaySource = readProjectFile('react-ui/src/overlay-entry.tsx');
 
-  assert.match(optionsSource, /主题模式/);
+  assert.match(combinedOptions, /主题模式/);
   assert.match(optionsSource, /useDocumentTheme/);
-  assert.match(optionsSource, /themeMode/);
+  assert.match(combinedOptions, /themeMode/);
   assert.match(popupSource, /popupThemeMode/);
   assert.match(popupSource, /useDocumentTheme/);
   assert.match(overlaySource, /rvTheme/);

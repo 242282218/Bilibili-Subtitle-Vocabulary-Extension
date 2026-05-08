@@ -12,9 +12,9 @@
 
 ## 当前版本
 
-- 版本：`0.1.2`
-- Release：<https://github.com/242282218/Bilibili-Subtitle-Vocabulary-Extension/releases/tag/v0.1.2>
-- 可加载扩展包：Release 附件 `bilibili-vocab-extension-v0.1.2.zip`
+- 版本：`0.1.3`
+- Release：<https://github.com/242282218/Bilibili-Subtitle-Vocabulary-Extension/releases/tag/v0.1.3>
+- 可加载扩展包：Release 附件 `bilibili-vocab-extension-v0.1.3.zip`
 
 ## 安装使用
 

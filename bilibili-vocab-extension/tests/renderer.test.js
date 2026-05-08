@@ -54,6 +54,10 @@ test('renderTokensToHtml: should render as word with original text in parenthese
         meaning: 'improve',
         level: 'IELTS',
         learningStatus: 'learning',
+        coverageTier: 'core',
+        sourceFlags: ['kylebing', 'ecdict'],
+        isPhraseBacked: true,
+        phraseCount: 2,
       },
       { type: 'text', text: ' system' },
     ],
@@ -62,6 +66,10 @@ test('renderTokensToHtml: should render as word with original text in parenthese
 
   assert.equal(html.includes('optimize（improve）'), true);
   assert.equal(html.includes('data-learning-status="learning"'), true);
+  assert.equal(html.includes('data-coverage-tier="core"'), true);
+  assert.equal(html.includes('data-source-flags="kylebing,ecdict"'), true);
+  assert.equal(html.includes('data-phrase-backed="true"'), true);
+  assert.equal(html.includes('data-phrase-count="2"'), true);
   assert.equal(html.includes('data-original-subtitle="we improve system"'), true);
 });
 

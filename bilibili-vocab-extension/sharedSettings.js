@@ -425,16 +425,17 @@
 
     const result = [];
     const usedIds = new Set();
-    rawProfiles.forEach((item, index) => {
-      if (!item || typeof item !== 'object' || result.length >= MAX_CUSTOM_PROFILES) {
-        return;
+    for (let i = 0; i < rawProfiles.length && result.length < MAX_CUSTOM_PROFILES; i++) {
+      const item = rawProfiles[i];
+      if (!item || typeof item !== 'object') {
+        continue;
       }
 
       const sourceConfig = item.config && typeof item.config === 'object' ? item.config : item;
       const normalizedConfig = normalizeProfileConfig(sourceConfig);
-      const idCandidate = makeProfileId(item.id || item.name || `custom-${index + 1}`);
+      const idCandidate = makeProfileId(item.id || item.name || `custom-${i + 1}`);
       if (BUILTIN_PROFILE_IDS.includes(idCandidate) || usedIds.has(idCandidate)) {
-        return;
+        continue;
       }
 
       usedIds.add(idCandidate);
@@ -447,7 +448,7 @@
         createdAt: Math.max(0, Math.floor(Number(item.createdAt) || Date.now())),
         updatedAt: Math.max(0, Math.floor(Number(item.updatedAt) || Date.now())),
       });
-    });
+    }
     return result;
   }
 

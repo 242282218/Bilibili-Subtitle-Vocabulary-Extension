@@ -21,7 +21,10 @@ test('react ui adaptive contract: storage should expose adaptive state read/writ
 });
 
 test('react ui adaptive contract: options should render adaptive tuning control and status', () => {
-  const source = readProjectFile('react-ui/src/options-main.tsx');
+  const source =
+    readProjectFile('react-ui/src/options-main.tsx') +
+    '\n' +
+    readProjectFile('react-ui/src/options-sections.tsx');
 
   assert.match(source, /启用自动调优/);
   assert.match(source, /手动配置优先|手动覆盖/);
@@ -29,7 +32,12 @@ test('react ui adaptive contract: options should render adaptive tuning control 
 });
 
 test('react ui adaptive contract: popup should render adaptive tuning control and status', () => {
-  const source = readProjectFile('react-ui/src/popup-main.tsx');
+  const source =
+    readProjectFile('react-ui/src/popup-main.tsx') +
+    '\n' +
+    readProjectFile('react-ui/src/popup-sections.tsx') +
+    '\n' +
+    readProjectFile('react-ui/src/use-adaptive-tuning.ts');
 
   assert.match(source, /启用自动调优/);
   assert.match(source, /自动调优状态/);

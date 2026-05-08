@@ -28,7 +28,10 @@ test('react ui shortcuts contract: should define shipped shortcut guide metadata
 });
 
 test('react ui shortcuts contract: options should render shortcut guide in shipped entry', () => {
-  const source = readProjectFile('react-ui/src/options-main.tsx');
+  const source =
+    readProjectFile('react-ui/src/options-main.tsx') +
+    '\n' +
+    readProjectFile('react-ui/src/options-sections.tsx');
 
   assert.match(source, /import \{ ShortcutGuide \} from '.\/shortcut-guide'/);
   assert.match(source, /<ShortcutGuide title="快捷键" \/>/);

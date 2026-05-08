@@ -18,7 +18,10 @@ test('react ui conflict/undo contract: use-v3-settings should expose conflict re
 });
 
 test('react ui conflict/undo contract: options should render conflict actions and undo window', () => {
-  const source = readProjectFile('react-ui/src/options-main.tsx');
+  const source =
+    readProjectFile('react-ui/src/options-main.tsx') +
+    '\n' +
+    readProjectFile('react-ui/src/options-sections.tsx');
 
   assert.match(source, /检测到并发修改/);
   assert.match(source, /应用远端版本/);
@@ -28,7 +31,10 @@ test('react ui conflict/undo contract: options should render conflict actions an
 });
 
 test('react ui conflict/undo contract: popup should render conflict actions and undo window', () => {
-  const source = readProjectFile('react-ui/src/popup-main.tsx');
+  const source =
+    readProjectFile('react-ui/src/popup-main.tsx') +
+    '\n' +
+    readProjectFile('react-ui/src/popup-sections.tsx');
 
   assert.match(source, /检测到并发修改/);
   assert.match(source, /应用远端版本/);

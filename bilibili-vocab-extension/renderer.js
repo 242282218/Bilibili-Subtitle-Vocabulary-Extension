@@ -92,8 +92,14 @@
     const escapedSourceText = escapeHtml(token.sourceText || '');
     const escapedOriginalSubtitle = escapeHtml(originalSubtitleText || '');
     const escapedDisplayText = escapeHtml(getWordDisplayText(token, bilingualMode) || token.word);
+    const escapedCoverageTier = escapeHtml(token.coverageTier || '');
+    const escapedSourceFlags = escapeHtml(
+      Array.isArray(token.sourceFlags) ? token.sourceFlags.join(',') : token.sourceFlags || ''
+    );
+    const escapedPhraseBacked = token.isPhraseBacked === true ? 'true' : '';
+    const escapedPhraseCount = escapeHtml(token.phraseCount || '');
 
-    return `<span class="bili-vocab-word ${levelClass}${siteWordClass}" tabindex="0" data-word="${escapedWord}" data-meaning="${escapedMeaning}" data-level="${escapedLevel}" data-cefr-level="${escapedCefrLevel}" data-frequency="${escapedFrequency}" data-pos="${escapedPos}" data-definition="${escapedDefinition}" data-phonetic="${escapedPhonetic}" data-learning-status="${escapedLearningStatus}" data-source-text="${escapedSourceText}" data-original-subtitle="${escapedOriginalSubtitle}">${escapedDisplayText}</span>`;
+    return `<span class="bili-vocab-word ${levelClass}${siteWordClass}" tabindex="0" data-word="${escapedWord}" data-meaning="${escapedMeaning}" data-level="${escapedLevel}" data-cefr-level="${escapedCefrLevel}" data-frequency="${escapedFrequency}" data-pos="${escapedPos}" data-definition="${escapedDefinition}" data-phonetic="${escapedPhonetic}" data-learning-status="${escapedLearningStatus}" data-source-text="${escapedSourceText}" data-original-subtitle="${escapedOriginalSubtitle}" data-coverage-tier="${escapedCoverageTier}" data-source-flags="${escapedSourceFlags}" data-phrase-backed="${escapedPhraseBacked}" data-phrase-count="${escapedPhraseCount}">${escapedDisplayText}</span>`;
   }
 
   function renderTokensToHtml(tokens, originalSubtitleText, bilingualMode = false) {

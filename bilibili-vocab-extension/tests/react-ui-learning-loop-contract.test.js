@@ -21,7 +21,14 @@ test('react ui learning loop contract: storage should expose quick review, ranki
 });
 
 test('react ui learning loop contract: popup should render shipped quick review, ranking and streak loop', () => {
-  const source = readProjectFile('react-ui/src/popup-main.tsx');
+  const source =
+    readProjectFile('react-ui/src/popup-main.tsx') +
+    '\n' +
+    readProjectFile('react-ui/src/popup-sections.tsx') +
+    '\n' +
+    readProjectFile('react-ui/src/use-quick-review.ts') +
+    '\n' +
+    readProjectFile('react-ui/src/use-learning-streak.ts');
 
   assert.match(source, /快速复习/);
   assert.match(source, /生词排行/);

@@ -15,14 +15,24 @@ test('renderTooltipContent: should include context, learning status and quick ac
       pos: 'v.',
       definition: 'keep in memory',
       originalSubtitle: '这能帮助你更好地记住知识。',
-      learningStatus: 'seen',
+      learningStatus: 'unseen',
+      coverageTier: 'core',
+      phraseBacked: 'true',
+      phraseCount: '3',
+      sourceFlags: 'kylebing,ecdict',
     },
     textContent: 'retain',
   });
 
   assert.match(html, /这能帮助你更好地记住知识/);
+  assert.match(html, /命中原因/);
+  assert.match(html, /CET6 词库/);
+  assert.match(html, /核心高频/);
+  assert.match(html, /词组优先/);
+  assert.match(html, /未巩固/);
+  assert.match(html, /考试来源/);
   assert.match(html, /当前状态/);
-  assert.match(html, /已遇见/);
+  assert.match(html, /未巩固/);
   assert.match(html, /data-feedback="know"/);
   assert.match(html, /data-feedback="fuzzy"/);
   assert.match(html, /data-feedback="dontKnow"/);

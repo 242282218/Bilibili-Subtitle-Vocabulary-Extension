@@ -594,6 +594,10 @@
         definition: match.definition,
         phonetic: match.phonetic,
         sourceText: source.slice(match.start, match.end),
+        coverageTier: match.coverageTier,
+        sourceFlags: Array.isArray(match.sourceFlags) ? match.sourceFlags.slice() : [],
+        isPhraseBacked: match.isPhraseBacked === true,
+        phraseCount: match.phraseCount,
       });
 
       cursor = match.end;
@@ -816,6 +820,10 @@
       partOfSpeech: item.partOfSpeech,
       definition: item.definition,
       phonetic: item.phonetic,
+      coverageTier: item.coverageTier,
+      sourceFlags: Array.isArray(item.sourceFlags) ? item.sourceFlags.slice() : [],
+      isPhraseBacked: item.isPhraseBacked === true,
+      phraseCount: item.phraseCount,
     }));
 
     return {

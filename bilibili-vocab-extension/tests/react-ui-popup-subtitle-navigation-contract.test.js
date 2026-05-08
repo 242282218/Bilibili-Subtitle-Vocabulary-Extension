@@ -20,7 +20,12 @@ test('react ui popup subtitle navigation contract: storage should expose active 
 });
 
 test('react ui popup subtitle navigation contract: popup should render current subtitle controls', () => {
-  const source = readProjectFile('react-ui/src/popup-main.tsx');
+  const source =
+    readProjectFile('react-ui/src/popup-main.tsx') +
+    '\n' +
+    readProjectFile('react-ui/src/popup-sections.tsx') +
+    '\n' +
+    readProjectFile('react-ui/src/use-subtitle-status.ts');
 
   assert.match(source, /当前字幕导航/);
   assert.match(source, /直接控制当前标签页的上一句、重播和下一句/);
@@ -31,9 +36,12 @@ test('react ui popup subtitle navigation contract: popup should render current s
 });
 
 test('react ui popup subtitle navigation contract: popup should subscribe to active tab subtitle state while open', () => {
-  const source = readProjectFile('react-ui/src/popup-main.tsx');
+  const source =
+    readProjectFile('react-ui/src/popup-main.tsx') +
+    '\n' +
+    readProjectFile('react-ui/src/use-subtitle-status.ts');
 
-  assert.match(source, /refreshActiveTabSubtitleStatus/);
+  assert.match(source, /readActiveTabSubtitleStatus/);
   assert.match(source, /subscribeActiveTabSubtitleStatus/);
   assert.doesNotMatch(source, /window\.setInterval/);
 });

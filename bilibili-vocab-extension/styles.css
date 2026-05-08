@@ -663,6 +663,7 @@
 .bili-vocab-tooltip-phonetic,
 .bili-vocab-tooltip-tags,
 .bili-vocab-tooltip-context,
+.bili-vocab-tooltip-reason,
 .bili-vocab-tooltip-status,
 .bili-vocab-tooltip-frequency {
   color: #475569;
@@ -690,6 +691,10 @@
   padding: 10px 12px;
   border-radius: 14px;
   background: rgba(241, 245, 249, 0.9);
+}
+
+.bili-vocab-tooltip-reason {
+  margin-top: 8px;
 }
 
 .bili-vocab-tooltip-meta-row {

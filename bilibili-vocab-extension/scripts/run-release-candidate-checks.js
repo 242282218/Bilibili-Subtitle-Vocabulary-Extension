@@ -10,6 +10,7 @@ const RELEASE_CHECK_SCRIPT_NAMES = [
   'test:extension-smoke',
   'test:zip-smoke',
 ];
+const REMOTE_REAL_SITE_SCRIPT_NAME = 'test:remote:real-site';
 
 function getPnpmCommand(platform = process.platform) {
   return platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
@@ -37,9 +38,22 @@ function createSpawnSpec(command, args = [], options = {}) {
   };
 }
 
+function shouldIncludeRemoteRealSite(options = {}) {
+  if (typeof options.includeRemoteRealSite === 'boolean') {
+    return options.includeRemoteRealSite;
+  }
+  const envValue = String(process.env.RELEASE_CHECK_INCLUDE_REMOTE_REAL_SITE || '')
+    .trim()
+    .toLowerCase();
+  return envValue === '1' || envValue === 'true' || envValue === 'yes';
+}
+
 function createReleaseCheckSteps(options = {}) {
   const pnpm = options.pnpmCommand || getPnpmCommand(options.platform);
-  return RELEASE_CHECK_SCRIPT_NAMES.map((scriptName) => ({
+  const scriptNames = shouldIncludeRemoteRealSite(options)
+    ? RELEASE_CHECK_SCRIPT_NAMES.concat(REMOTE_REAL_SITE_SCRIPT_NAME)
+    : RELEASE_CHECK_SCRIPT_NAMES;
+  return scriptNames.map((scriptName) => ({
     id: scriptName,
     title: scriptName,
     command: pnpm,
@@ -74,7 +88,12 @@ function runReleaseChecks(options = {}) {
 
 function runCli() {
   try {
-    const completed = runReleaseChecks();
+    const includeRemoteRealSite = process.argv.includes('--include-remote-real-site')
+      ? true
+      : undefined;
+    const completed = runReleaseChecks({
+      includeRemoteRealSite,
+    });
     console.log(`[release-check] overall: PASS (${completed.length} steps)`);
   } catch (error) {
     console.error(error && error.message ? error.message : error);
@@ -88,6 +107,8 @@ if (require.main === module) {
 
 module.exports = {
   RELEASE_CHECK_SCRIPT_NAMES,
+  REMOTE_REAL_SITE_SCRIPT_NAME,
+  shouldIncludeRemoteRealSite,
   getPnpmCommand,
   createSpawnSpec,
   createReleaseCheckSteps,

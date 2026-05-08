@@ -20,6 +20,7 @@ const ADAPTIVE_TUNING_STORAGE_KEY = 'bili_vocab_adaptive_tuning_v1';
 const EXPERIENCE_METRICS_STORAGE_KEY = 'bili_vocab_experience_metrics_v1';
 const LEARNING_STREAK_STORAGE_KEY = 'bili_vocab_learning_streak_v1';
 const LEARNING_SUMMARY_STORAGE_KEY = 'bili_vocab_learning_summary_v1';
+const ONBOARDING_STORAGE_KEY = 'bili_vocab_onboarding_v1';
 
 function cloneValue(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -614,6 +615,59 @@ test('react ui storage resilience: readLearningStreak should normalize malformed
     totalActiveDays: 0,
     activeDays: ['2026-04-18'],
   });
+});
+
+test('react ui storage resilience: onboarding state should normalize and subscribe', async () => {
+  const {
+    module: storageModule,
+    storageState,
+    emitStorageChange,
+  } = createStorageModule({
+    now: 1700000000000,
+    initialState: {
+      [ONBOARDING_STORAGE_KEY]: {
+        completedAt: 'bad',
+        selectedGoal: 'unknown',
+        updatedAt: 0,
+      },
+    },
+  });
+
+  const initial = await storageModule.readOnboardingState();
+  assert.deepEqual(cloneValue(initial), {
+    completedAt: null,
+    selectedGoal: null,
+    updatedAt: null,
+  });
+
+  const completed = await storageModule.completeOnboarding('intensive');
+  assert.deepEqual(cloneValue(completed), {
+    completedAt: 1700000000000,
+    selectedGoal: 'intensive',
+    updatedAt: 1700000000000,
+  });
+  assert.deepEqual(cloneValue(storageState[ONBOARDING_STORAGE_KEY]), cloneValue(completed));
+
+  const updates = [];
+  const unsubscribe = storageModule.subscribeOnboardingState((next) => updates.push(next));
+  emitStorageChange({
+    [ONBOARDING_STORAGE_KEY]: {
+      newValue: {
+        completedAt: 1700000001000,
+        selectedGoal: 'light',
+        updatedAt: 1700000001000,
+      },
+    },
+  });
+  unsubscribe();
+
+  assert.deepEqual(cloneValue(updates), [
+    {
+      completedAt: 1700000001000,
+      selectedGoal: 'light',
+      updatedAt: 1700000001000,
+    },
+  ]);
 });
 
 test('react ui storage resilience: subscribeLearningStreak should normalize storage changes', () => {

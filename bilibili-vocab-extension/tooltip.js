@@ -138,6 +138,39 @@
     return '待判断';
   }
 
+  function parseDataList(value) {
+    return String(value || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function buildHitReasonText(wordElement, learningStatus) {
+    const level = wordElement.dataset.level || '';
+    const coverageTier = String(wordElement.dataset.coverageTier || '').toLowerCase();
+    const phraseCount = Number(wordElement.dataset.phraseCount);
+    const sourceFlags = parseDataList(wordElement.dataset.sourceFlags);
+    const reasons = [];
+
+    if (level) {
+      reasons.push(`${level} 词库`);
+    }
+    if (coverageTier === 'core') {
+      reasons.push('核心高频');
+    }
+    if (wordElement.dataset.phraseBacked === 'true' || phraseCount > 0) {
+      reasons.push('词组优先');
+    }
+    if (learningStatus === '未巩固') {
+      reasons.push('未巩固');
+    }
+    if (sourceFlags.includes('kylebing') || sourceFlags.includes('netem')) {
+      reasons.push('考试来源');
+    }
+
+    return reasons.length ? reasons.join(' · ') : '本地词库命中';
+  }
+
   function renderTooltipContent(wordElement) {
     const word = wordElement.dataset.word || wordElement.textContent || '';
     const meaning = wordElement.dataset.meaning || '';
@@ -149,6 +182,7 @@
     const definition = wordElement.dataset.definition || '';
     const originalSubtitle = wordElement.dataset.originalSubtitle || '';
     const learningStatus = getLearningStatusLabel(wordElement.dataset.learningStatus || '');
+    const hitReasonText = buildHitReasonText(wordElement, learningStatus);
 
     const detailLine = [pos, definition || meaning].filter(Boolean).join(' ');
     const tags = [level, cefrLevel ? `CEFR ${cefrLevel}` : ''].filter(Boolean).join(' · ');
@@ -168,6 +202,7 @@
         </div>
         <div class="bili-vocab-tooltip-meaning">${escapeHtml(detailLine || meaning)}</div>
         ${originalSubtitle ? `<div class="bili-vocab-tooltip-context">原句：${escapeHtml(originalSubtitle)}</div>` : ''}
+        <div class="bili-vocab-tooltip-reason">命中原因：${escapeHtml(hitReasonText)}</div>
         <div class="bili-vocab-tooltip-meta-row">
           <div class="bili-vocab-tooltip-status">当前状态 · ${escapeHtml(learningStatus)}</div>
           <div class="bili-vocab-tooltip-frequency">${escapeHtml(frequencyLabel)}</div>
@@ -416,6 +451,7 @@
     hideTooltip,
     renderTooltipContent,
     getLearningStatusLabel,
+    buildHitReasonText,
     formatSourceTimeLabel,
     buildWordSourceMetadata,
     reportContextMisreplaceFeedback,

@@ -1,4 +1,4 @@
-﻿(function (globalScope) {
+(function (globalScope) {
   const sharedSettings =
     globalScope.SharedSettings ||
     (typeof require === 'function' ? require('./sharedSettings.js') : null);
@@ -790,6 +790,7 @@
         : 'core'
       : 'full';
     const matches = [];
+    const selectedCache = new Map();
 
     for (const token of sortedChineseTokens) {
       const firstIndex = source.indexOf(token);
@@ -798,28 +799,32 @@
       const candidates = chineseTokenIndex.get(token);
       if (!candidates) continue;
 
-      const filtered = candidates.filter((entry) => {
-        if (!allowedLevels.has(entry.level)) {
-          return false;
-        }
+      let selectedEntry = selectedCache.get(token);
+      if (!selectedEntry) {
+        const filtered = candidates.filter((entry) => {
+          if (!allowedLevels.has(entry.level)) {
+            return false;
+          }
 
-        if (vocabularyMode === 'core') {
-          return entry.coverageTier === 'core';
-        }
+          if (vocabularyMode === 'core') {
+            return entry.coverageTier === 'core';
+          }
 
-        return true;
-      });
-      if (filtered.length === 0) continue;
+          return true;
+        });
+        if (filtered.length === 0) continue;
 
-      const selectedEntry =
-        filtered.length === 1
-          ? filtered[0]
-          : filtered.reduce((best, curr) => {
-              return getCandidatePriority(curr, vocabularyMode) >
-                getCandidatePriority(best, vocabularyMode)
-                ? curr
-                : best;
-            });
+        selectedEntry =
+          filtered.length === 1
+            ? filtered[0]
+            : filtered.reduce((best, curr) => {
+                return getCandidatePriority(curr, vocabularyMode) >
+                  getCandidatePriority(best, vocabularyMode)
+                  ? curr
+                  : best;
+              });
+        selectedCache.set(token, selectedEntry);
+      }
 
       let startIndex = 0;
       while (startIndex < source.length) {
@@ -867,12 +872,13 @@
     });
 
     const uniqueBySpan = new Map();
-    matches.forEach((match) => {
+    for (let i = 0; i < matches.length; i++) {
+      const match = matches[i];
       const key = `${match.start}-${match.end}`;
       if (!uniqueBySpan.has(key)) {
         uniqueBySpan.set(key, match);
       }
-    });
+    }
 
     return Array.from(uniqueBySpan.values());
   }

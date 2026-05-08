@@ -1,7 +1,7 @@
 ﻿{
   "manifest_version": 3,
   "name": "Bilibili Vocabulary Subtitle",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "在 Bilibili 字幕中自动插入英文词汇，帮助被动学习英语",
   "permissions": [
     "activeTab",

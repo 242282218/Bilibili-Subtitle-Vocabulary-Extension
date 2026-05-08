@@ -70,7 +70,15 @@ test('react ui popup site toggle: should expose restore action when only site ru
 });
 
 test('react ui popup site toggle: should expose optional permission authorization before restoring non-default sites', () => {
-  const source = fs.readFileSync(popupPath, 'utf8');
+  const source =
+    fs.readFileSync(popupPath, 'utf8') +
+    '\n' +
+    fs.readFileSync(path.join(__dirname, '..', 'react-ui', 'src', 'popup-sections.tsx'), 'utf8') +
+    '\n' +
+    fs.readFileSync(
+      path.join(__dirname, '..', 'react-ui', 'src', 'use-site-permission.ts'),
+      'utf8'
+    );
 
   assert.match(source, /readActiveTabSitePermissionState/);
   assert.match(source, /requestActiveTabSitePermission/);

@@ -84,10 +84,17 @@ test('react ui preview contract: settings bridge should expose shared preset and
 });
 
 test('react ui preview contract: options should render scene presets and shipped strategy preview', () => {
-  const source = readProjectFile('react-ui/src/options-main.tsx');
+  const source =
+    readProjectFile('react-ui/src/options-main.tsx') +
+    '\n' +
+    readProjectFile('react-ui/src/options-sections.tsx');
+  const onboardingSource = readProjectFile('react-ui/src/onboarding.tsx');
 
   assert.match(source, /SCENE_PRESETS/);
   assert.match(source, /策略预设/);
+  assert.match(source, /OnboardingPanel/);
+  assert.match(onboardingSource, /30 秒上手/);
+  assert.match(onboardingSource, /onboarding-goal-card/);
   assert.match(source, /scene-preset-card/);
   assert.match(source, /实时策略预览/);
   assert.match(source, /<StudyPreview/);
@@ -101,6 +108,8 @@ test('react ui preview contract: popup should render shipped study preview inste
   const source = readProjectFile('react-ui/src/popup-main.tsx');
 
   assert.match(source, /StudyPreview/);
+  assert.match(source, /OnboardingPanel/);
+  assert.match(source, /completeOnboardingFlow/);
   assert.match(source, /实时学习预览/);
   assert.match(source, /sentenceVariant="popup"/);
   assert.match(source, /显示模式/);
