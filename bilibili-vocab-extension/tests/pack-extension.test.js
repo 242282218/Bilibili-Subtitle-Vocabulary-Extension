@@ -6,21 +6,27 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 
 const {
+  EXCLUDED_PUBLISH_ENTRIES,
   REQUIRED_ARCHIVE_ENTRIES,
+  collectHtmlAssetReferences,
   collectPackEntries,
   buildWindowsArchiveScript,
   parseZipEntryList,
   parsePowerShellZipEntries,
+  collectArchiveRoots,
+  shouldExcludePublishEntry,
   validateArchiveEntries,
   shouldRetryWindowsPack,
   runPackCommandWithRetry,
   createZipCommand,
+  createPackStageRoot,
+  parseCliArgs,
   runPack,
 } = require('../scripts/pack-extension.js');
 
 function createWorkspace() {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'pack-extension-'));
-  fs.mkdirSync(path.join(workspace, 'dist'), { recursive: true });
+  fs.mkdirSync(path.join(workspace, 'dist', 'assets'), { recursive: true });
   fs.mkdirSync(path.join(workspace, 'data'), { recursive: true });
   fs.mkdirSync(path.join(workspace, 'scripts'), { recursive: true });
   fs.writeFileSync(
@@ -30,7 +36,7 @@ function createWorkspace() {
         background: { service_worker: 'background.js' },
         content_scripts: [
           {
-            js: ['contentScript.js', 'scripts/danmaku.js'],
+            js: ['contentScript.js', 'scripts/danmaku.js', 'scripts/scheduler.js'],
             css: ['styles.css'],
           },
         ],
@@ -38,7 +44,7 @@ function createWorkspace() {
         action: { default_popup: 'dist/popup.html' },
         web_accessible_resources: [
           {
-            resources: ['data/*.json'],
+            resources: ['data/*.json', 'dist/overlay.js'],
             matches: ['https://*/*'],
           },
         ],
@@ -52,14 +58,43 @@ function createWorkspace() {
   fs.writeFileSync(path.join(workspace, 'background.js'), '', 'utf8');
   fs.writeFileSync(path.join(workspace, 'contentScript.js'), '', 'utf8');
   fs.writeFileSync(path.join(workspace, 'scripts', 'danmaku.js'), '', 'utf8');
-  fs.writeFileSync(path.join(workspace, 'dist', 'options.html'), '<html></html>', 'utf8');
-  fs.writeFileSync(path.join(workspace, 'dist', 'popup.html'), '<html></html>', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'scripts', 'scheduler.js'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'scripts', 'build-vocab-dataset.js'), '', 'utf8');
+  fs.writeFileSync(
+    path.join(workspace, 'dist', 'options.html'),
+    `<html>
+  <head>
+    <script type="module" src="./assets/options.js"></script>
+    <link rel="modulepreload" href="./assets/study-preview-chunk.js">
+    <link rel="stylesheet" href="./assets/study-preview.css">
+  </head>
+</html>`,
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(workspace, 'dist', 'popup.html'),
+    `<html>
+  <head>
+    <script type="module" src="./assets/popup.js"></script>
+    <link rel="modulepreload" href="./assets/study-preview-chunk.js">
+    <link rel="stylesheet" href="./assets/study-preview.css">
+  </head>
+</html>`,
+    'utf8'
+  );
+  fs.writeFileSync(path.join(workspace, 'dist', 'overlay.js'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'dist', 'assets', 'options.js'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'dist', 'assets', 'popup.js'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'dist', 'assets', 'study-preview-chunk.js'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'dist', 'assets', 'study-preview.css'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'dist', 'assets', 'debug.js'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'dist', 'overlay-size-report.json'), '{}', 'utf8');
   fs.writeFileSync(path.join(workspace, 'data', 'cet4.json'), '{}', 'utf8');
   fs.writeFileSync(path.join(workspace, 'README.md'), 'ignore', 'utf8');
   return workspace;
 }
 
-test('pack extension: collectPackEntries should follow manifest runtime assets without legacy html drift', () => {
+test('pack extension: collectPackEntries should follow manifest and html runtime assets', () => {
   const workspace = createWorkspace();
   try {
     const entries = collectPackEntries(workspace);
@@ -68,14 +103,138 @@ test('pack extension: collectPackEntries should follow manifest runtime assets w
       'manifest.json',
       'background.js',
       'contentScript.js',
-      'scripts',
+      'scripts/danmaku.js',
+      'scripts/scheduler.js',
       'styles.css',
-      'dist',
+      'dist/options.html',
+      'dist/assets/options.js',
+      'dist/assets/study-preview-chunk.js',
+      'dist/assets/study-preview.css',
+      'dist/popup.html',
+      'dist/assets/popup.js',
       'data',
+      'dist/overlay.js',
+    ]);
+    assert.equal(entries.includes('dist'), false);
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('pack extension: collectHtmlAssetReferences should ignore non-package html references', () => {
+  const workspace = createWorkspace();
+  try {
+    fs.writeFileSync(
+      path.join(workspace, 'dist', 'external.html'),
+      `<script src="./assets/options.js?v=1"></script>
+<link href="https://cdn.example.com/reset.css" rel="stylesheet">
+<a href="#local"></a>
+<img src="/dist/assets/popup.js#hash">`,
+      'utf8'
+    );
+
+    assert.deepEqual(collectHtmlAssetReferences(workspace, 'dist/external.html'), [
+      'dist/assets/options.js',
+      'dist/assets/popup.js',
     ]);
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
   }
+});
+
+test('pack extension: createPackStageRoot should stage only manifest-listed scripts', () => {
+  const workspace = createWorkspace();
+  try {
+    const entries = collectPackEntries(workspace);
+    const stagingRoot = createPackStageRoot(workspace, entries, { stagePublishData: false });
+
+    try {
+      assert.equal(fs.existsSync(path.join(stagingRoot, 'scripts', 'danmaku.js')), true);
+      assert.equal(fs.existsSync(path.join(stagingRoot, 'scripts', 'scheduler.js')), true);
+      assert.equal(
+        fs.existsSync(path.join(stagingRoot, 'scripts', 'build-vocab-dataset.js')),
+        false
+      );
+    } finally {
+      fs.rmSync(stagingRoot, { recursive: true, force: true });
+    }
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('pack extension: createPackStageRoot should stage only manifest and html dist assets', () => {
+  const workspace = createWorkspace();
+  try {
+    const entries = collectPackEntries(workspace);
+    const stagingRoot = createPackStageRoot(workspace, entries, { stagePublishData: false });
+
+    try {
+      assert.equal(fs.existsSync(path.join(stagingRoot, 'dist', 'options.html')), true);
+      assert.equal(fs.existsSync(path.join(stagingRoot, 'dist', 'popup.html')), true);
+      assert.equal(fs.existsSync(path.join(stagingRoot, 'dist', 'overlay.js')), true);
+      assert.equal(fs.existsSync(path.join(stagingRoot, 'dist', 'assets', 'options.js')), true);
+      assert.equal(fs.existsSync(path.join(stagingRoot, 'dist', 'assets', 'popup.js')), true);
+      assert.equal(
+        fs.existsSync(path.join(stagingRoot, 'dist', 'assets', 'study-preview-chunk.js')),
+        true
+      );
+      assert.equal(
+        fs.existsSync(path.join(stagingRoot, 'dist', 'assets', 'study-preview.css')),
+        true
+      );
+      assert.equal(fs.existsSync(path.join(stagingRoot, 'dist', 'assets', 'debug.js')), false);
+      assert.equal(
+        fs.existsSync(path.join(stagingRoot, 'dist', 'overlay-size-report.json')),
+        false
+      );
+    } finally {
+      fs.rmSync(stagingRoot, { recursive: true, force: true });
+    }
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('pack extension: shouldExcludePublishEntry should document build-only diagnostics', () => {
+  const workspace = createWorkspace();
+  try {
+    assert.deepEqual(EXCLUDED_PUBLISH_ENTRIES, ['dist/overlay-size-report.json']);
+    assert.equal(
+      shouldExcludePublishEntry(
+        workspace,
+        path.join(workspace, 'dist', 'overlay-size-report.json')
+      ),
+      true
+    );
+    assert.equal(
+      shouldExcludePublishEntry(workspace, path.join(workspace, 'dist', 'options.html')),
+      false
+    );
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('pack extension: collectArchiveRoots should keep directory roots for exact nested entries', () => {
+  assert.deepEqual(
+    collectArchiveRoots([
+      'manifest.json',
+      'background.js',
+      'scripts/danmaku.js',
+      'scripts/scheduler.js',
+      'dist/options.html',
+      'dist/assets/options.js',
+      'dist/overlay.js',
+      'data/cet4.json',
+    ]),
+    ['manifest.json', 'background.js', 'scripts', 'dist', 'data']
+  );
+});
+
+test('pack extension: cli args should reject unknown options', () => {
+  assert.deepEqual(parseCliArgs([]), {});
+  assert.throws(() => parseCliArgs(['--output', 'custom.zip']), /Unknown pack option: --output/);
 });
 
 test('pack extension: collectPackEntries should fail when a required fixed path is missing', () => {
@@ -160,9 +319,16 @@ Archive:  ${outputZip}
         34  2026-04-16 00:00   manifest.json
         0  2026-04-16 00:00   background.js
         0  2026-04-16 00:00   contentScript.js
-        0  2026-04-16 00:00   scripts/
+        0  2026-04-16 00:00   scripts/danmaku.js
+        0  2026-04-16 00:00   scripts/scheduler.js
         7  2026-04-16 00:00   styles.css
-        0  2026-04-16 00:00   dist/
+      123  2026-04-16 00:00   dist/options.html
+      456  2026-04-16 00:00   dist/assets/options.js
+      456  2026-04-16 00:00   dist/assets/study-preview-chunk.js
+      123  2026-04-16 00:00   dist/assets/study-preview.css
+      123  2026-04-16 00:00   dist/popup.html
+      456  2026-04-16 00:00   dist/assets/popup.js
+      456  2026-04-16 00:00   dist/overlay.js
         0  2026-04-16 00:00   data/
 ---------                     -------
 `,
@@ -179,6 +345,17 @@ Archive:  ${outputZip}
 
     assert.equal(calls.length, 2);
     assert.equal(calls[0].command, 'zip');
+    assert.deepEqual(calls[0].args, [
+      '-r',
+      outputZip,
+      'manifest.json',
+      'background.js',
+      'contentScript.js',
+      'scripts',
+      'styles.css',
+      'dist',
+      'data',
+    ]);
     assert.equal(calls[1].command, 'unzip');
     assert.match(result.outputZipPath, /extension\.zip$/);
     assert.equal(fs.existsSync(result.outputZipPath), true);
@@ -270,9 +447,16 @@ Archive:  ${outputZip}
         34  2026-04-16 00:00   manifest.json
         0  2026-04-16 00:00   background.js
         0  2026-04-16 00:00   contentScript.js
-        0  2026-04-16 00:00   scripts/
+        0  2026-04-16 00:00   scripts/danmaku.js
+        0  2026-04-16 00:00   scripts/scheduler.js
         7  2026-04-16 00:00   styles.css
-        0  2026-04-16 00:00   dist/
+      123  2026-04-16 00:00   dist/options.html
+      456  2026-04-16 00:00   dist/assets/options.js
+      456  2026-04-16 00:00   dist/assets/study-preview-chunk.js
+      123  2026-04-16 00:00   dist/assets/study-preview.css
+      123  2026-04-16 00:00   dist/popup.html
+      456  2026-04-16 00:00   dist/assets/popup.js
+      456  2026-04-16 00:00   dist/overlay.js
         0  2026-04-16 00:00   data/
 ---------                     -------
 `,
@@ -337,7 +521,7 @@ Archive:  /tmp/extension.zip
 });
 
 test('pack extension: validateArchiveEntries should require manifest-critical files by default', () => {
-  assert.ok(REQUIRED_ARCHIVE_ENTRIES.includes('scripts'));
+  assert.ok(REQUIRED_ARCHIVE_ENTRIES.includes(path.join('scripts', 'danmaku.js')));
   assert.throws(
     () =>
       validateArchiveEntries('C:/tmp/extension.zip', {
@@ -358,7 +542,7 @@ Archive:  /tmp/extension.zip
 `,
         }),
       }),
-    /Archive missing required entry: scripts/
+    /Archive missing required entry: scripts[\\/]danmaku\.js/
   );
 });
 
@@ -376,8 +560,11 @@ Archive:  /tmp/extension.zip
        32  2026-04-16 00:00   background.js
        64  2026-04-16 00:00   contentScript.js
       456  2026-04-16 00:00   scripts/danmaku.js
+      456  2026-04-16 00:00   scripts/scheduler.js
        17  2026-04-16 00:00   styles.css
       123  2026-04-16 00:00   dist/options.html
+      123  2026-04-16 00:00   dist/popup.html
+      456  2026-04-16 00:00   dist/overlay.js
       456  2026-04-16 00:00   data/cet4.json
 ---------                     -------
 `,

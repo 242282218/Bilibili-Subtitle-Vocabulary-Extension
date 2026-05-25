@@ -4,11 +4,9 @@ const RELEASE_CHECK_SCRIPT_NAMES = [
   'lint',
   'typecheck',
   'test',
-  'test:ui',
-  'optimize:continuous',
-  'build:extension',
-  'test:extension-smoke',
-  'test:zip-smoke',
+  'build:extension:bundle',
+  'test:extension-smoke:built',
+  'test:zip-smoke:built',
 ];
 const REMOTE_REAL_SITE_SCRIPT_NAME = 'test:remote:real-site';
 
@@ -42,7 +40,8 @@ function shouldIncludeRemoteRealSite(options = {}) {
   if (typeof options.includeRemoteRealSite === 'boolean') {
     return options.includeRemoteRealSite;
   }
-  const envValue = String(process.env.RELEASE_CHECK_INCLUDE_REMOTE_REAL_SITE || '')
+  const env = options.env || process.env;
+  const envValue = String(env.RELEASE_CHECK_INCLUDE_REMOTE_REAL_SITE || '')
     .trim()
     .toLowerCase();
   return envValue === '1' || envValue === 'true' || envValue === 'yes';
@@ -86,14 +85,27 @@ function runReleaseChecks(options = {}) {
   return steps.map((step) => step.id);
 }
 
+function parseCliArgs(argv = process.argv.slice(2)) {
+  const parsed = {
+    includeRemoteRealSite: undefined,
+  };
+
+  for (const arg of argv) {
+    if (arg === '--include-remote-real-site') {
+      parsed.includeRemoteRealSite = true;
+      continue;
+    }
+
+    throw new Error(`Unknown release check option: ${arg}`);
+  }
+
+  return parsed;
+}
+
 function runCli() {
   try {
-    const includeRemoteRealSite = process.argv.includes('--include-remote-real-site')
-      ? true
-      : undefined;
-    const completed = runReleaseChecks({
-      includeRemoteRealSite,
-    });
+    const options = parseCliArgs();
+    const completed = runReleaseChecks(options);
     console.log(`[release-check] overall: PASS (${completed.length} steps)`);
   } catch (error) {
     console.error(error && error.message ? error.message : error);
@@ -112,5 +124,6 @@ module.exports = {
   getPnpmCommand,
   createSpawnSpec,
   createReleaseCheckSteps,
+  parseCliArgs,
   runReleaseChecks,
 };

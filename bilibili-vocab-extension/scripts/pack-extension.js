@@ -6,18 +6,24 @@ const { spawnSync } = require('node:child_process');
 const BUILD_VOCAB_DATASET_SCRIPT = path.join('scripts', 'build-vocab-dataset.js');
 const DEFAULT_OUTPUT_NAME = 'extension.zip';
 const DEFAULT_INCLUDE_GLOBS = [];
+const EXCLUDED_PUBLISH_ENTRIES = ['dist/overlay-size-report.json'];
 const FIXED_INCLUDE_PATHS = [
   'manifest.json',
   'background.js',
   'contentScript.js',
   'styles.css',
-  'scripts',
-  'dist',
+  path.join('scripts', 'danmaku.js'),
+  path.join('scripts', 'scheduler.js'),
+  'dist/options.html',
+  'dist/popup.html',
+  'dist/overlay.js',
   'data',
 ];
 const WIN_ARCHIVE_SCRIPT_FILE = 'pack-extension.ps1';
 const REQUIRED_ARCHIVE_ENTRIES = FIXED_INCLUDE_PATHS.slice();
 const WINDOWS_PACK_MAX_RETRY = 2;
+const HTML_REFERENCE_ATTRIBUTE_PATTERN = /\b(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+const EXTERNAL_HTML_REFERENCE_PATTERN = /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i;
 
 function listProjectRootFiles(rootDir) {
   return fs.readdirSync(rootDir, { withFileTypes: true }).map((entry) => entry.name);
@@ -84,8 +90,30 @@ function normalizeOutputZipPath(rootDir, outputZip) {
 function copyEntryToDirectory(rootDir, stagingRoot, entry) {
   const sourcePath = path.resolve(rootDir, entry);
   const targetPath = path.resolve(stagingRoot, entry);
+  if (shouldExcludePublishEntry(rootDir, sourcePath)) {
+    return;
+  }
+
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-  fs.cpSync(sourcePath, targetPath, { recursive: true });
+  fs.cpSync(sourcePath, targetPath, {
+    recursive: true,
+    filter: (source) => !shouldExcludePublishEntry(rootDir, source),
+  });
+}
+
+function collectArchiveRoots(entries) {
+  const roots = [];
+
+  for (const entry of entries) {
+    const normalizedEntry = normalizeArchivePathForCheck(entry);
+    const root = normalizedEntry.includes('/') ? normalizedEntry.split('/')[0] : normalizedEntry;
+
+    if (root && !roots.includes(root)) {
+      roots.push(root);
+    }
+  }
+
+  return roots;
 }
 
 function shouldStagePublishData(rootDir, options = {}) {
@@ -124,7 +152,7 @@ function createPackStageRoot(rootDir, entries, options = {}) {
   const stagePublishData = shouldStagePublishData(rootDir, options);
 
   for (const entry of entries) {
-    if (entry === 'data' && stagePublishData) {
+    if (entry === 'data') {
       continue;
     }
     copyEntryToDirectory(rootDir, stagingRoot, entry);
@@ -143,6 +171,15 @@ function normalizeArchivePathForCheck(entryPath) {
   return entryPath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, '');
 }
 
+function normalizeProjectRelativePath(rootDir, filePath) {
+  return normalizeArchivePathForCheck(path.relative(rootDir, filePath));
+}
+
+function shouldExcludePublishEntry(rootDir, filePath) {
+  const relativePath = normalizeProjectRelativePath(rootDir, filePath);
+  return EXCLUDED_PUBLISH_ENTRIES.includes(relativePath);
+}
+
 function readManifest(rootDir, manifestFile = 'manifest.json') {
   const manifestPath = path.resolve(rootDir, manifestFile);
   if (!fs.existsSync(manifestPath)) {
@@ -153,34 +190,106 @@ function readManifest(rootDir, manifestFile = 'manifest.json') {
   return JSON.parse(raw);
 }
 
-function collectManifestEntry(entries, rawPath) {
+function getWildcardArchiveRoot(normalizedPath) {
+  const wildcardIndex = normalizedPath.indexOf('*');
+  if (wildcardIndex === -1) {
+    return '';
+  }
+
+  const prefix = normalizedPath.slice(0, wildcardIndex);
+  const slashIndex = prefix.lastIndexOf('/');
+  return slashIndex === -1 ? prefix : prefix.slice(0, slashIndex);
+}
+
+function addUniqueEntry(entries, entry) {
+  if (entry && !entries.includes(entry)) {
+    entries.push(entry);
+  }
+}
+
+function stripHtmlReferenceSuffix(rawReference) {
+  const reference = String(rawReference || '').trim();
+  const suffixIndex = reference.search(/[?#]/);
+  return suffixIndex === -1 ? reference : reference.slice(0, suffixIndex);
+}
+
+function resolveHtmlReferenceEntry(htmlEntry, rawReference) {
+  const reference = stripHtmlReferenceSuffix(rawReference);
+  if (!reference || EXTERNAL_HTML_REFERENCE_PATTERN.test(reference)) {
+    return '';
+  }
+
+  const normalizedHtmlEntry = normalizeArchivePathForCheck(htmlEntry);
+  const joinedReference = reference.startsWith('/')
+    ? reference.replace(/^\/+/, '')
+    : path.posix.join(path.posix.dirname(normalizedHtmlEntry), reference);
+  const normalizedReference = normalizeArchivePathForCheck(path.posix.normalize(joinedReference));
+
+  if (
+    !normalizedReference ||
+    normalizedReference === '..' ||
+    normalizedReference.startsWith('../')
+  ) {
+    return '';
+  }
+
+  return normalizedReference;
+}
+
+function collectHtmlAssetReferences(rootDir, htmlEntry) {
+  const htmlPath = path.resolve(rootDir, htmlEntry);
+  if (!fs.existsSync(htmlPath)) {
+    return [];
+  }
+
+  const htmlSource = fs.readFileSync(htmlPath, 'utf8').replace(/^\uFEFF/, '');
+  const references = [];
+  let match = null;
+  HTML_REFERENCE_ATTRIBUTE_PATTERN.lastIndex = 0;
+
+  while ((match = HTML_REFERENCE_ATTRIBUTE_PATTERN.exec(htmlSource)) !== null) {
+    const entry = resolveHtmlReferenceEntry(htmlEntry, match[1] || match[2] || match[3]);
+    if (entry !== normalizeArchivePathForCheck(htmlEntry)) {
+      addUniqueEntry(references, entry);
+    }
+  }
+
+  return references;
+}
+
+function collectManifestEntry(rootDir, entries, rawPath) {
   const normalizedPath = normalizeArchivePathForCheck(String(rawPath || '').trim());
   if (!normalizedPath) {
     return;
   }
 
-  const normalizedEntry =
-    normalizedPath.includes('*') || normalizedPath.includes('/')
-      ? normalizedPath.split('/')[0]
-      : normalizedPath;
-  if (normalizedEntry && !entries.includes(normalizedEntry)) {
-    entries.push(normalizedEntry);
+  const wildcardRoot = getWildcardArchiveRoot(normalizedPath);
+  const normalizedEntry = wildcardRoot || normalizedPath;
+
+  addUniqueEntry(entries, normalizedEntry);
+
+  if (wildcardRoot || !normalizedEntry.toLowerCase().endsWith('.html')) {
+    return;
+  }
+
+  for (const assetEntry of collectHtmlAssetReferences(rootDir, normalizedEntry)) {
+    addUniqueEntry(entries, assetEntry);
   }
 }
 
-function collectManifestPathValues(entries, value) {
+function collectManifestPathValues(rootDir, entries, value) {
   if (typeof value === 'string') {
-    collectManifestEntry(entries, value);
+    collectManifestEntry(rootDir, entries, value);
     return;
   }
 
   if (Array.isArray(value)) {
-    value.forEach((item) => collectManifestPathValues(entries, item));
+    value.forEach((item) => collectManifestPathValues(rootDir, entries, item));
     return;
   }
 
   if (value && typeof value === 'object') {
-    Object.values(value).forEach((item) => collectManifestPathValues(entries, item));
+    Object.values(value).forEach((item) => collectManifestPathValues(rootDir, entries, item));
   }
 }
 
@@ -188,24 +297,28 @@ function collectManifestPackEntries(rootDir, manifestFile = 'manifest.json') {
   const manifest = readManifest(rootDir, manifestFile);
   const entries = ['manifest.json'];
 
-  collectManifestPathValues(entries, manifest.background && manifest.background.service_worker);
+  collectManifestPathValues(
+    rootDir,
+    entries,
+    manifest.background && manifest.background.service_worker
+  );
 
   const contentScripts = Array.isArray(manifest.content_scripts) ? manifest.content_scripts : [];
   contentScripts.forEach((script) => {
-    collectManifestPathValues(entries, script && script.js);
-    collectManifestPathValues(entries, script && script.css);
+    collectManifestPathValues(rootDir, entries, script && script.js);
+    collectManifestPathValues(rootDir, entries, script && script.css);
   });
 
-  collectManifestPathValues(entries, manifest.options_page);
-  collectManifestPathValues(entries, manifest.action && manifest.action.default_popup);
-  collectManifestPathValues(entries, manifest.action && manifest.action.default_icon);
-  collectManifestPathValues(entries, manifest.icons);
+  collectManifestPathValues(rootDir, entries, manifest.options_page);
+  collectManifestPathValues(rootDir, entries, manifest.action && manifest.action.default_popup);
+  collectManifestPathValues(rootDir, entries, manifest.action && manifest.action.default_icon);
+  collectManifestPathValues(rootDir, entries, manifest.icons);
 
   const webAccessibleResources = Array.isArray(manifest.web_accessible_resources)
     ? manifest.web_accessible_resources
     : [];
   webAccessibleResources.forEach((item) => {
-    collectManifestPathValues(entries, item && item.resources);
+    collectManifestPathValues(rootDir, entries, item && item.resources);
   });
 
   return entries;
@@ -410,6 +523,7 @@ function runPack(options = {}) {
   let cleanup = null;
   try {
     const packRoot = createPackStageRoot(rootDir, entries, options);
+    const archiveRoots = collectArchiveRoots(entries);
     cleanup = () => {
       fs.rmSync(packRoot, { recursive: true, force: true });
     };
@@ -419,7 +533,7 @@ function runPack(options = {}) {
       fs.rmSync(outputZipPath, { force: true });
     }
 
-    const commandSpec = createZipCommand(packRoot, outputZipPath, entries, options);
+    const commandSpec = createZipCommand(packRoot, outputZipPath, archiveRoots, options);
     const commandCleanup = commandSpec.cleanup;
     cleanup = () => {
       if (typeof commandCleanup === 'function') {
@@ -452,6 +566,7 @@ function runPack(options = {}) {
       packRoot,
       outputZipPath,
       entries,
+      archiveRoots,
       archiveEntries,
       command: commandSpec.command,
       args: commandSpec.args,
@@ -464,8 +579,17 @@ function runPack(options = {}) {
   }
 }
 
+function parseCliArgs(argv = process.argv.slice(2)) {
+  if (argv.length === 0) {
+    return {};
+  }
+
+  throw new Error(`Unknown pack option: ${argv[0]}`);
+}
+
 function runCli() {
   try {
+    parseCliArgs();
     const result = runPack();
     console.log(`[pack] Created ${result.outputZipPath}`);
   } catch (error) {
@@ -482,14 +606,19 @@ module.exports = {
   DEFAULT_OUTPUT_NAME,
   DEFAULT_INCLUDE_GLOBS,
   FIXED_INCLUDE_PATHS,
+  EXCLUDED_PUBLISH_ENTRIES,
   WIN_ARCHIVE_SCRIPT_FILE,
   REQUIRED_ARCHIVE_ENTRIES,
   WINDOWS_PACK_MAX_RETRY,
   collectPackEntries,
+  collectManifestPackEntries,
+  collectHtmlAssetReferences,
   normalizeOutputZipPath,
   normalizeArchivePathForCheck,
+  shouldExcludePublishEntry,
   parseZipEntryList,
   parsePowerShellZipEntries,
+  collectArchiveRoots,
   listArchiveEntries,
   validateArchiveEntries,
   buildPosixZipCommand,
@@ -498,5 +627,6 @@ module.exports = {
   runPackCommandWithRetry,
   createZipCommand,
   createPackStageRoot,
+  parseCliArgs,
   runPack,
 };

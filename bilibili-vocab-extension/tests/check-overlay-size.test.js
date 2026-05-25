@@ -9,6 +9,7 @@ const {
   runOverlaySizeCheck,
   createReport,
   normalizeCheckedFilePath,
+  parseCliArgs,
 } = require('../scripts/check-overlay-size.js');
 
 const SCRIPT_PATH = path.resolve(__dirname, '..', 'scripts', 'check-overlay-size.js');
@@ -75,11 +76,13 @@ test('check overlay size: should mark report as fail when budget is exceeded wit
   try {
     const overlayFile = writeOverlayFile(workspace, 'bundle/overlay.js', 4096);
     const reportFile = path.join(workspace, 'reports', 'overlay-size-report.json');
+    const summaryFile = path.join(workspace, 'summary.md');
     const missingBaselineFile = path.join(workspace, 'not-exists-baseline.json');
 
     const { report } = runOverlaySizeCheck({
       overlayFile,
       reportFile,
+      summaryPath: summaryFile,
       baselineFile: missingBaselineFile,
       rawBudgetKb: 1,
       gzipBudgetKb: 10,
@@ -95,6 +98,9 @@ test('check overlay size: should mark report as fail when budget is exceeded wit
     assert.equal(parsedReport.result.overall, 'fail');
     assert.equal('baselineKb' in parsedReport, false);
     assert.equal('deltaKb' in parsedReport, false);
+    assert.ok(fs.existsSync(summaryFile));
+    assert.match(fs.readFileSync(summaryFile, 'utf8'), /Raw .* Exceeded/);
+    assert.match(fs.readFileSync(summaryFile, 'utf8'), /Overall: FAIL/);
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
   }
@@ -118,6 +124,14 @@ test('check overlay size: CLI should exit with error on invalid raw budget', () 
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
   }
+});
+
+test('check overlay size: cli args should reject unknown options', () => {
+  assert.deepEqual(parseCliArgs([]), {});
+  assert.throws(
+    () => parseCliArgs(['--overlay-file', 'dist/custom-overlay.js']),
+    /Unknown overlay size option: --overlay-file/
+  );
 });
 
 test('check overlay size: should ignore invalid baseline payload', () => {

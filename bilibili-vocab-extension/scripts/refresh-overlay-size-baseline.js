@@ -61,8 +61,17 @@ function refreshOverlaySizeBaseline(options = {}) {
   };
 }
 
+function parseCliArgs(argv = process.argv.slice(2)) {
+  if (argv.length === 0) {
+    return {};
+  }
+
+  throw new Error(`Unknown overlay baseline option: ${argv[0]}`);
+}
+
 function runCli() {
   try {
+    parseCliArgs();
     const { baselineFile, baseline } = refreshOverlaySizeBaseline();
     console.log(
       `[overlay-size-baseline] updated ${baselineFile} (raw=${baseline.raw}KB, gzip=${baseline.gzip}KB)`
@@ -81,5 +90,6 @@ module.exports = {
   DEFAULT_REPORT_FILE,
   DEFAULT_BASELINE_FILE,
   normalizeReport,
+  parseCliArgs,
   refreshOverlaySizeBaseline,
 };

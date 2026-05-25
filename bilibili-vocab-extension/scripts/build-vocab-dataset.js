@@ -9,7 +9,6 @@ const readline = require('node:readline');
 const ROOT_DIR = path.resolve(__dirname, '..');
 const SOURCES_DIR = path.join(ROOT_DIR, 'sources');
 const DATA_DIR = path.join(ROOT_DIR, 'data');
-const CLI_ARGS = process.argv.slice(2);
 
 const SOURCE_FILES = {
   ecdict: {
@@ -187,15 +186,6 @@ const CEFR_LABEL_MAP = {
 };
 
 const PUBLISH_BLOCKING_SOURCE_FLAGS = ['kylebing', 'netem'];
-const REFRESH = CLI_ARGS.includes('--refresh');
-
-function readCliOptionValue(flagName, argv = CLI_ARGS) {
-  const flagIndex = argv.indexOf(flagName);
-  if (flagIndex === -1) {
-    return '';
-  }
-  return String(argv[flagIndex + 1] || '').trim();
-}
 
 function normalizeBuildTarget(rawValue = 'development') {
   const normalized = String(rawValue || 'development')
@@ -205,6 +195,67 @@ function normalizeBuildTarget(rawValue = 'development') {
     throw new Error(`Unsupported build target: ${rawValue}`);
   }
   return normalized;
+}
+
+function readRequiredCliValue(optionName, value) {
+  const normalized = String(value || '').trim();
+  if (!normalized || normalized.startsWith('--')) {
+    throw new Error(`Missing value for ${optionName}.`);
+  }
+  return normalized;
+}
+
+function parseCliArgs(argv = process.argv.slice(2)) {
+  const parsed = {
+    refresh: false,
+    buildTarget: 'development',
+    outputDir: DATA_DIR,
+  };
+  let rawBuildTarget = '';
+  let publishSafe = false;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+
+    if (arg === '--refresh') {
+      parsed.refresh = true;
+      continue;
+    }
+
+    if (arg === '--publish-safe') {
+      publishSafe = true;
+      continue;
+    }
+
+    if (arg === '--build-target') {
+      rawBuildTarget = readRequiredCliValue('--build-target', argv[index + 1]);
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--build-target=')) {
+      rawBuildTarget = readRequiredCliValue('--build-target', arg.slice('--build-target='.length));
+      continue;
+    }
+
+    if (arg === '--output-dir') {
+      parsed.outputDir = readRequiredCliValue('--output-dir', argv[index + 1]);
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--output-dir=')) {
+      parsed.outputDir = readRequiredCliValue('--output-dir', arg.slice('--output-dir='.length));
+      continue;
+    }
+
+    throw new Error(`Unknown vocabulary dataset option: ${arg}`);
+  }
+
+  parsed.buildTarget = normalizeBuildTarget(
+    publishSafe ? 'publish' : rawBuildTarget || 'development'
+  );
+  return parsed;
 }
 
 function shouldIncludePublishBlockingSources(buildTarget = 'development') {
@@ -625,13 +676,13 @@ function requestToFile(url, destination, redirectCount = 0) {
   });
 }
 
-async function ensureSources(sourceFiles = SOURCE_FILES) {
+async function ensureSources(sourceFiles = SOURCE_FILES, options = {}) {
   ensureDirectory(SOURCES_DIR);
   const names = Object.keys(sourceFiles);
   for (let index = 0; index < names.length; index += 1) {
     const sourceName = names[index];
     const source = sourceFiles[sourceName];
-    const shouldDownload = REFRESH || !fs.existsSync(source.file);
+    const shouldDownload = options.refresh === true || !fs.existsSync(source.file);
     if (!shouldDownload) {
       continue;
     }
@@ -1161,15 +1212,20 @@ function writeDatasetFiles(dataDir, grouped, manifest) {
   writeJson(path.join(dataDir, MANIFEST_FILE_NAME), manifest);
 }
 
+function listPublishedDataFileNames() {
+  return [...LEVELS.map((level) => LEVEL_FILE_MAP[level]), MANIFEST_FILE_NAME];
+}
+
 async function buildVocabularyDataset(options = {}) {
   const sourceFiles = options.sourceFiles || SOURCE_FILES;
   const dataDir = options.dataDir || DATA_DIR;
   const shouldEnsureSources = options.ensureSources !== false;
   const buildTarget = normalizeBuildTarget(options.buildTarget || 'development');
+  const refresh = options.refresh === true;
   const includePublishBlockingSources = shouldIncludePublishBlockingSources(buildTarget);
 
   if (shouldEnsureSources) {
-    await ensureSources(sourceFiles);
+    await ensureSources(sourceFiles, { refresh });
   }
 
   const cefrMap = await buildCefrMap(sourceFiles);
@@ -1200,16 +1256,12 @@ async function buildVocabularyDataset(options = {}) {
 }
 
 async function main() {
-  const buildTarget = normalizeBuildTarget(
-    CLI_ARGS.includes('--publish-safe')
-      ? 'publish'
-      : readCliOptionValue('--build-target') || 'development'
-  );
-  const outputDir = readCliOptionValue('--output-dir') || DATA_DIR;
+  const { buildTarget, outputDir, refresh } = parseCliArgs();
   console.log('[build] loading vocabulary sources...');
   const { grouped } = await buildVocabularyDataset({
     buildTarget,
     dataDir: outputDir,
+    refresh,
   });
   printSummary(grouped);
   console.log(`[done] data files updated in ${outputDir} (target=${buildTarget})`);
@@ -1226,6 +1278,8 @@ module.exports = {
   buildVocabularyDataset,
   createSourceManifest,
   hasPublishBlockingFlag,
+  listPublishedDataFileNames,
   normalizeBuildTarget,
+  parseCliArgs,
   shouldIncludePublishBlockingSources,
 };

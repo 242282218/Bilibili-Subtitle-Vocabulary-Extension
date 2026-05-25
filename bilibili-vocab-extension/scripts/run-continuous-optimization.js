@@ -15,7 +15,11 @@ const DEFAULT_REPORT_DIR = path.join(
 );
 const DEFAULT_MAX_LOG_CHARS = 4000;
 const LEGACY_DEFERRED_TEST_PATTERNS = [/^options-.*\.test\.js$/, /^popup(?:-.*)?\.test\.js$/];
-const OUT_OF_BAND_BROWSER_SMOKE_TESTS = ['browser-extension-smoke.spec.js'];
+const OUT_OF_BAND_SMOKE_TESTS = [
+  'browser-extension-smoke.spec.js',
+  'extension-zip-smoke.spec.js',
+  'real-site-smoke.spec.js',
+];
 const LEGACY_COMPAT_TESTS_IN_OPTIMIZE_LANE = [
   'shared-settings-integration.test.js',
   'standalone-init.test.js',
@@ -70,7 +74,12 @@ const TEST_SHARD_DEFINITIONS = [
     patterns: [
       /^contentScript-cache-compatibility\.test\.js$/,
       /^contentScript-hit-tracking\.test\.js$/,
+      /^contentScript-init\.test\.js$/,
+      /^contentScript-observer-throttle\.test\.js$/,
       /^contentScript-subtitle-navigation\.test\.js$/,
+      /^contentScript-timeline-polling\.test\.js$/,
+      /^contentScript-translation-pipeline\.test\.js$/,
+      /^contentScript-web-text-safety\.test\.js$/,
       /^subtitle.*\.test\.js$/,
       /^renderer\.test\.js$/,
       /^segmenter\.test\.js$/,
@@ -95,10 +104,14 @@ const TEST_SHARD_DEFINITIONS = [
       /^test-ui-entry-contract\.test\.js$/,
       /^workflow-lockfile-contract\.test\.js$/,
       /^release-candidate-entry-contract\.test\.js$/,
+      /^remote-test-entry-contract\.test\.js$/,
       /^permission-strategy-contract\.test\.js$/,
+      /^content-script-bundle-spike\.test\.js$/,
+      /^check-extension-package\.test\.js$/,
       /^check-overlay-size\.test\.js$/,
       /^refresh-overlay-size-baseline\.test\.js$/,
       /^pack-extension\.test\.js$/,
+      /^extension-smoke-helpers\.test\.js$/,
       /^open-vocab-data\.test\.js$/,
       /^scheduler\.test\.js$/,
       /^danmaku\.test\.js$/,
@@ -118,7 +131,7 @@ function listTestFiles(targetTestsDir = DEFAULT_TESTS_DIR) {
     .filter(
       (entry) =>
         entry.isFile() &&
-        (entry.name.endsWith('.test.js') || OUT_OF_BAND_BROWSER_SMOKE_TESTS.includes(entry.name))
+        (entry.name.endsWith('.test.js') || OUT_OF_BAND_SMOKE_TESTS.includes(entry.name))
     )
     .map((entry) => entry.name)
     .sort((left, right) => left.localeCompare(right));
@@ -171,8 +184,8 @@ function isLegacyDeferredTest(testFileName) {
   return LEGACY_DEFERRED_TEST_PATTERNS.some((pattern) => pattern.test(String(testFileName || '')));
 }
 
-function isOutOfBandBrowserSmokeTest(testFileName) {
-  return OUT_OF_BAND_BROWSER_SMOKE_TESTS.includes(String(testFileName || ''));
+function isOutOfBandSmokeTest(testFileName) {
+  return OUT_OF_BAND_SMOKE_TESTS.includes(String(testFileName || ''));
 }
 
 function buildNodeTestCommand(testFiles = []) {
@@ -327,6 +340,24 @@ function summarizeCommandExecution(target, result, maxLogChars = DEFAULT_MAX_LOG
   };
 }
 
+function summarizeSkippedExecution(target) {
+  return {
+    name: target.name,
+    title: target.title,
+    status: 'skipped',
+    exitCode: null,
+    signal: null,
+    durationMs: 0,
+    command: target.command,
+    args: Array.isArray(target.args) ? target.args.slice() : [],
+    commandLine: target.commandLine || formatCommand(target.command, target.args),
+    testFileCount: Number(target.testFileCount) || 0,
+    testFiles: Array.isArray(target.testFiles) ? target.testFiles.slice() : [],
+    stdoutTail: '',
+    stderrTail: '',
+  };
+}
+
 function selectOptimizationCandidates(summary) {
   const candidates = [];
 
@@ -415,6 +446,7 @@ function renderMarkdownReport(summary) {
     `- Finished At: \`${summary.finishedAt}\``,
     `- Project Root: \`${summary.projectRoot}\``,
     `- Report Dir: \`${summary.reportDir}\``,
+    `- Report Only: \`${summary.reportOnly ? 'true' : 'false'}\``,
     `- Shards Parallel: \`${summary.parallelShards ? 'true' : 'false'}\``,
     '',
     '## Gates',
@@ -482,13 +514,13 @@ function renderMarkdownReport(summary) {
     }
   }
 
-  lines.push('', '## Out-of-Band Browser Smoke Tests', '');
+  lines.push('', '## Out-of-Band Smoke Tests', '');
 
   if (summary.outOfBandSmokeTests.length === 0) {
     lines.push('- None');
   } else {
     lines.push(
-      '- 说明: 以下测试通过 `pnpm run test:extension-smoke` 和独立 CI job 执行，当前不纳入默认 continuous optimization shard。'
+      '- 说明: 以下 smoke 需要构建、打包、浏览器或真实站点环境，通过 `pnpm run test:extension-smoke`、`pnpm run test:zip-smoke`、`pnpm run test:real-site-smoke` 等显式入口执行，当前不纳入默认 continuous optimization shard。'
     );
     for (const testFile of summary.outOfBandSmokeTests) {
       lines.push(`- ${testFile}`);
@@ -633,30 +665,37 @@ async function runContinuousOptimization(options = {}) {
   const startedAt = new Date();
   const runId = options.runId || createRunId(startedAt);
   const executeCommand = options.executeCommand || runChildCommand;
+  const reportOnly = options.reportOnly === true;
   const runGates = options.runGates !== false;
   const parallelShards = options.parallelShards !== false;
   const maxLogChars =
     Number(options.maxLogChars) > 0 ? Number(options.maxLogChars) : DEFAULT_MAX_LOG_CHARS;
 
-  const gateResults = runGates
-    ? await runGateSequence(plan.gates, {
+  const gateResults = reportOnly
+    ? runGates
+      ? plan.gates.map(summarizeSkippedExecution)
+      : []
+    : runGates
+      ? await runGateSequence(plan.gates, {
+          executeCommand,
+          maxLogChars,
+          projectRoot: plan.projectRoot,
+        })
+      : [];
+
+  const shardResults = reportOnly
+    ? plan.shards.map(summarizeSkippedExecution)
+    : await runShardSequence(plan.shards, {
         executeCommand,
         maxLogChars,
+        parallelShards,
         projectRoot: plan.projectRoot,
-      })
-    : [];
-
-  const shardResults = await runShardSequence(plan.shards, {
-    executeCommand,
-    maxLogChars,
-    parallelShards,
-    projectRoot: plan.projectRoot,
-  });
+      });
 
   const finishedAt = new Date();
-  const overallStatus = [...gateResults, ...shardResults].every((item) => item.status === 'pass')
-    ? 'pass'
-    : 'fail';
+  const overallStatus = [...gateResults, ...shardResults].some((item) => item.status === 'fail')
+    ? 'fail'
+    : 'pass';
 
   const summary = {
     runId,
@@ -666,6 +705,7 @@ async function runContinuousOptimization(options = {}) {
     projectRoot: plan.projectRoot,
     testsDir: plan.testsDir,
     reportDir,
+    reportOnly,
     runGates,
     parallelShards,
     gates: gateResults,
@@ -682,12 +722,12 @@ async function runContinuousOptimization(options = {}) {
   };
 
   const rawUnassignedTests = collectUnassignedTests(plan.testsDir, plan.shards);
-  summary.outOfBandSmokeTests = rawUnassignedTests.filter(isOutOfBandBrowserSmokeTest);
+  summary.outOfBandSmokeTests = rawUnassignedTests.filter(isOutOfBandSmokeTest);
   summary.deferredLegacyTests = rawUnassignedTests.filter(
-    (testFile) => !isOutOfBandBrowserSmokeTest(testFile) && isLegacyDeferredTest(testFile)
+    (testFile) => !isOutOfBandSmokeTest(testFile) && isLegacyDeferredTest(testFile)
   );
   summary.unassignedTests = rawUnassignedTests.filter(
-    (testFile) => !isOutOfBandBrowserSmokeTest(testFile) && !isLegacyDeferredTest(testFile)
+    (testFile) => !isOutOfBandSmokeTest(testFile) && !isLegacyDeferredTest(testFile)
   );
 
   summary.nextFocusCandidates = selectOptimizationCandidates(summary);
@@ -703,7 +743,15 @@ function parseCliArgs(argv = process.argv.slice(2)) {
     runGates: true,
     reportDir: null,
     json: false,
+    reportOnly: false,
   };
+
+  function readRequiredValue(optionName, value) {
+    if (!value || String(value).startsWith('--')) {
+      throw new Error(`Missing value for ${optionName}.`);
+    }
+    return value;
+  }
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -723,20 +771,28 @@ function parseCliArgs(argv = process.argv.slice(2)) {
       continue;
     }
 
+    if (arg === '--report-only') {
+      parsed.reportOnly = true;
+      continue;
+    }
+
     if (arg === '--json') {
       parsed.json = true;
       continue;
     }
 
     if (arg === '--report-dir') {
-      parsed.reportDir = argv[index + 1] || null;
+      parsed.reportDir = readRequiredValue('--report-dir', argv[index + 1]);
       index += 1;
       continue;
     }
 
     if (arg.startsWith('--report-dir=')) {
-      parsed.reportDir = arg.slice('--report-dir='.length);
+      parsed.reportDir = readRequiredValue('--report-dir', arg.slice('--report-dir='.length));
+      continue;
     }
+
+    throw new Error(`Unknown continuous optimization option: ${arg}`);
   }
 
   return parsed;
@@ -786,6 +842,7 @@ module.exports = {
   runContinuousOptimization,
   selectOptimizationCandidates,
   summarizeCommandExecution,
+  summarizeSkippedExecution,
   tailText,
   writeReports,
 };

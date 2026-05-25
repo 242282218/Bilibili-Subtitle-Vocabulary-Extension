@@ -31,3 +31,20 @@ test('test coverage entry contract: should target repository node test files', (
 
   assert.match(coverageScript, /tests\/\*\.test\.js\b/);
 });
+
+test('test coverage entry contract: should keep build-dependent smoke specs out of coverage', () => {
+  const scripts = readPackageScripts();
+  const coverageScript = normalizeScript(scripts['test:coverage']);
+  const buildDependentSmokeSpecs = [
+    'browser-extension-smoke.spec.js',
+    'extension-zip-smoke.spec.js',
+    'real-site-smoke.spec.js',
+  ];
+
+  assert.doesNotMatch(coverageScript, /tests\/\*\.spec\.js\b/);
+  for (const fileName of buildDependentSmokeSpecs) {
+    assert.equal(fs.existsSync(path.join(__dirname, fileName)), true);
+    assert.doesNotMatch(path.basename(fileName), /\.test\.js$/);
+    assert.doesNotMatch(coverageScript, new RegExp(fileName.replaceAll('.', '\\.')));
+  }
+});

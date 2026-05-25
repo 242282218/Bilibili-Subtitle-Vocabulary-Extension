@@ -50,8 +50,17 @@ function runUiTests(options = {}) {
   return result;
 }
 
+function parseCliArgs(argv = process.argv.slice(2)) {
+  if (argv.length === 0) {
+    return {};
+  }
+
+  throw new Error(`Unknown UI test option: ${argv[0]}`);
+}
+
 function runCli() {
   try {
+    parseCliArgs();
     const result = runUiTests();
     process.exit(result.status ?? 1);
   } catch (error) {
@@ -67,5 +76,6 @@ if (require.main === module) {
 module.exports = {
   uiTestPatterns,
   collectUiTestFiles,
+  parseCliArgs,
   runUiTests,
 };

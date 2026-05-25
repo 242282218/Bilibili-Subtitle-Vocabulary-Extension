@@ -7,6 +7,7 @@ const { spawnSync } = require('node:child_process');
 
 const {
   normalizeReport,
+  parseCliArgs,
   refreshOverlaySizeBaseline,
 } = require('../scripts/refresh-overlay-size-baseline.js');
 
@@ -84,6 +85,14 @@ test('refresh overlay baseline: normalizeReport should reject non-positive actua
         },
       }),
     /actualKb.raw/
+  );
+});
+
+test('refresh overlay baseline: cli args should reject unknown options', () => {
+  assert.deepEqual(parseCliArgs([]), {});
+  assert.throws(
+    () => parseCliArgs(['--report-file', 'dist/custom-overlay-size-report.json']),
+    /Unknown overlay baseline option: --report-file/
   );
 });
 

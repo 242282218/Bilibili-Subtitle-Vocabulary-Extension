@@ -1,24 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const { chromium } = require('playwright-core');
+const {
+  createTempRoot,
+  ensureExtensionBuildExists,
+  resolveBrowserExecutable,
+} = require('./extension-smoke-helpers.js');
 
 const PROJECT_ROOT = path.join(__dirname, '..');
-const TEMP_ROOT_PARENT = process.env.BILI_VOCAB_EXTENSION_TMPDIR || os.tmpdir();
-const EDGE_EXECUTABLE_CANDIDATES = [
-  process.env.BILI_VOCAB_EXTENSION_BROWSER,
-  '/usr/bin/chromium',
-  '/usr/bin/chromium-browser',
-  '/usr/bin/google-chrome',
-  '/usr/bin/google-chrome-stable',
-  '/snap/bin/chromium',
-  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-].filter(Boolean);
 const BILIBILI_SEARCH_QUERIES = parseSearchQueries(
   process.env.BILI_VOCAB_REAL_SITE_BILIBILI_QUERIES,
   ['TED', '纪录片', '英语演讲']
@@ -63,38 +54,6 @@ function parseSearchQueries(rawValue, fallback) {
     .map((value) => value.trim())
     .filter(Boolean);
   return values.length > 0 ? values : fallback;
-}
-
-function ensureExtensionBuildExists() {
-  const requiredPaths = [
-    path.join(PROJECT_ROOT, 'manifest.json'),
-    path.join(PROJECT_ROOT, 'dist', 'options.html'),
-    path.join(PROJECT_ROOT, 'dist', 'popup.html'),
-    path.join(PROJECT_ROOT, 'dist', 'overlay.js'),
-  ];
-
-  for (const requiredPath of requiredPaths) {
-    if (!fs.existsSync(requiredPath)) {
-      throw new Error(`Extension build artifact missing: ${requiredPath}`);
-    }
-  }
-}
-
-function resolveBrowserExecutable() {
-  for (const candidate of EDGE_EXECUTABLE_CANDIDATES) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  throw new Error(
-    `Chromium browser executable not found. Checked: ${EDGE_EXECUTABLE_CANDIDATES.join(', ')}`
-  );
-}
-
-function createTempRoot(prefix) {
-  fs.mkdirSync(TEMP_ROOT_PARENT, { recursive: true });
-  return fs.mkdtempSync(path.join(TEMP_ROOT_PARENT, prefix));
 }
 
 function normalizeUrl(value) {
@@ -606,7 +565,7 @@ async function findWorkingYouTubeVideo(context, helperPage, searchPage) {
 }
 
 test('real-site smoke: should validate bilibili subtitle timeline and youtube captions on live pages', async () => {
-  ensureExtensionBuildExists();
+  ensureExtensionBuildExists(PROJECT_ROOT);
 
   const executablePath = resolveBrowserExecutable();
   const userDataDir = createTempRoot('bili-vocab-real-site-');

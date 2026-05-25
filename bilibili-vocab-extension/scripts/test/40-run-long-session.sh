@@ -3,6 +3,9 @@
 set -Eeuo pipefail
 
 REMOTE_ROOT="${TEST_MACHINE_REMOTE_ROOT:-/root/bilibili-vocab-extension}"
+if [ "$REMOTE_ROOT" != "/" ]; then
+  REMOTE_ROOT="${REMOTE_ROOT%/}"
+fi
 PHASE="${TEST_MACHINE_PHASE:-phase-0}"
 TASK_CARD="${TEST_MACHINE_TASK_CARD:-P0-TEST-BOOTSTRAP}"
 TIMESTAMP="${TEST_MACHINE_TIMESTAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
@@ -15,6 +18,68 @@ SCRIPT_NAME="$(basename "$0")"
 COMMIT_SHA="${TEST_MACHINE_COMMIT_SHA:-unknown}"
 BLOCKS_PHASE="${TEST_MACHINE_BLOCKS_PHASE:-yes}"
 failure_reason="none"
+
+validate_remote_root() {
+  local root_without_slashes="${REMOTE_ROOT//\//}"
+  if [ -z "$REMOTE_ROOT" ] || [[ "$REMOTE_ROOT" != /* ]] || [ -z "$root_without_slashes" ] || [[ "$REMOTE_ROOT" == *"/../"* ]] || [[ "$REMOTE_ROOT" == */.. ]]; then
+    failure_reason="invalid TEST_MACHINE_REMOTE_ROOT: $REMOTE_ROOT"
+    printf '%s\n' "$failure_reason" >&2
+    exit 1
+  fi
+}
+
+validate_log_path_segment() {
+  local field_name="$1"
+  local value="$2"
+  if [ -z "$value" ] || [[ "$value" == */* ]] || [ "$value" = "." ] || [ "$value" = ".." ]; then
+    failure_reason="invalid $field_name: $value"
+    printf '%s\n' "$failure_reason" >&2
+    exit 1
+  fi
+}
+
+validate_summary_fields() {
+  if [ "$COMMIT_SHA" != "unknown" ] && [[ ! "$COMMIT_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    failure_reason="invalid TEST_MACHINE_COMMIT_SHA: $COMMIT_SHA"
+    printf '%s\n' "$failure_reason" >&2
+    exit 1
+  fi
+  if [ "$BLOCKS_PHASE" != "yes" ] && [ "$BLOCKS_PHASE" != "no" ]; then
+    failure_reason="invalid TEST_MACHINE_BLOCKS_PHASE: $BLOCKS_PHASE"
+    printf '%s\n' "$failure_reason" >&2
+    exit 1
+  fi
+}
+
+validate_log_dir() {
+  local remote_root_base="${REMOTE_ROOT%/}"
+  local expected_log_dir="$remote_root_base/test-results/test-machine/$PHASE/$TASK_CARD/$TIMESTAMP"
+  local log_dir_suffix="${LOG_DIR#"$expected_log_dir"}"
+  if [ -z "$LOG_DIR" ] || [[ "$LOG_DIR" != /* ]] || [[ "$LOG_DIR" == *"/../"* ]] || [[ "$LOG_DIR" == */.. ]] || [[ "$LOG_DIR" != "$expected_log_dir"* ]]; then
+    failure_reason="invalid TEST_MACHINE_LOG_DIR: $LOG_DIR"
+    printf '%s\n' "$failure_reason" >&2
+    exit 1
+  fi
+  if [ -n "$log_dir_suffix" ] && { [[ "$log_dir_suffix" != -* ]] || [[ "$log_dir_suffix" == */* ]]; }; then
+    failure_reason="invalid TEST_MACHINE_LOG_DIR: $LOG_DIR"
+    printf '%s\n' "$failure_reason" >&2
+    exit 1
+  fi
+}
+
+format_summary_value() {
+  local value="$1"
+  value="${value//$'\r'/ }"
+  value="${value//$'\n'/ }"
+  printf '%s' "$value"
+}
+
+validate_remote_root
+validate_log_path_segment "TEST_MACHINE_PHASE" "$PHASE"
+validate_log_path_segment "TEST_MACHINE_TASK_CARD" "$TASK_CARD"
+validate_log_path_segment "TEST_MACHINE_TIMESTAMP" "$TIMESTAMP"
+validate_summary_fields
+validate_log_dir
 
 mkdir -p "$LOG_DIR"
 : > "$COMMAND_LOG"
@@ -35,7 +100,7 @@ write_summary() {
     printf 'commit_sha=%s\n' "$COMMIT_SHA"
     printf 'script=%s\n' "$SCRIPT_NAME"
     printf 'status=%s\n' "$status_text"
-    printf 'failure_root_cause=%s\n' "$failure_reason"
+    printf 'failure_root_cause=%s\n' "$(format_summary_value "$failure_reason")"
     printf 'blocks_phase=%s\n' "$BLOCKS_PHASE"
     printf 'log_dir=%s\n' "$LOG_DIR"
   } > "$SUMMARY_LOG"

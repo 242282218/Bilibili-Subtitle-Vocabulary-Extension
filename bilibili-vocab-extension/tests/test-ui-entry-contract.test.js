@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const { collectUiTestFiles, runUiTests } = require('../scripts/run-ui-tests.js');
+const { collectUiTestFiles, parseCliArgs, runUiTests } = require('../scripts/run-ui-tests.js');
 
 function readPackageScripts() {
   const packageJsonPath = path.join(__dirname, '..', 'package.json');
@@ -177,6 +177,28 @@ test('test ui entry contract: current workspace should include runtime bridge an
   );
 });
 
+test('test ui entry contract: current workspace should include every named ui test family', () => {
+  const expectedUiTestFiles = fs
+    .readdirSync(__dirname, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.test.js'))
+    .map((entry) => entry.name)
+    .filter(
+      (name) =>
+        name.startsWith('background-overlay') ||
+        name.startsWith('react-overlay-') ||
+        name.startsWith('react-ui-') ||
+        [
+          'contentScript-overlay-bridge.test.js',
+          'contentScript-overlay-loader.test.js',
+          'settings-layout.test.js',
+        ].includes(name)
+    )
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => path.join('tests', name));
+
+  assert.deepEqual(collectUiTestFiles(path.join(__dirname)), expectedUiTestFiles);
+});
+
 test('test ui entry contract: current workspace should keep shipped react overlay contracts instead of legacy overlay shell tests', () => {
   const testFiles = collectUiTestFiles(path.join(__dirname));
 
@@ -195,6 +217,11 @@ test('test ui entry contract: current workspace should keep shipped react overla
       path.join('tests', 'react-overlay-settings-contract.test.js'),
     ]
   );
+});
+
+test('test ui entry contract: cli args should reject unknown options', () => {
+  assert.deepEqual(parseCliArgs([]), {});
+  assert.throws(() => parseCliArgs(['--pattern', 'react-ui']), /Unknown UI test option: --pattern/);
 });
 
 test('test ui entry contract: run-ui-tests should execute node test with explicit file list', () => {

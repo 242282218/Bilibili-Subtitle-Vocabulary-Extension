@@ -1,41 +1,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { chromium } = require('playwright-core');
+const { runExtensionPackageCheck } = require('../scripts/check-extension-package.js');
+const { createTempRoot, resolveBrowserExecutable } = require('./extension-smoke-helpers.js');
 
 const PROJECT_ROOT = path.join(__dirname, '..');
 const ZIP_PATH = path.join(PROJECT_ROOT, 'extension.zip');
 const SUPPORTED_FIXTURE_URL = 'https://www.bilibili.com/zip-smoke-fixture.html';
 const UNSUPPORTED_FIXTURE_URL = 'https://example.com/bili-vocab-zip-smoke-fixture.html';
-const TEMP_ROOT_PARENT = process.env.BILI_VOCAB_EXTENSION_TMPDIR || os.tmpdir();
-const EDGE_EXECUTABLE_CANDIDATES = [
-  process.env.BILI_VOCAB_EXTENSION_BROWSER,
-  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-].filter(Boolean);
-
-function resolveBrowserExecutable() {
-  for (const candidate of EDGE_EXECUTABLE_CANDIDATES) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  throw new Error(
-    `Chromium browser executable not found. Checked: ${EDGE_EXECUTABLE_CANDIDATES.join(', ')}`
-  );
-}
-
-function createTempRoot(prefix) {
-  // Snap-packaged Chromium on Linux can reject unpacked extensions under sandboxed temp roots.
-  fs.mkdirSync(TEMP_ROOT_PARENT, { recursive: true });
-  return fs.mkdtempSync(path.join(TEMP_ROOT_PARENT, prefix));
-}
 
 function quotePowerShellLiteral(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
@@ -67,25 +42,16 @@ function extractZipArchive(zipPath, destinationDir, options = {}) {
   }
 }
 
-function assertExtractedExtensionShape(extensionDir) {
-  const requiredPaths = [
-    'manifest.json',
-    'background.js',
-    'contentScript.js',
-    'styles.css',
-    'dist/options.html',
-    'dist/popup.html',
-    'dist/overlay.js',
-    'data/cet4.json',
-  ];
+function assertExtensionPackageGatePass() {
+  const { report } = runExtensionPackageCheck({ packageFile: ZIP_PATH });
 
-  for (const requiredPath of requiredPaths) {
-    assert.equal(
-      fs.existsSync(path.join(extensionDir, requiredPath)),
-      true,
-      `Expected extracted archive entry: ${requiredPath}`
-    );
-  }
+  assert.equal(
+    report.result.overall,
+    'pass',
+    `Expected extension package gate to pass, got ${JSON.stringify(report.result)}`
+  );
+
+  return report;
 }
 
 function readExtractedManifest(extensionDir) {
@@ -190,8 +156,8 @@ test('extension zip smoke: should load the unpacked archive as the delivered ext
   const userDataDir = path.join(tempRoot, 'profile');
   fs.mkdirSync(extensionDir, { recursive: true });
 
+  assertExtensionPackageGatePass();
   extractZipArchive(ZIP_PATH, extensionDir);
-  assertExtractedExtensionShape(extensionDir);
   assertMinimalPermissionManifest(readExtractedManifest(extensionDir));
   assertReviewDanmakuRuntimeMarkers(extensionDir);
 

@@ -5,6 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 
 const {
+  collectUnassignedTests,
   createExecutionPlan,
   createSpawnSpec,
   parseCliArgs,
@@ -60,6 +61,7 @@ test('continuous optimization: parseCliArgs should support shard-only and report
     '--shards-only',
     '--serial-shards',
     '--include-pack',
+    '--report-only',
     '--json',
     '--report-dir',
     'custom-report',
@@ -71,7 +73,15 @@ test('continuous optimization: parseCliArgs should support shard-only and report
     runGates: false,
     reportDir: 'custom-report',
     json: true,
+    reportOnly: true,
   });
+});
+
+test('continuous optimization: parseCliArgs should reject unknown or incomplete options', () => {
+  assert.throws(() => parseCliArgs(['--unknown']), /Unknown continuous optimization option/);
+  assert.throws(() => parseCliArgs(['--report-dir']), /Missing value for --report-dir/);
+  assert.throws(() => parseCliArgs(['--report-dir', '--json']), /Missing value for --report-dir/);
+  assert.throws(() => parseCliArgs(['--report-dir=']), /Missing value for --report-dir/);
 });
 
 test('continuous optimization: createSpawnSpec should use shell for windows cmd wrappers', () => {
@@ -175,6 +185,20 @@ test('continuous optimization: current shard plan should not duplicate test file
   assert.deepEqual(collectDuplicateAssignments(plan.shards), []);
 });
 
+test('continuous optimization: current shard plan should only leave explicit smoke specs out of band', () => {
+  const testsDir = path.join(__dirname);
+  const plan = createExecutionPlan({
+    projectRoot: path.join(__dirname, '..'),
+    testsDir,
+  });
+
+  assert.deepEqual(collectUnassignedTests(testsDir, plan.shards), [
+    'browser-extension-smoke.spec.js',
+    'extension-zip-smoke.spec.js',
+    'real-site-smoke.spec.js',
+  ]);
+});
+
 test('continuous optimization: current shard plan should route runtime bridge and lightweight adapter direct tests', () => {
   const plan = createExecutionPlan({
     projectRoot: path.join(__dirname, '..'),
@@ -183,10 +207,12 @@ test('continuous optimization: current shard plan should route runtime bridge an
   const runtimeState = plan.shards.find((shard) => shard.name === 'runtime-state');
   const subtitleContent = plan.shards.find((shard) => shard.name === 'subtitle-content');
   const uiOverlay = plan.shards.find((shard) => shard.name === 'ui-overlay');
+  const buildContractData = plan.shards.find((shard) => shard.name === 'build-contract-data');
 
   assert.ok(runtimeState);
   assert.ok(subtitleContent);
   assert.ok(uiOverlay);
+  assert.ok(buildContractData);
 
   assert.deepEqual(
     runtimeState.testFiles.filter((file) =>
@@ -199,10 +225,24 @@ test('continuous optimization: current shard plan should route runtime bridge an
     ]
   );
   assert.deepEqual(
-    subtitleContent.testFiles.filter(
-      (file) => path.basename(file) === 'contentScript-subtitle-navigation.test.js'
+    subtitleContent.testFiles.filter((file) =>
+      [
+        'contentScript-init.test.js',
+        'contentScript-observer-throttle.test.js',
+        'contentScript-subtitle-navigation.test.js',
+        'contentScript-timeline-polling.test.js',
+        'contentScript-translation-pipeline.test.js',
+        'contentScript-web-text-safety.test.js',
+      ].includes(path.basename(file))
     ),
-    [path.join('tests', 'contentScript-subtitle-navigation.test.js')]
+    [
+      path.join('tests', 'contentScript-init.test.js'),
+      path.join('tests', 'contentScript-observer-throttle.test.js'),
+      path.join('tests', 'contentScript-subtitle-navigation.test.js'),
+      path.join('tests', 'contentScript-timeline-polling.test.js'),
+      path.join('tests', 'contentScript-translation-pipeline.test.js'),
+      path.join('tests', 'contentScript-web-text-safety.test.js'),
+    ]
   );
   assert.deepEqual(
     uiOverlay.testFiles.filter((file) =>
@@ -220,6 +260,22 @@ test('continuous optimization: current shard plan should route runtime bridge an
       path.join('tests', 'react-ui-study-preview.test.js'),
       path.join('tests', 'react-ui-subtitle-navigation.test.js'),
       path.join('tests', 'react-ui-use-overlay-settings.test.js'),
+    ]
+  );
+  assert.deepEqual(
+    buildContractData.testFiles.filter((file) =>
+      [
+        'check-extension-package.test.js',
+        'content-script-bundle-spike.test.js',
+        'extension-smoke-helpers.test.js',
+        'remote-test-entry-contract.test.js',
+      ].includes(path.basename(file))
+    ),
+    [
+      path.join('tests', 'check-extension-package.test.js'),
+      path.join('tests', 'content-script-bundle-spike.test.js'),
+      path.join('tests', 'extension-smoke-helpers.test.js'),
+      path.join('tests', 'remote-test-entry-contract.test.js'),
     ]
   );
 });
@@ -369,6 +425,8 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
       'test-coverage-entry-contract.test.js',
       'settings-ui-state-machine.test.js',
       'browser-extension-smoke.spec.js',
+      'extension-zip-smoke.spec.js',
+      'real-site-smoke.spec.js',
       'popup.test.js',
     ]);
 
@@ -389,7 +447,11 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
 
     assert.equal(summary.overallStatus, 'pass');
     assert.deepEqual(summary.unassignedTests, []);
-    assert.deepEqual(summary.outOfBandSmokeTests, ['browser-extension-smoke.spec.js']);
+    assert.deepEqual(summary.outOfBandSmokeTests, [
+      'browser-extension-smoke.spec.js',
+      'extension-zip-smoke.spec.js',
+      'real-site-smoke.spec.js',
+    ]);
     assert.deepEqual(summary.deferredLegacyTests, ['popup.test.js']);
     assert.equal(summary.nextFocusCandidates[0].id, 'content-script-decomposition');
     assert.deepEqual(summary.nextFocusCandidates[1].files, [
@@ -422,7 +484,11 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
 
     const latestReport = JSON.parse(fs.readFileSync(path.join(reportDir, 'latest.json'), 'utf8'));
     assert.deepEqual(latestReport.unassignedTests, []);
-    assert.deepEqual(latestReport.outOfBandSmokeTests, ['browser-extension-smoke.spec.js']);
+    assert.deepEqual(latestReport.outOfBandSmokeTests, [
+      'browser-extension-smoke.spec.js',
+      'extension-zip-smoke.spec.js',
+      'real-site-smoke.spec.js',
+    ]);
     assert.deepEqual(latestReport.deferredLegacyTests, ['popup.test.js']);
     assert.equal(latestReport.nextFocusCandidates[0].id, 'content-script-decomposition');
     assert.deepEqual(latestReport.nextFocusCandidates[1].files, [
@@ -445,10 +511,13 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
     );
 
     const markdown = fs.readFileSync(path.join(reportDir, 'latest.md'), 'utf8');
-    assert.match(markdown, /Out-of-Band Browser Smoke Tests/);
+    assert.match(markdown, /Out-of-Band Smoke Tests/);
     assert.match(markdown, /browser-extension-smoke\.spec\.js/);
+    assert.match(markdown, /extension-zip-smoke\.spec\.js/);
+    assert.match(markdown, /real-site-smoke\.spec\.js/);
     assert.match(markdown, /pnpm run test:extension-smoke/);
-    assert.match(markdown, /独立 CI job/);
+    assert.match(markdown, /pnpm run test:zip-smoke/);
+    assert.match(markdown, /pnpm run test:real-site-smoke/);
     assert.match(markdown, /Legacy Deferred Tests/);
     assert.match(markdown, /popup\.test\.js/);
     assert.match(
@@ -463,28 +532,104 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
   }
 });
 
-test('continuous optimization contract: package should expose shard and cycle scripts', () => {
+test('continuous optimization: report-only mode should write coverage report without executing commands', async () => {
+  const workspace = createWorkspace();
+  const testsDir = path.join(workspace, 'tests');
+  const reportDir = path.join(workspace, 'reports');
+
+  try {
+    createTestFiles(testsDir, [
+      'adaptive-tuning.test.js',
+      'background.test.js',
+      'experience-metrics.test.js',
+      'learning-state.test.js',
+      'shared-settings.test.js',
+      'vocabulary.test.js',
+      'contentScript-hit-tracking.test.js',
+      'subtitleParser.test.js',
+      'renderer.test.js',
+      'segmenter.test.js',
+      'translator.test.js',
+      'tooltip.test.js',
+      'react-ui-contract.test.js',
+      'react-overlay-layout-contract.test.js',
+      'react-overlay-settings-contract.test.js',
+      'settings-layout.test.js',
+      'test-ui-entry-contract.test.js',
+      'build-entry-contract.test.js',
+      'lint-entry-contract.test.js',
+      'workflow-lockfile-contract.test.js',
+      'continuous-optimization.test.js',
+      'open-vocab-data.test.js',
+      'scheduler.test.js',
+      'danmaku.test.js',
+      'standalone-init.test.js',
+      'check-overlay-size.test.js',
+      'refresh-overlay-size-baseline.test.js',
+      'pack-extension.test.js',
+      'test-coverage-entry-contract.test.js',
+    ]);
+
+    const executedCommands = [];
+    const summary = await runContinuousOptimization({
+      projectRoot: workspace,
+      testsDir,
+      reportDir,
+      reportOnly: true,
+      runId: 'RUN-REPORT-ONLY',
+      executeCommand(command, args) {
+        executedCommands.push([command, ...(args || [])]);
+        return Promise.resolve({ status: 1, durationMs: 25, stdout: '', stderr: '' });
+      },
+    });
+
+    assert.deepEqual(executedCommands, []);
+    assert.equal(summary.overallStatus, 'pass');
+    assert.equal(summary.reportOnly, true);
+    assert.deepEqual(
+      summary.gates.map((gate) => gate.status),
+      ['skipped', 'skipped', 'skipped']
+    );
+    assert.deepEqual(
+      summary.shards.map((shard) => shard.status),
+      ['skipped', 'skipped', 'skipped', 'skipped']
+    );
+    assert.deepEqual(summary.unassignedTests, []);
+    assert.equal(fs.existsSync(path.join(reportDir, 'latest.md')), true);
+
+    const markdown = fs.readFileSync(path.join(reportDir, 'latest.md'), 'utf8');
+    assert.match(markdown, /Report Only: `true`/);
+    assert.match(markdown, /\| Runtime \/ state \| SKIPPED \|/);
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('continuous optimization contract: package should expose only local shard and cycle scripts', () => {
   const scripts = readPackageScripts();
 
   assert.equal(scripts['test:shards'], 'node scripts/run-continuous-optimization.js --shards-only');
   assert.equal(scripts['optimize:continuous'], 'node scripts/run-continuous-optimization.js');
+  assert.equal(scripts['optimize:continuous:ci'], undefined);
 });
 
-test('continuous optimization contract: ci workflow should run test:ui in a dedicated job', () => {
+test('continuous optimization contract: ci workflow should not duplicate test:ui as a dedicated job', () => {
   const workflow = readWorkflow('ci.yml');
 
-  assert.match(workflow, /^  test-ui:\r?$/m);
-  assert.match(workflow, /test-ui:[\s\S]*run: pnpm run test:ui/);
+  assert.doesNotMatch(workflow, /^  test-ui:\r?$/m);
+  assert.doesNotMatch(workflow, /run: pnpm run test:ui/);
 });
 
-test('continuous optimization contract: ci workflow should run optimize:continuous in a dedicated job', () => {
+test('continuous optimization contract: ci workflow should generate report directly', () => {
   const workflow = readWorkflow('ci.yml');
 
   assert.match(workflow, /^  continuous-optimization:\r?$/m);
   assert.match(
     workflow,
-    /continuous-optimization:[\s\S]*run: pnpm run optimize:continuous -- --serial-shards/
+    /continuous-optimization:[\s\S]*run: node scripts\/run-continuous-optimization\.js --report-only/
   );
+  assert.doesNotMatch(workflow, /continuous-optimization:[\s\S]*pnpm run optimize:continuous:ci/);
+  assert.doesNotMatch(workflow, /continuous-optimization:[\s\S]*--serial-shards/);
 });
 
 test('continuous optimization contract: ci workflow should upload continuous optimization reports', () => {
@@ -500,10 +645,13 @@ test('continuous optimization contract: ci workflow should upload continuous opt
   );
 });
 
-test('continuous optimization contract: ci workflow should run extension smoke in a dedicated windows job', () => {
+test('continuous optimization contract: ci workflow should run windows smoke without rebuilding', () => {
   const workflow = readWorkflow('ci.yml');
 
-  assert.match(workflow, /^  extension-smoke-windows:\r?$/m);
-  assert.match(workflow, /extension-smoke-windows:[\s\S]*runs-on: windows-latest/);
-  assert.match(workflow, /extension-smoke-windows:[\s\S]*run: pnpm run test:extension-smoke/);
+  assert.doesNotMatch(workflow, /^  extension-smoke-windows:\r?$/m);
+  assert.match(workflow, /^  pack-windows-smoke:\r?$/m);
+  assert.match(workflow, /pack-windows-smoke:[\s\S]*runs-on: windows-latest/);
+  assert.match(workflow, /pack-windows-smoke:[\s\S]*run: pnpm run build:extension/);
+  assert.match(workflow, /pack-windows-smoke:[\s\S]*run: pnpm run test:extension-smoke:built/);
+  assert.doesNotMatch(workflow, /run: pnpm run test:extension-smoke\r?$/m);
 });

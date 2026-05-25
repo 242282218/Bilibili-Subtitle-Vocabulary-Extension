@@ -34,6 +34,14 @@ function getWebAccessibleMatches(manifest) {
   return Array.isArray(firstEntry.matches) ? firstEntry.matches : [];
 }
 
+function getWebAccessibleResources(manifest) {
+  const entries = Array.isArray(manifest.web_accessible_resources)
+    ? manifest.web_accessible_resources
+    : [];
+  const firstEntry = entries[0] || {};
+  return Array.isArray(firstEntry.resources) ? firstEntry.resources : [];
+}
+
 test('permission strategy contract: default manifest should use minimal Bilibili and YouTube scope', () => {
   const manifest = readManifest();
   const permissionsDoc = readRepoDoc(PERMISSIONS_DOC);
@@ -41,6 +49,7 @@ test('permission strategy contract: default manifest should use minimal Bilibili
   const permissions = Array.isArray(manifest.permissions) ? manifest.permissions : [];
   const hostPermissions = Array.isArray(manifest.host_permissions) ? manifest.host_permissions : [];
   const webAccessibleMatches = getWebAccessibleMatches(manifest);
+  const webAccessibleResources = getWebAccessibleResources(manifest);
   const optionalHostPermissions = Array.isArray(manifest.optional_host_permissions)
     ? manifest.optional_host_permissions
     : [];
@@ -57,6 +66,7 @@ test('permission strategy contract: default manifest should use minimal Bilibili
     'https://www.bilibili.com/*',
     'https://www.youtube.com/*',
   ]);
+  assert.deepEqual(webAccessibleResources, ['data/*.json', 'dist/overlay.js']);
   assert.equal(matches.includes('http://*/*'), false);
   assert.equal(matches.includes('https://*/*'), false);
   assert.equal(webAccessibleMatches.includes('http://*/*'), false);
@@ -68,6 +78,26 @@ test('permission strategy contract: default manifest should use minimal Bilibili
   assert.deepEqual(optionalHostPermissions, ['*://*/*']);
   assert.match(permissionsDoc, /Optional Host 权限[\s\S]*"\*:\/\/\*\/\*"/);
   assert.match(permissionsDoc, /默认内容脚本只运行在/);
+});
+
+test('permission strategy contract: web accessible resources should stay minimal', () => {
+  const manifest = readManifest();
+  const webAccessibleEntries = Array.isArray(manifest.web_accessible_resources)
+    ? manifest.web_accessible_resources
+    : [];
+  const resources = webAccessibleEntries.flatMap((entry) =>
+    Array.isArray(entry.resources) ? entry.resources : []
+  );
+
+  assert.equal(webAccessibleEntries.length, 1);
+  assert.deepEqual(resources, ['data/*.json', 'dist/overlay.js']);
+  assert.equal(resources.includes('dist/*'), false);
+  assert.equal(resources.includes('dist/assets/*'), false);
+  assert.equal(resources.includes('*.js'), false);
+  assert.equal(resources.includes('scripts/*'), false);
+  assert.equal(resources.includes('react-ui/*'), false);
+  assert.equal(resources.includes('tests/*'), false);
+  assert.equal(resources.includes('sources/*'), false);
 });
 
 test('permission strategy contract: target state should be minimal Bilibili and YouTube injection', () => {

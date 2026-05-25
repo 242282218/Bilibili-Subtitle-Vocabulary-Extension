@@ -7,11 +7,13 @@ const path = require('node:path');
 const {
   buildVocabularyDataset,
   hasPublishBlockingFlag,
+  listPublishedDataFileNames,
+  parseCliArgs,
 } = require('../scripts/build-vocab-dataset.js');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const LEVELS = ['cet4', 'cet6', 'kaoyan', 'ielts', 'toefl'];
-const SNAPSHOT_FILES = [...LEVELS.map((level) => `${level}.json`), 'sources.json'];
+const SNAPSHOT_FILES = listPublishedDataFileNames();
 const MIN_ENTRIES_BY_LEVEL = {
   cet4: 500,
   cet6: 500,
@@ -316,6 +318,32 @@ test('publish 词库构建不应携带 publishBlocking 来源派生数据', asyn
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
   }
+});
+
+test('词库生成 CLI 参数应显式校验未知和缺值选项', () => {
+  assert.deepEqual(parseCliArgs([]), {
+    refresh: false,
+    buildTarget: 'development',
+    outputDir: DATA_DIR,
+  });
+  assert.deepEqual(parseCliArgs(['--publish-safe', '--output-dir', 'publish-data', '--refresh']), {
+    refresh: true,
+    buildTarget: 'publish',
+    outputDir: 'publish-data',
+  });
+  assert.deepEqual(parseCliArgs(['--build-target=publish', '--output-dir=custom-data']), {
+    refresh: false,
+    buildTarget: 'publish',
+    outputDir: 'custom-data',
+  });
+
+  assert.throws(() => parseCliArgs(['--unknown']), /Unknown vocabulary dataset option/);
+  assert.throws(() => parseCliArgs(['--build-target']), /Missing value for --build-target/);
+  assert.throws(
+    () => parseCliArgs(['--build-target', '--refresh']),
+    /Missing value for --build-target/
+  );
+  assert.throws(() => parseCliArgs(['--output-dir=']), /Missing value for --output-dir/);
 });
 
 test('词库数据文件应使用 UTF-8 无 BOM 编码，避免 JSON 解析兼容性问题', () => {

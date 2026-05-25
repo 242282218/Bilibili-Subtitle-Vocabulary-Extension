@@ -1,9 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const { chromium } = require('playwright-core');
+const {
+  createTempRoot,
+  ensureExtensionBuildExists,
+  resolveBrowserExecutable,
+} = require('./extension-smoke-helpers.js');
 
 const PROJECT_ROOT = path.join(__dirname, '..');
 const SUPPORTED_FIXTURE_URL = 'https://www.bilibili.com/fixture.html';
@@ -13,47 +17,6 @@ const AUTHORIZED_OPTIONAL_FIXTURE_URL = 'https://docs.example.com/bili-vocab-opt
 const AUTHORIZED_OPTIONAL_ORIGIN = 'https://docs.example.com/*';
 const BILIBILI_SWITCH_FIXTURE_URL = 'https://www.bilibili.com/video/BV1switch111?p=1';
 const BILIBILI_SWITCH_FIXTURE_URL_NEXT = 'https://www.bilibili.com/video/BV2switch222?p=1';
-const TEMP_ROOT_PARENT = process.env.BILI_VOCAB_EXTENSION_TMPDIR || os.tmpdir();
-const EDGE_EXECUTABLE_CANDIDATES = [
-  process.env.BILI_VOCAB_EXTENSION_BROWSER,
-  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-].filter(Boolean);
-
-function ensureExtensionBuildExists() {
-  const requiredPaths = [
-    path.join(PROJECT_ROOT, 'manifest.json'),
-    path.join(PROJECT_ROOT, 'dist', 'options.html'),
-    path.join(PROJECT_ROOT, 'dist', 'popup.html'),
-    path.join(PROJECT_ROOT, 'dist', 'overlay.js'),
-  ];
-
-  for (const requiredPath of requiredPaths) {
-    if (!fs.existsSync(requiredPath)) {
-      throw new Error(`Extension build artifact missing: ${requiredPath}`);
-    }
-  }
-}
-
-function resolveBrowserExecutable() {
-  for (const candidate of EDGE_EXECUTABLE_CANDIDATES) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  throw new Error(
-    `Chromium browser executable not found. Checked: ${EDGE_EXECUTABLE_CANDIDATES.join(', ')}`
-  );
-}
-
-function createTempRoot(prefix) {
-  // Snap-packaged Chromium on Linux can reject extension assets under sandboxed temp roots.
-  fs.mkdirSync(TEMP_ROOT_PARENT, { recursive: true });
-  return fs.mkdtempSync(path.join(TEMP_ROOT_PARENT, prefix));
-}
 
 function readManifest(rootDir) {
   return JSON.parse(
@@ -387,7 +350,7 @@ async function setSubtitleNavigationFixture(helperPage, targetUrl, fixture) {
 }
 
 test('browser extension smoke: should load popup/options and inject overlay on a real page', async () => {
-  ensureExtensionBuildExists();
+  ensureExtensionBuildExists(PROJECT_ROOT);
 
   const executablePath = resolveBrowserExecutable();
   const userDataDir = createTempRoot('bili-vocab-extension-smoke-');
@@ -504,7 +467,7 @@ test('browser extension smoke: should inject shipped content runtime on an autho
 });
 
 test('browser extension smoke: should refresh subtitle navigation after bilibili video key switches', async () => {
-  ensureExtensionBuildExists();
+  ensureExtensionBuildExists(PROJECT_ROOT);
 
   const executablePath = resolveBrowserExecutable();
   const userDataDir = createTempRoot('bili-vocab-switch-smoke-');

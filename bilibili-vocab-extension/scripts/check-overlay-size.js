@@ -238,8 +238,17 @@ function runOverlaySizeCheck(options = {}) {
   };
 }
 
+function parseCliArgs(argv = process.argv.slice(2)) {
+  if (argv.length === 0) {
+    return {};
+  }
+
+  throw new Error(`Unknown overlay size option: ${argv[0]}`);
+}
+
 function runCli() {
   try {
+    parseCliArgs();
     const { report } = runOverlaySizeCheck();
     console.log(
       `[overlay-size-check] overlay.js raw=${report.actualKb.raw}KB (budget ${report.budgetKb.raw}KB), gzip=${report.actualKb.gzip}KB (budget ${report.budgetKb.gzip}KB)`
@@ -276,5 +285,6 @@ module.exports = {
   readBaseline,
   evaluateBudgets,
   createReport,
+  parseCliArgs,
   runOverlaySizeCheck,
 };
