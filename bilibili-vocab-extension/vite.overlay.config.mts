@@ -16,7 +16,7 @@ export default defineConfig({
     cssCodeSplit: false,
     minify: "esbuild",
     lib: {
-      entry: resolve(__dirname, "react-ui/src/overlay-entry.tsx"),
+      entry: resolve(__dirname, "react-ui/src/components/overlay-entry.tsx"),
       formats: ["es"],
       fileName: () => "overlay.js"
     },

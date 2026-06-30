@@ -36,7 +36,7 @@ function createWorkspace() {
         background: { service_worker: 'background.js' },
         content_scripts: [
           {
-            js: ['contentScript.js', 'scripts/danmaku.js', 'scripts/scheduler.js'],
+            js: ['contentScript/index.js', 'scripts/danmaku.js', 'scripts/scheduler.js'],
             css: ['styles.css'],
           },
         ],
@@ -55,8 +55,51 @@ function createWorkspace() {
     'utf8'
   );
   fs.writeFileSync(path.join(workspace, 'styles.css'), 'body{}', 'utf8');
-  fs.writeFileSync(path.join(workspace, 'background.js'), '', 'utf8');
-  fs.writeFileSync(path.join(workspace, 'contentScript.js'), '', 'utf8');
+  fs.writeFileSync(
+    path.join(workspace, 'background.js'),
+    `importScripts(
+  'sharedSettings.js',
+  'runtimeMessaging.js',
+  'learningState.js',
+  'background-settings.js',
+  'background-storage.js',
+  'background-learning-state.js',
+  'background-message-handler.js',
+  'background-commands.js'
+);
+`,
+    'utf8'
+  );
+  fs.writeFileSync(path.join(workspace, 'sharedSettings.js'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'runtimeMessaging.js'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'learningState.js'), '', 'utf8');
+  fs.writeFileSync(
+    path.join(workspace, 'background-settings.js'),
+    `importScripts('sharedSettings.js');`,
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(workspace, 'background-storage.js'),
+    `importScripts('background-settings.js');`,
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(workspace, 'background-learning-state.js'),
+    `importScripts('learningState.js', 'background-storage.js');`,
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(workspace, 'background-message-handler.js'),
+    `importScripts('runtimeMessaging.js', 'background-storage.js', 'background-learning-state.js');`,
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(workspace, 'background-commands.js'),
+    `importScripts('background-message-handler.js');`,
+    'utf8'
+  );
+  fs.mkdirSync(path.join(workspace, 'contentScript'), { recursive: true });
+  fs.writeFileSync(path.join(workspace, 'contentScript', 'index.js'), '', 'utf8');
   fs.writeFileSync(path.join(workspace, 'scripts', 'danmaku.js'), '', 'utf8');
   fs.writeFileSync(path.join(workspace, 'scripts', 'scheduler.js'), '', 'utf8');
   fs.writeFileSync(path.join(workspace, 'scripts', 'build-vocab-dataset.js'), '', 'utf8');
@@ -102,7 +145,7 @@ test('pack extension: collectPackEntries should follow manifest and html runtime
     assert.deepEqual(entries, [
       'manifest.json',
       'background.js',
-      'contentScript.js',
+      'contentScript/index.js',
       'scripts/danmaku.js',
       'scripts/scheduler.js',
       'styles.css',
@@ -114,6 +157,14 @@ test('pack extension: collectPackEntries should follow manifest and html runtime
       'dist/assets/popup.js',
       'data',
       'dist/overlay.js',
+      'sharedSettings.js',
+      'runtimeMessaging.js',
+      'learningState.js',
+      'background-settings.js',
+      'background-storage.js',
+      'background-learning-state.js',
+      'background-message-handler.js',
+      'background-commands.js',
     ]);
     assert.equal(entries.includes('dist'), false);
   } finally {
@@ -151,6 +202,13 @@ test('pack extension: createPackStageRoot should stage only manifest-listed scri
     try {
       assert.equal(fs.existsSync(path.join(stagingRoot, 'scripts', 'danmaku.js')), true);
       assert.equal(fs.existsSync(path.join(stagingRoot, 'scripts', 'scheduler.js')), true);
+      assert.equal(fs.existsSync(path.join(stagingRoot, 'runtimeMessaging.js')), true);
+      assert.equal(fs.existsSync(path.join(stagingRoot, 'learningState.js')), true);
+      assert.equal(fs.existsSync(path.join(stagingRoot, 'background-settings.js')), true);
+      assert.equal(fs.existsSync(path.join(stagingRoot, 'background-storage.js')), true);
+      assert.equal(fs.existsSync(path.join(stagingRoot, 'background-learning-state.js')), true);
+      assert.equal(fs.existsSync(path.join(stagingRoot, 'background-message-handler.js')), true);
+      assert.equal(fs.existsSync(path.join(stagingRoot, 'background-commands.js')), true);
       assert.equal(
         fs.existsSync(path.join(stagingRoot, 'scripts', 'build-vocab-dataset.js')),
         false
@@ -221,6 +279,14 @@ test('pack extension: collectArchiveRoots should keep directory roots for exact 
     collectArchiveRoots([
       'manifest.json',
       'background.js',
+      'sharedSettings.js',
+      'runtimeMessaging.js',
+      'learningState.js',
+      'background-settings.js',
+      'background-storage.js',
+      'background-learning-state.js',
+      'background-message-handler.js',
+      'background-commands.js',
       'scripts/danmaku.js',
       'scripts/scheduler.js',
       'dist/options.html',
@@ -228,7 +294,21 @@ test('pack extension: collectArchiveRoots should keep directory roots for exact 
       'dist/overlay.js',
       'data/cet4.json',
     ]),
-    ['manifest.json', 'background.js', 'scripts', 'dist', 'data']
+    [
+      'manifest.json',
+      'background.js',
+      'sharedSettings.js',
+      'runtimeMessaging.js',
+      'learningState.js',
+      'background-settings.js',
+      'background-storage.js',
+      'background-learning-state.js',
+      'background-message-handler.js',
+      'background-commands.js',
+      'scripts',
+      'dist',
+      'data',
+    ]
   );
 });
 
@@ -240,11 +320,11 @@ test('pack extension: cli args should reject unknown options', () => {
 test('pack extension: collectPackEntries should fail when a required fixed path is missing', () => {
   const workspace = createWorkspace();
   try {
-    fs.rmSync(path.join(workspace, 'contentScript.js'), { force: true });
+    fs.rmSync(path.join(workspace, 'contentScript', 'index.js'), { force: true });
 
     assert.throws(
       () => collectPackEntries(workspace),
-      /Pack entry missing required path: contentScript\.js/
+      /Pack entry missing required path: contentScript[\\/]index\.js/
     );
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
@@ -318,7 +398,15 @@ Archive:  ${outputZip}
 ---------  ---------- -----   ----
         34  2026-04-16 00:00   manifest.json
         0  2026-04-16 00:00   background.js
-        0  2026-04-16 00:00   contentScript.js
+        0  2026-04-16 00:00   sharedSettings.js
+        0  2026-04-16 00:00   runtimeMessaging.js
+        0  2026-04-16 00:00   learningState.js
+        0  2026-04-16 00:00   background-settings.js
+        0  2026-04-16 00:00   background-storage.js
+        0  2026-04-16 00:00   background-learning-state.js
+        0  2026-04-16 00:00   background-message-handler.js
+        0  2026-04-16 00:00   background-commands.js
+        0  2026-04-16 00:00   contentScript/index.js
         0  2026-04-16 00:00   scripts/danmaku.js
         0  2026-04-16 00:00   scripts/scheduler.js
         7  2026-04-16 00:00   styles.css
@@ -350,11 +438,19 @@ Archive:  ${outputZip}
       outputZip,
       'manifest.json',
       'background.js',
-      'contentScript.js',
+      'contentScript',
       'scripts',
       'styles.css',
       'dist',
       'data',
+      'sharedSettings.js',
+      'runtimeMessaging.js',
+      'learningState.js',
+      'background-settings.js',
+      'background-storage.js',
+      'background-learning-state.js',
+      'background-message-handler.js',
+      'background-commands.js',
     ]);
     assert.equal(calls[1].command, 'unzip');
     assert.match(result.outputZipPath, /extension\.zip$/);
@@ -446,7 +542,15 @@ Archive:  ${outputZip}
 ---------  ---------- -----   ----
         34  2026-04-16 00:00   manifest.json
         0  2026-04-16 00:00   background.js
-        0  2026-04-16 00:00   contentScript.js
+        0  2026-04-16 00:00   sharedSettings.js
+        0  2026-04-16 00:00   runtimeMessaging.js
+        0  2026-04-16 00:00   learningState.js
+        0  2026-04-16 00:00   background-settings.js
+        0  2026-04-16 00:00   background-storage.js
+        0  2026-04-16 00:00   background-learning-state.js
+        0  2026-04-16 00:00   background-message-handler.js
+        0  2026-04-16 00:00   background-commands.js
+        0  2026-04-16 00:00   contentScript/index.js
         0  2026-04-16 00:00   scripts/danmaku.js
         0  2026-04-16 00:00   scripts/scheduler.js
         7  2026-04-16 00:00   styles.css
@@ -534,7 +638,7 @@ Archive:  /tmp/extension.zip
 ---------  ---------- -----   ----
       123  2026-04-16 00:00   manifest.json
        32  2026-04-16 00:00   background.js
-       64  2026-04-16 00:00   contentScript.js
+       64  2026-04-16 00:00   contentScript/index.js
        17  2026-04-16 00:00   styles.css
         0  2026-04-16 00:00   dist/
         0  2026-04-16 00:00   data/
@@ -558,7 +662,15 @@ Archive:  /tmp/extension.zip
 ---------  ---------- -----   ----
       123  2026-04-16 00:00   manifest.json
        32  2026-04-16 00:00   background.js
-       64  2026-04-16 00:00   contentScript.js
+       32  2026-04-16 00:00   sharedSettings.js
+       32  2026-04-16 00:00   runtimeMessaging.js
+       32  2026-04-16 00:00   learningState.js
+       32  2026-04-16 00:00   background-settings.js
+       32  2026-04-16 00:00   background-storage.js
+       32  2026-04-16 00:00   background-learning-state.js
+       32  2026-04-16 00:00   background-message-handler.js
+       32  2026-04-16 00:00   background-commands.js
+       64  2026-04-16 00:00   contentScript/index.js
       456  2026-04-16 00:00   scripts/danmaku.js
       456  2026-04-16 00:00   scripts/scheduler.js
        17  2026-04-16 00:00   styles.css

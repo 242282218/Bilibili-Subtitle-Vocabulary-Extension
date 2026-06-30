@@ -39,7 +39,7 @@ test('extractSubtitleText: should prefer full original subtitle from rendered wo
             sourceText: 'model',
             originalSubtitle: 'leftmodelright',
           },
-          classNames: ['bili-vocab-word'],
+          classNames: ['bsv-word'],
         }),
         new MockTextNode(' right'),
       ],

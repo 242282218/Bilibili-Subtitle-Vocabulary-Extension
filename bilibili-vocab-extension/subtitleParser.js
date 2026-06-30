@@ -140,11 +140,14 @@
   ];
 
   const PLAYER_API_ENDPOINT = 'https://api.bilibili.com/x/player/v2';
+  const VIEW_API_ENDPOINT = 'https://api.bilibili.com/x/web-interface/view';
 
   let subtitleTimeline = [];
   let subtitleTimelinePromise = null;
   let subtitleTimelineCacheKey = '';
   let subtitleTimelineLoaded = false;
+  let resolvedIdentifierCacheKey = '';
+  let resolvedIdentifierCacheValue = null;
 
   const normalizeText =
     (globalThis.Utils && globalThis.Utils.normalizeText) ||
@@ -176,6 +179,10 @@
   function isYouTubeHost(hostname) {
     const host = String(hostname || '').toLowerCase();
     return host === 'youtube.com' || host.endsWith('.youtube.com');
+  }
+
+  function isAllowedSubtitleHost(hostname) {
+    return isHostOrSubdomain(hostname, 'bilibili.com') || isHostOrSubdomain(hostname, 'hdslb.com');
   }
 
   function isTencentHost(hostname) {
@@ -217,7 +224,7 @@
       element &&
       element.classList &&
       typeof element.classList.contains === 'function' &&
-      element.classList.contains('bili-vocab-word')
+      element.classList.contains('bsv-word')
     );
   }
 
@@ -230,7 +237,7 @@
       return true;
     }
 
-    return Boolean(typeof element.closest === 'function' && element.closest('.bili-vocab-word'));
+    return Boolean(typeof element.closest === 'function' && element.closest('.bsv-word'));
   }
 
   function extractOriginalTextFromRenderedNode(node) {
@@ -574,16 +581,21 @@
   }
 
   function normalizeSubtitleUrl(rawUrl) {
-    const url = String(rawUrl || '').trim();
-    if (!url) {
+    const source = String(rawUrl || '').trim();
+    if (!source) {
       return '';
     }
 
-    if (url.startsWith('//')) {
-      return `https:${url}`;
+    const candidate = source.startsWith('//') ? `https:${source}` : source;
+    try {
+      const parsed = new URL(candidate, 'https://www.bilibili.com');
+      if (parsed.protocol !== 'https:' || !isAllowedSubtitleHost(parsed.hostname)) {
+        return '';
+      }
+      return parsed.href;
+    } catch {
+      return '';
     }
-
-    return url;
   }
 
   function pickPreferredSubtitleTrack(subtitles) {
@@ -633,18 +645,56 @@
     return null;
   }
 
+  function getCurrentPageNumber() {
+    const state = globalScope.__INITIAL_STATE__ || {};
+    if (state.p !== undefined && state.p !== null && state.p !== '') {
+      const statePage = Number(state.p);
+      if (Number.isFinite(statePage) && statePage > 0) {
+        return Math.floor(statePage);
+      }
+    }
+
+    try {
+      const locationHref = globalScope.location && globalScope.location.href;
+      const parsed = new URL(String(locationHref || ''));
+      const page = Number(parsed.searchParams.get('p') || 1);
+      return Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+    } catch {
+      return 1;
+    }
+  }
+
+  function extractBvidFromUrl() {
+    try {
+      const locationHref = globalScope.location && globalScope.location.href;
+      const parsed = new URL(String(locationHref || ''));
+      const matched = parsed.href.match(/BV[0-9A-Za-z]{5,}/);
+      return matched ? matched[0] : '';
+    } catch {
+      return '';
+    }
+  }
+
+  function pickPageCid(pages, pageNumber) {
+    if (!Array.isArray(pages) || pages.length === 0) {
+      return 0;
+    }
+
+    const matchedPage = pages.find((page) => Number(page && page.page) === pageNumber);
+    const cid = Number((matchedPage && matchedPage.cid) || (pages[0] && pages[0].cid) || 0);
+    return Number.isFinite(cid) && cid > 0 ? Math.floor(cid) : 0;
+  }
+
   function extractVideoIdentifiers() {
     const state = globalScope.__INITIAL_STATE__ || {};
     const videoData = state.videoData || {};
 
     let cid = Number(videoData.cid || state.cid || 0);
     if (!cid && Array.isArray(videoData.pages) && videoData.pages.length > 0) {
-      const pageNumber = Number(state.p || 1);
-      const matchedPage = videoData.pages.find((page) => Number(page.page) === pageNumber);
-      cid = Number((matchedPage && matchedPage.cid) || videoData.pages[0].cid || 0);
+      cid = pickPageCid(videoData.pages, getCurrentPageNumber());
     }
 
-    const bvid = String(videoData.bvid || state.bvid || '').trim();
+    const bvid = String(videoData.bvid || state.bvid || extractBvidFromUrl()).trim();
     const aid = Number(videoData.aid || state.aid || 0);
 
     return {
@@ -652,6 +702,47 @@
       bvid,
       cid: Number.isFinite(cid) && cid > 0 ? cid : 0,
     };
+  }
+
+  function buildViewApiUrl(identifiers) {
+    const params = new URLSearchParams();
+    if (identifiers.bvid) {
+      params.set('bvid', identifiers.bvid);
+    } else if (identifiers.aid) {
+      params.set('aid', String(identifiers.aid));
+    }
+    return `${VIEW_API_ENDPOINT}?${params.toString()}`;
+  }
+
+  async function resolveTimelineVideoIdentifiers(identifiers) {
+    const source = identifiers && typeof identifiers === 'object' ? identifiers : {};
+    if (source.cid || (!source.bvid && !source.aid)) {
+      return source;
+    }
+
+    const sourceKey = source.bvid ? `bvid:${source.bvid}` : `aid:${source.aid}`;
+    if (sourceKey === resolvedIdentifierCacheKey && resolvedIdentifierCacheValue) {
+      return resolvedIdentifierCacheValue;
+    }
+
+    const response = await fetch(buildViewApiUrl(source), { credentials: 'include' });
+    if (!response.ok) {
+      return source;
+    }
+
+    const payload = await response.json();
+    const data = (payload && payload.data) || {};
+    const cid = pickPageCid(data.pages, getCurrentPageNumber());
+    const resolved = {
+      aid: source.aid || Number(data.aid || 0) || 0,
+      bvid: source.bvid || String(data.bvid || '').trim(),
+      cid,
+    };
+    if (resolved.cid) {
+      resolvedIdentifierCacheKey = sourceKey;
+      resolvedIdentifierCacheValue = resolved;
+    }
+    return resolved;
   }
 
   function buildPlayerApiUrl(identifiers) {
@@ -697,7 +788,7 @@
       return [];
     }
 
-    const identifiers = extractVideoIdentifiers();
+    const identifiers = await resolveTimelineVideoIdentifiers(extractVideoIdentifiers());
     const cacheKey = buildSubtitleTimelineCacheKey(identifiers);
     if (!cacheKey) {
       resetSubtitleTimelineCache();
@@ -729,9 +820,12 @@
         return [];
       }
 
-      const subtitleResponse = await fetch(normalizeSubtitleUrl(track.subtitle_url), {
-        credentials: 'include',
-      });
+      const subtitleUrl = normalizeSubtitleUrl(track.subtitle_url);
+      if (!subtitleUrl) {
+        return [];
+      }
+
+      const subtitleResponse = await fetch(subtitleUrl, { credentials: 'omit' });
       if (!subtitleResponse.ok) {
         return [];
       }

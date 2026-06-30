@@ -1,10 +1,10 @@
-﻿(function (globalScope) {
-  const DANMAKU_CONTAINER_ID = 'bili-vocab-danmaku-layer';
-  const DANMAKU_ITEM_CLASS = 'bili-vocab-danmaku-item';
-  const DANMAKU_ITEM_ASSOCIATED_CLASS = 'bili-vocab-danmaku-item-associated';
-  const DANMAKU_WORD_CLASS = 'bili-vocab-danmaku-item__word';
-  const DANMAKU_SEPARATOR_CLASS = 'bili-vocab-danmaku-item__separator';
-  const DANMAKU_TRANSLATION_CLASS = 'bili-vocab-danmaku-item__translation';
+(function (globalScope) {
+  const DANMAKU_CONTAINER_ID = 'bsv-danmaku-layer';
+  const DANMAKU_ITEM_CLASS = 'bsv-danmaku-item';
+  const DANMAKU_ITEM_ASSOCIATED_CLASS = 'bsv-danmaku-item-associated';
+  const DANMAKU_WORD_CLASS = 'bsv-danmaku-item__word';
+  const DANMAKU_SEPARATOR_CLASS = 'bsv-danmaku-item__separator';
+  const DANMAKU_TRANSLATION_CLASS = 'bsv-danmaku-item__translation';
   // Why: keep review danmaku visually close to Bilibili's standard scroll danmaku.
   const PRIMARY_HOST_SELECTOR = '.bpx-player-video-wrap';
   const DENSITY_PRESET_TO_LIMITS = {

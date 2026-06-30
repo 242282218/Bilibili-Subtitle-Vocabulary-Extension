@@ -63,6 +63,18 @@
     clear() {
       this.cache.clear();
     }
+
+    delete(key) {
+      return this.cache.delete(key);
+    }
+
+    get size() {
+      return this.cache.size;
+    }
+
+    forEach(callbackFn, thisArg) {
+      this.cache.forEach(callbackFn, thisArg);
+    }
   }
 
   const api = { normalizeText, escapeHtml, normalizeWordKey, debounce, logError, LRUCache };

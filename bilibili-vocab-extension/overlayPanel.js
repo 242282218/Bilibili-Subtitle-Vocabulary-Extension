@@ -1,25 +1,11 @@
 // @legacy - shipped overlay entry is the React bundle in dist/overlay.js.
 (function (globalScope) {
+  const config =
+    globalScope.Config || (typeof require === 'function' ? require('./config.js') : null);
   const sharedSettings =
     globalScope.SharedSettings ||
     (typeof require === 'function' ? require('./sharedSettings.js') : null);
-  const FALLBACK_RUNTIME_SETTINGS = {
-    enabled: true,
-    schemaVersion: 2,
-    reviewDanmakuEnabled: false,
-    reviewDanmakuSpeed: 'normal',
-    reviewDanmakuDensity: 'normal',
-    webPageEnabled: true,
-    domainRules: {},
-    vocabularyMode: 'core',
-    examPreference: 'balanced',
-    activeLevels: ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL'],
-    replaceRatio: 0.2,
-    maxReplaceCount: 2,
-    targetCefr: 'B2',
-    bilingualMode: 'default',
-    themeMode: 'auto',
-  };
+
   const OVERLAY_PANEL_DEFAULTS = {
     overlayPanelHidden: false,
     overlayPanelCollapsed: false,
@@ -28,12 +14,28 @@
     overlayPanelOffsetRight: 24,
     overlayPanelOffsetBottom: 96,
   };
-  const DEFAULT_SETTINGS = {
-    ...(sharedSettings && sharedSettings.DEFAULT_SETTINGS
-      ? sharedSettings.DEFAULT_SETTINGS
-      : FALLBACK_RUNTIME_SETTINGS),
-    ...OVERLAY_PANEL_DEFAULTS,
-  };
+
+  const DEFAULT_SETTINGS =
+    config && config.DEFAULT_SETTINGS
+      ? { ...config.DEFAULT_SETTINGS, ...OVERLAY_PANEL_DEFAULTS }
+      : {
+          enabled: true,
+          schemaVersion: 2,
+          reviewDanmakuEnabled: false,
+          reviewDanmakuSpeed: 'normal',
+          reviewDanmakuDensity: 'normal',
+          webPageEnabled: true,
+          domainRules: {},
+          vocabularyMode: 'core',
+          examPreference: 'balanced',
+          activeLevels: ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL'],
+          replaceRatio: 0.2,
+          maxReplaceCount: 2,
+          targetCefr: 'B2',
+          bilingualMode: 'default',
+          themeMode: 'auto',
+          ...OVERLAY_PANEL_DEFAULTS,
+        };
   const learningState =
     globalScope.LearningState ||
     (typeof require === 'function' ? require('./learningState.js') : null);
@@ -59,6 +61,7 @@
     'overlayPanelOffsetBottom',
   ];
   const OVERLAY_INSTANCE_KEY = '__BILI_VOCAB_OVERLAY_INSTANCE__';
+  let registeredStorageListener = null;
 
   const LEARNING_STATE_KEYS = learningState
     ? learningState.STORAGE_KEYS
@@ -509,92 +512,92 @@
       return null;
     }
 
-    const existing = document.getElementById('bili-vocab-overlay-panel');
+    const existing = document.getElementById('bsv-overlay-legacy-panel');
     if (existing) {
       return existing;
     }
 
     const panel = document.createElement('aside');
-    panel.id = 'bili-vocab-overlay-panel';
-    panel.className = 'bili-vocab-overlay';
+    panel.id = 'bsv-overlay-legacy-panel';
+    panel.className = 'bsv-overlay-legacy';
     panel.innerHTML = `
-      <div class="bili-vocab-overlay__ambient" aria-hidden="true">
-        <span class="bili-vocab-overlay__glow bili-vocab-overlay__glow--violet"></span>
-        <span class="bili-vocab-overlay__glow bili-vocab-overlay__glow--cyan"></span>
-        <span class="bili-vocab-overlay__gridline"></span>
+      <div class="bsv-overlay-legacy__ambient" aria-hidden="true">
+        <span class="bsv-overlay-legacy__glow bsv-overlay-legacy__glow--violet"></span>
+        <span class="bsv-overlay-legacy__glow bsv-overlay-legacy__glow--cyan"></span>
+        <span class="bsv-overlay-legacy__gridline"></span>
       </div>
-      <div class="bili-vocab-overlay__header" data-drag-handle="true">
-        <div class="bili-vocab-overlay__brand-block">
-          <div class="bili-vocab-overlay__eyebrow">字幕学习控制台</div>
-          <div class="bili-vocab-overlay__title-row">
-            <strong class="bili-vocab-overlay__title">Bilibili Vocabulary</strong>
-            <span id="biliVocabOverlayBadge" class="bili-vocab-overlay__badge">未启用</span>
+      <div class="bsv-overlay-legacy__header" data-drag-handle="true">
+        <div class="bsv-overlay-legacy__brand-block">
+          <div class="bsv-overlay-legacy__eyebrow">字幕学习控制台</div>
+          <div class="bsv-overlay-legacy__title-row">
+            <strong class="bsv-overlay-legacy__title">Bilibili Vocabulary</strong>
+            <span id="biliVocabOverlayBadge" class="bsv-overlay-legacy__badge">未启用</span>
           </div>
-          <div id="biliVocabOverlayHeroCaption" class="bili-vocab-overlay__hero-caption">让字幕替换、词库难度和复习节奏在观看过程中保持同步。</div>
+          <div id="biliVocabOverlayHeroCaption" class="bsv-overlay-legacy__hero-caption">让字幕替换、词库难度和复习节奏在观看过程中保持同步。</div>
         </div>
-        <div class="bili-vocab-overlay__actions">
-          <button id="biliVocabOverlayCollapse" class="bili-vocab-overlay__icon-button" type="button" aria-label="折叠面板">−</button>
-          <button id="biliVocabOverlayHide" class="bili-vocab-overlay__icon-button" type="button" aria-label="隐藏面板">×</button>
+        <div class="bsv-overlay-legacy__actions">
+          <button id="biliVocabOverlayCollapse" class="bsv-overlay-legacy__icon-button" type="button" aria-label="折叠面板">−</button>
+          <button id="biliVocabOverlayHide" class="bsv-overlay-legacy__icon-button" type="button" aria-label="隐藏面板">×</button>
         </div>
       </div>
-      <div class="bili-vocab-overlay__hero-card">
-        <div class="bili-vocab-overlay__hero-topline">
-          <span class="bili-vocab-overlay__hero-kicker">Learning Mode</span>
-          <span id="biliVocabOverlayModeTag" class="bili-vocab-overlay__mode-tag">均衡输入</span>
+      <div class="bsv-overlay-legacy__hero-card">
+        <div class="bsv-overlay-legacy__hero-topline">
+          <span class="bsv-overlay-legacy__hero-kicker">Learning Mode</span>
+          <span id="biliVocabOverlayModeTag" class="bsv-overlay-legacy__mode-tag">均衡输入</span>
         </div>
-        <div class="bili-vocab-overlay__preset-row" aria-label="学习预设">
-          <button type="button" class="bili-vocab-overlay__preset-button" data-preset-mode="gentle">轻量输入</button>
-          <button type="button" class="bili-vocab-overlay__preset-button" data-preset-mode="balanced">均衡输入</button>
-          <button type="button" class="bili-vocab-overlay__preset-button" data-preset-mode="intensive">强化曝光</button>
+        <div class="bsv-overlay-legacy__preset-row" aria-label="学习预设">
+          <button type="button" class="bsv-overlay-legacy__preset-button" data-preset-mode="gentle">轻量输入</button>
+          <button type="button" class="bsv-overlay-legacy__preset-button" data-preset-mode="balanced">均衡输入</button>
+          <button type="button" class="bsv-overlay-legacy__preset-button" data-preset-mode="intensive">强化曝光</button>
         </div>
-        <div id="biliVocabOverlayPreview" class="bili-vocab-overlay__preview"></div>
-        <div id="biliVocabOverlayMockPreview" class="bili-vocab-overlay__mock-preview">预览：这段视频会帮你 system 稳定的 vocabulary 输入节奏。</div>
-        <div id="biliVocabOverlayStrategyNote" class="bili-vocab-overlay__strategy-note">兼顾剧情理解和稳定词汇曝光，适合日常长期使用。</div>
-        <div class="bili-vocab-overlay__metrics">
-          <div class="bili-vocab-overlay__metric bili-vocab-overlay__metric--accent">
-            <span class="bili-vocab-overlay__metric-label">替换强度</span>
+        <div id="biliVocabOverlayPreview" class="bsv-overlay-legacy__preview"></div>
+        <div id="biliVocabOverlayMockPreview" class="bsv-overlay-legacy__mock-preview">预览：这段视频会帮你 system 稳定的 vocabulary 输入节奏。</div>
+        <div id="biliVocabOverlayStrategyNote" class="bsv-overlay-legacy__strategy-note">兼顾剧情理解和稳定词汇曝光，适合日常长期使用。</div>
+        <div class="bsv-overlay-legacy__metrics">
+          <div class="bsv-overlay-legacy__metric bsv-overlay-legacy__metric--accent">
+            <span class="bsv-overlay-legacy__metric-label">替换强度</span>
             <strong id="biliVocabOverlayRatioValue">20%</strong>
           </div>
-          <div class="bili-vocab-overlay__metric">
-            <span class="bili-vocab-overlay__metric-label">目标难度</span>
+          <div class="bsv-overlay-legacy__metric">
+            <span class="bsv-overlay-legacy__metric-label">目标难度</span>
             <strong id="biliVocabOverlayHeroCefr">B2</strong>
           </div>
-          <div class="bili-vocab-overlay__metric">
-            <span class="bili-vocab-overlay__metric-label">复习节奏</span>
+          <div class="bsv-overlay-legacy__metric">
+            <span class="bsv-overlay-legacy__metric-label">复习节奏</span>
             <strong id="biliVocabOverlayHeroReviewSpeed">标准</strong>
           </div>
         </div>
       </div>
-      <div class="bili-vocab-overlay__body">
-        <section class="bili-vocab-overlay__section bili-vocab-overlay__section--primary">
-          <div class="bili-vocab-overlay__section-head">
+      <div class="bsv-overlay-legacy__body">
+        <section class="bsv-overlay-legacy__section bsv-overlay-legacy__section--primary">
+          <div class="bsv-overlay-legacy__section-head">
             <div>
-              <div class="bili-vocab-overlay__section-title">核心控制</div>
-              <div class="bili-vocab-overlay__section-desc">最常调整的替换策略都放在这里，适合边看边微调。</div>
+              <div class="bsv-overlay-legacy__section-title">核心控制</div>
+              <div class="bsv-overlay-legacy__section-desc">最常调整的替换策略都放在这里，适合边看边微调。</div>
             </div>
-            <span class="bili-vocab-overlay__section-pill">Live</span>
+            <span class="bsv-overlay-legacy__section-pill">Live</span>
           </div>
-          <label class="bili-vocab-overlay__switch-row">
+          <label class="bsv-overlay-legacy__switch-row">
             <span>
-              <span class="bili-vocab-overlay__label">启用字幕词汇替换</span>
-              <span class="bili-vocab-overlay__hint">立即控制当前视频页是否进行词汇替换</span>
+              <span class="bsv-overlay-legacy__label">启用字幕词汇替换</span>
+              <span class="bsv-overlay-legacy__hint">立即控制当前视频页是否进行词汇替换</span>
             </span>
             <input id="biliVocabOverlayEnabled" type="checkbox" />
           </label>
-          <label class="bili-vocab-overlay__field bili-vocab-overlay__field--range">
-            <span class="bili-vocab-overlay__field-head">
-              <span class="bili-vocab-overlay__label">替换比例</span>
-              <span id="biliVocabOverlayRatioInlineValue" class="bili-vocab-overlay__value-pill">20%</span>
+          <label class="bsv-overlay-legacy__field bsv-overlay-legacy__field--range">
+            <span class="bsv-overlay-legacy__field-head">
+              <span class="bsv-overlay-legacy__label">替换比例</span>
+              <span id="biliVocabOverlayRatioInlineValue" class="bsv-overlay-legacy__value-pill">20%</span>
             </span>
             <input id="biliVocabOverlayRatio" type="range" min="0.1" max="0.3" step="0.05" />
           </label>
-          <div class="bili-vocab-overlay__grid">
-            <label class="bili-vocab-overlay__field">
-              <span class="bili-vocab-overlay__label">单句上限</span>
+          <div class="bsv-overlay-legacy__grid">
+            <label class="bsv-overlay-legacy__field">
+              <span class="bsv-overlay-legacy__label">单句上限</span>
               <input id="biliVocabOverlayMaxReplace" type="number" min="1" max="5" step="1" />
             </label>
-            <label class="bili-vocab-overlay__field">
-              <span class="bili-vocab-overlay__label">目标 CEFR</span>
+            <label class="bsv-overlay-legacy__field">
+              <span class="bsv-overlay-legacy__label">目标 CEFR</span>
               <select id="biliVocabOverlayCefr">
                 <option value="A1">A1</option>
                 <option value="A2">A2</option>
@@ -606,41 +609,41 @@
             </label>
           </div>
         </section>
-        <section class="bili-vocab-overlay__section">
-          <div class="bili-vocab-overlay__section-head">
+        <section class="bsv-overlay-legacy__section">
+          <div class="bsv-overlay-legacy__section-head">
             <div>
-              <div class="bili-vocab-overlay__section-title">策略与词库</div>
-              <div class="bili-vocab-overlay__section-desc">把复习节拍和目标词库组合成更贴合你当前阶段的输入方案。</div>
+              <div class="bsv-overlay-legacy__section-title">策略与词库</div>
+              <div class="bsv-overlay-legacy__section-desc">把复习节拍和目标词库组合成更贴合你当前阶段的输入方案。</div>
             </div>
-            <span id="biliVocabOverlayLevelsSummary" class="bili-vocab-overlay__section-meta">已选择 5 个词库</span>
+            <span id="biliVocabOverlayLevelsSummary" class="bsv-overlay-legacy__section-meta">已选择 5 个词库</span>
           </div>
-          <label class="bili-vocab-overlay__field">
-            <span class="bili-vocab-overlay__label">复习弹幕速度</span>
+          <label class="bsv-overlay-legacy__field">
+            <span class="bsv-overlay-legacy__label">复习弹幕速度</span>
             <select id="biliVocabOverlayReviewSpeed">
               <option value="slow">慢</option>
               <option value="normal">标准</option>
               <option value="fast">快</option>
             </select>
           </label>
-          <div class="bili-vocab-overlay__grid">
-            <label class="bili-vocab-overlay__field">
-              <span class="bili-vocab-overlay__label">词库模式</span>
+          <div class="bsv-overlay-legacy__grid">
+            <label class="bsv-overlay-legacy__field">
+              <span class="bsv-overlay-legacy__label">词库模式</span>
               <select id="biliVocabOverlayVocabularyMode">
                 <option value="core">核心高频</option>
                 <option value="full">全量扩展</option>
               </select>
             </label>
-            <label class="bili-vocab-overlay__field">
-              <span class="bili-vocab-overlay__label">筛选策略</span>
+            <label class="bsv-overlay-legacy__field">
+              <span class="bsv-overlay-legacy__label">筛选策略</span>
               <select id="biliVocabOverlayExamPreference">
                 <option value="balanced">均衡筛选</option>
                 <option value="exam-first">考试优先</option>
               </select>
             </label>
           </div>
-          <fieldset class="bili-vocab-overlay__field bili-vocab-overlay__levels">
-            <legend class="bili-vocab-overlay__label">激活词库</legend>
-            <div class="bili-vocab-overlay__chips">
+          <fieldset class="bsv-overlay-legacy__field bsv-overlay-legacy__levels">
+            <legend class="bsv-overlay-legacy__label">激活词库</legend>
+            <div class="bsv-overlay-legacy__chips">
               <label><input type="checkbox" name="biliVocabOverlayLevels" value="CET4" /> <span>CET4</span></label>
               <label><input type="checkbox" name="biliVocabOverlayLevels" value="CET6" /> <span>CET6</span></label>
               <label><input type="checkbox" name="biliVocabOverlayLevels" value="KAOYAN" /> <span>考研</span></label>
@@ -649,54 +652,54 @@
             </div>
           </fieldset>
         </section>
-        <section class="bili-vocab-overlay__section bili-vocab-overlay__section--learning">
-          <div class="bili-vocab-overlay__section-head">
+        <section class="bsv-overlay-legacy__section bsv-overlay-legacy__section--learning">
+          <div class="bsv-overlay-legacy__section-head">
             <div>
-              <div class="bili-vocab-overlay__section-title">今日学习反馈</div>
-              <div class="bili-vocab-overlay__section-desc">边看边确认今天的待复习词，让学习闭环留在视频内完成。</div>
+              <div class="bsv-overlay-legacy__section-title">今日学习反馈</div>
+              <div class="bsv-overlay-legacy__section-desc">边看边确认今天的待复习词，让学习闭环留在视频内完成。</div>
             </div>
-            <span id="biliVocabOverlayReviewHeadline" class="bili-vocab-overlay__section-pill">今日待复习 0</span>
+            <span id="biliVocabOverlayReviewHeadline" class="bsv-overlay-legacy__section-pill">今日待复习 0</span>
           </div>
-          <div class="bili-vocab-overlay__learning-grid">
-            <div class="bili-vocab-overlay__learning-stat">
-              <span class="bili-vocab-overlay__learning-stat-label">新词</span>
-              <strong id="biliVocabOverlayNewCount" class="bili-vocab-overlay__learning-stat-value">0</strong>
+          <div class="bsv-overlay-legacy__learning-grid">
+            <div class="bsv-overlay-legacy__learning-stat">
+              <span class="bsv-overlay-legacy__learning-stat-label">新词</span>
+              <strong id="biliVocabOverlayNewCount" class="bsv-overlay-legacy__learning-stat-value">0</strong>
             </div>
-            <div class="bili-vocab-overlay__learning-stat">
-              <span class="bili-vocab-overlay__learning-stat-label">已掌握</span>
-              <strong id="biliVocabOverlayMasteredCount" class="bili-vocab-overlay__learning-stat-value">0</strong>
+            <div class="bsv-overlay-legacy__learning-stat">
+              <span class="bsv-overlay-legacy__learning-stat-label">已掌握</span>
+              <strong id="biliVocabOverlayMasteredCount" class="bsv-overlay-legacy__learning-stat-value">0</strong>
             </div>
           </div>
-          <div class="bili-vocab-overlay__review-card">
-            <div class="bili-vocab-overlay__review-card-head">
-              <span class="bili-vocab-overlay__review-card-label">本轮优先词</span>
-              <button id="biliVocabOverlayReviewRefresh" class="bili-vocab-overlay__ghost-button" type="button">换一个</button>
+          <div class="bsv-overlay-legacy__review-card">
+            <div class="bsv-overlay-legacy__review-card-head">
+              <span class="bsv-overlay-legacy__review-card-label">本轮优先词</span>
+              <button id="biliVocabOverlayReviewRefresh" class="bsv-overlay-legacy__ghost-button" type="button">换一个</button>
             </div>
-            <div id="biliVocabOverlayReviewWord" class="bili-vocab-overlay__review-word">当前没有待复习词</div>
-            <div id="biliVocabOverlayReviewMeta" class="bili-vocab-overlay__review-meta">继续观看带字幕的视频后，这里会出现当前最优先回顾词。</div>
-            <div id="biliVocabOverlayReviewDescription" class="bili-vocab-overlay__review-description">继续观看带字幕的视频，系统会把新命中的词自动加入复习池。</div>
-            <div class="bili-vocab-overlay__action-row">
-              <button id="biliVocabOverlayReviewKnow" class="bili-vocab-overlay__ghost-button" type="button">认识</button>
-              <button id="biliVocabOverlayReviewFuzzy" class="bili-vocab-overlay__ghost-button" type="button">模糊</button>
-              <button id="biliVocabOverlayReviewDontKnow" class="bili-vocab-overlay__ghost-button" type="button">不认识</button>
+            <div id="biliVocabOverlayReviewWord" class="bsv-overlay-legacy__review-word">当前没有待复习词</div>
+            <div id="biliVocabOverlayReviewMeta" class="bsv-overlay-legacy__review-meta">继续观看带字幕的视频后，这里会出现当前最优先回顾词。</div>
+            <div id="biliVocabOverlayReviewDescription" class="bsv-overlay-legacy__review-description">继续观看带字幕的视频，系统会把新命中的词自动加入复习池。</div>
+            <div class="bsv-overlay-legacy__action-row">
+              <button id="biliVocabOverlayReviewKnow" class="bsv-overlay-legacy__ghost-button" type="button">认识</button>
+              <button id="biliVocabOverlayReviewFuzzy" class="bsv-overlay-legacy__ghost-button" type="button">模糊</button>
+              <button id="biliVocabOverlayReviewDontKnow" class="bsv-overlay-legacy__ghost-button" type="button">不认识</button>
             </div>
           </div>
         </section>
-        <div class="bili-vocab-overlay__footer">
-          <div class="bili-vocab-overlay__footer-copy">
-            <div class="bili-vocab-overlay__footer-title">应用到当前观看流</div>
-            <span id="biliVocabOverlayAutoSaveState" class="bili-vocab-overlay__status">等待保存</span>
-            <span id="biliVocabOverlayStatus" class="bili-vocab-overlay__status" aria-live="polite"></span>
+        <div class="bsv-overlay-legacy__footer">
+          <div class="bsv-overlay-legacy__footer-copy">
+            <div class="bsv-overlay-legacy__footer-title">应用到当前观看流</div>
+            <span id="biliVocabOverlayAutoSaveState" class="bsv-overlay-legacy__status">等待保存</span>
+            <span id="biliVocabOverlayStatus" class="bsv-overlay-legacy__status" aria-live="polite"></span>
           </div>
-          <button id="biliVocabOverlaySave" class="bili-vocab-overlay__save" type="button">保存并应用</button>
+          <button id="biliVocabOverlaySave" class="bsv-overlay-legacy__save" type="button">保存并应用</button>
         </div>
       </div>
-      <button id="biliVocabOverlayResize" class="bili-vocab-overlay__resize" type="button" aria-label="调整面板大小"></button>
+      <button id="biliVocabOverlayResize" class="bsv-overlay-legacy__resize" type="button" aria-label="调整面板大小"></button>
     `;
 
     const trigger = document.createElement('button');
-    trigger.id = 'bili-vocab-overlay-trigger';
-    trigger.className = 'bili-vocab-overlay-trigger';
+    trigger.id = 'bsv-overlay-legacy-trigger';
+    trigger.className = 'bsv-overlay-legacy-trigger';
     trigger.type = 'button';
     trigger.textContent = '学习面板';
     trigger.hidden = true;
@@ -733,7 +736,7 @@
       return null;
     }
 
-    const trigger = document.getElementById('bili-vocab-overlay-trigger');
+    const trigger = document.getElementById('bsv-overlay-legacy-trigger');
     const enabledInput = document.getElementById('biliVocabOverlayEnabled');
     const ratioInput = document.getElementById('biliVocabOverlayRatio');
     const ratioValue = document.getElementById('biliVocabOverlayRatioValue');
@@ -1308,7 +1311,12 @@
     }
 
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
-      chrome.storage.onChanged.addListener((changes, areaName) => {
+      // Remove previous listener to prevent accumulation on re-mount.
+      if (registeredStorageListener) {
+        chrome.storage.onChanged.removeListener(registeredStorageListener);
+        registeredStorageListener = null;
+      }
+      registeredStorageListener = (changes, areaName) => {
         if (areaName !== 'local') {
           return;
         }
@@ -1333,7 +1341,8 @@
         if (learningStateChanged) {
           refreshLearningInsights();
         }
-      });
+      };
+      chrome.storage.onChanged.addListener(registeredStorageListener);
     }
 
     bindDrag();

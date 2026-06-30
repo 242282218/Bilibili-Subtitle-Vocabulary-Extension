@@ -5,12 +5,15 @@ const path = require('node:path');
 const sharedSettings = require('../sharedSettings.js');
 
 const backgroundPath = path.join(__dirname, '..', 'background.js');
+const WORD_STATS_V2_KEY = 'bili_vocab_word_stats_v2';
+const REVIEW_QUEUE_KEY = 'bili_vocab_review_queue_v1';
+const LEARNING_SUMMARY_KEY = 'bili_vocab_learning_summary_v1';
 
 function flushAsync() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-function createChromeStub({ storageState, shouldFailSet, sendMessageImpl }) {
+function createChromeStub({ storageState, shouldFailSet, getBytesInUse, sendMessageImpl }) {
   const listeners = {
     installed: null,
     startup: null,
@@ -56,15 +59,34 @@ function createChromeStub({ storageState, shouldFailSet, sendMessageImpl }) {
       },
       storage: {
         local: {
-          get(_keys, callback) {
+          get(keys, callback) {
+            if (Array.isArray(keys)) {
+              callback(
+                keys.reduce((payload, key) => {
+                  payload[key] = storageState[key];
+                  return payload;
+                }, {})
+              );
+              return;
+            }
             callback({ ...storageState });
           },
+          getBytesInUse(keys, callback) {
+            const bytes =
+              typeof getBytesInUse === 'function'
+                ? getBytesInUse(keys, storageState)
+                : JSON.stringify(storageState).length;
+            callback(bytes);
+          },
           set(payload, callback) {
-            const failed = typeof shouldFailSet === 'function' ? shouldFailSet(payload) : false;
+            const failure = typeof shouldFailSet === 'function' ? shouldFailSet(payload) : false;
+            const failed = Boolean(failure);
             if (!failed) {
               Object.assign(storageState, payload);
             }
-            runtime.lastError = failed ? { message: 'mock set failure' } : null;
+            runtime.lastError = failed
+              ? { message: typeof failure === 'string' ? failure : 'mock set failure' }
+              : null;
             if (typeof callback === 'function') {
               callback();
             }
@@ -246,6 +268,141 @@ test('background command: should tolerate callback-style tabs.sendMessage on suc
         },
       ]);
       assert.equal(loggedErrors.length, 0);
+    }
+  );
+});
+
+test('storage cleanup: should preserve saved and reviewed words while pruning stale low-value words', async () => {
+  const now = Date.now();
+  const staleAt = now - 120 * 24 * 60 * 60 * 1000;
+  const recentAt = now - 2 * 24 * 60 * 60 * 1000;
+  const storageState = {
+    level: 'cet4',
+    [WORD_STATS_V2_KEY]: {
+      stale: {
+        word: 'stale',
+        status: 'seen',
+        hitCount: 1,
+        lastSeenAt: staleAt,
+      },
+      saved: {
+        word: 'saved',
+        status: 'saved',
+        hitCount: 1,
+        lastSeenAt: staleAt,
+        savedAt: staleAt,
+      },
+      reviewed: {
+        word: 'reviewed',
+        status: 'seen',
+        hitCount: 1,
+        lastSeenAt: staleAt,
+        reviewCount: 1,
+      },
+      repeated: {
+        word: 'repeated',
+        status: 'seen',
+        hitCount: 2,
+        lastSeenAt: staleAt,
+      },
+      recent: {
+        word: 'recent',
+        status: 'seen',
+        hitCount: 1,
+        lastSeenAt: recentAt,
+      },
+    },
+    [REVIEW_QUEUE_KEY]: {
+      stale: { word: 'stale', dueBucket: 'today' },
+      saved: { word: 'saved', dueBucket: 'soon' },
+      reviewed: { word: 'reviewed', dueBucket: 'later' },
+    },
+  };
+
+  await withBackgroundRuntime(
+    {
+      storageState,
+      getBytesInUse() {
+        return 9 * 1024 * 1024;
+      },
+    },
+    async ({ background, storageState: nextStorageState }) => {
+      background.ensureDefaultSettings();
+      await flushAsync();
+      await flushAsync();
+
+      assert.equal(nextStorageState[WORD_STATS_V2_KEY].stale, undefined);
+      assert.equal(nextStorageState[REVIEW_QUEUE_KEY].stale, undefined);
+      assert.equal(nextStorageState[WORD_STATS_V2_KEY].saved.status, 'saved');
+      assert.equal(nextStorageState[WORD_STATS_V2_KEY].reviewed.reviewCount, 1);
+      assert.equal(nextStorageState[WORD_STATS_V2_KEY].repeated.hitCount, 2);
+      assert.equal(nextStorageState[WORD_STATS_V2_KEY].recent.hitCount, 1);
+      assert.equal(nextStorageState[LEARNING_SUMMARY_KEY].queueCount, 2);
+      assert.equal(nextStorageState[LEARNING_SUMMARY_KEY].savedCount, 1);
+      assert.equal(nextStorageState[LEARNING_SUMMARY_KEY].seenCount, 3);
+    }
+  );
+});
+
+test('storage cleanup: should clean stale words and retry once after quota write failure', async () => {
+  const staleAt = Date.now() - 120 * 24 * 60 * 60 * 1000;
+  const storageState = {
+    level: 'cet6',
+    [WORD_STATS_V2_KEY]: {
+      stale: {
+        word: 'stale',
+        status: 'seen',
+        hitCount: 1,
+        lastSeenAt: staleAt,
+      },
+      saved: {
+        word: 'saved',
+        status: 'saved',
+        hitCount: 1,
+        lastSeenAt: staleAt,
+        savedAt: staleAt,
+      },
+    },
+    [REVIEW_QUEUE_KEY]: {
+      stale: { word: 'stale', dueBucket: 'today' },
+      saved: { word: 'saved', dueBucket: 'soon' },
+    },
+  };
+  let settingsWriteAttempts = 0;
+
+  await withBackgroundRuntime(
+    {
+      storageState,
+      getBytesInUse() {
+        return 4 * 1024 * 1024;
+      },
+      shouldFailSet(payload) {
+        if (
+          !Object.prototype.hasOwnProperty.call(payload, sharedSettings.SETTINGS_STORAGE_KEY_V3)
+        ) {
+          return false;
+        }
+        settingsWriteAttempts += 1;
+        return settingsWriteAttempts === 1 ? 'QUOTA_BYTES quota exceeded' : false;
+      },
+    },
+    async ({ background, storageState: nextStorageState, removedKeys }) => {
+      background.ensureDefaultSettings();
+      await flushAsync();
+      await flushAsync();
+
+      assert.equal(settingsWriteAttempts, 2);
+      assert.equal(nextStorageState[WORD_STATS_V2_KEY].stale, undefined);
+      assert.equal(nextStorageState[WORD_STATS_V2_KEY].saved.status, 'saved');
+      assert.equal(nextStorageState[REVIEW_QUEUE_KEY].stale, undefined);
+      assert.equal(
+        Object.prototype.hasOwnProperty.call(
+          nextStorageState,
+          sharedSettings.SETTINGS_STORAGE_KEY_V3
+        ),
+        true
+      );
+      assert.equal(removedKeys.length, 1);
     }
   );
 });

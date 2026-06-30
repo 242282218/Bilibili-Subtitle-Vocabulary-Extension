@@ -15,7 +15,25 @@ test('content script bundle spike: should exist without replacing manifest runti
   assert.equal(fs.existsSync(spikeConfigPath), true);
   assert.equal(fs.existsSync(spikeEntryPath), true);
   assert.equal(shippedEntry.js.includes('dist-spike/content-script.bundle.js'), false);
-  assert.equal(shippedEntry.js.includes('contentScript.js'), true);
+  assert.equal(shippedEntry.js.includes('contentScript/index.js'), true);
+});
+
+test('content script bundle spike: static imports should target existing files', () => {
+  const root = path.join(__dirname, '..');
+  const spikeEntryPath = path.join(root, 'contentScriptBundleSpike.entry.mjs');
+  const source = fs.readFileSync(spikeEntryPath, 'utf8');
+  const localImports = Array.from(source.matchAll(/^\s*import\s+['"](\.\/[^'"]+)['"];?$/gm)).map(
+    (match) => match[1]
+  );
+
+  assert.equal(localImports.includes('./contentScript.js'), false);
+  for (const importPath of localImports) {
+    assert.equal(
+      fs.existsSync(path.join(root, importPath)),
+      true,
+      `Missing spike import target: ${importPath}`
+    );
+  }
 });
 
 test('critical content script runtime types: should document cross-module contracts', () => {
@@ -33,16 +51,11 @@ test('critical content script runtime types: should document cross-module contra
   }
 });
 
-test('legacy runtime entries: should remain explicit and outside shipped React entries', () => {
+test('runtime entries: should use React dist entries', () => {
   const root = path.join(__dirname, '..');
   const manifest = JSON.parse(
     fs.readFileSync(path.join(root, 'manifest.json'), 'utf8').replace(/^\uFEFF/, '')
   );
-  const legacyEntries = [
-    { fileName: 'popup.js', shippedEntry: manifest.action.default_popup },
-    { fileName: 'options.js', shippedEntry: manifest.options_page },
-    { fileName: 'overlayPanel.js', shippedEntry: 'dist/overlay.js' },
-  ];
   const contentScriptEntry = manifest.content_scripts.find((entry) => Array.isArray(entry.js));
   const webAccessibleResources = manifest.web_accessible_resources.flatMap((entry) =>
     Array.isArray(entry.resources) ? entry.resources : []
@@ -52,11 +65,4 @@ test('legacy runtime entries: should remain explicit and outside shipped React e
   assert.equal(manifest.options_page, 'dist/options.html');
   assert.equal(webAccessibleResources.includes('dist/overlay.js'), true);
   assert.equal(contentScriptEntry.js.includes('overlayPanel.js'), false);
-
-  for (const { fileName, shippedEntry } of legacyEntries) {
-    const source = fs.readFileSync(path.join(root, fileName), 'utf8');
-
-    assert.match(source, /@legacy/);
-    assert.equal(shippedEntry.includes(fileName), false);
-  }
 });

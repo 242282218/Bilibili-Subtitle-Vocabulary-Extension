@@ -48,7 +48,7 @@ global.chrome = {
   },
 };
 
-const contentScript = require('../contentScript.js');
+const contentScript = require('../contentScript/index.js');
 
 test('recordRenderedHits: should not record duplicate hits for the same source text and rendered words', () => {
   const calls = [];
@@ -363,7 +363,7 @@ test('runtime settings sync contract: manifest should load runtime settings sync
 
   const scriptList = shippedEntry.js;
   const syncRuntimeIndex = scriptList.indexOf('runtimeSettingsSync.js');
-  const contentScriptIndex = scriptList.indexOf('contentScript.js');
+  const contentScriptIndex = scriptList.indexOf('contentScript/index.js');
 
   assert.notEqual(syncRuntimeIndex, -1);
   assert.notEqual(contentScriptIndex, -1);
@@ -549,8 +549,8 @@ test('renderWebTextReplacementHtml: should pass runtime settings to renderer', (
   const settings = { bilingualMode: 'bilingual' };
   const html = contentScript.renderWebTextReplacementHtml(result, '我想系统学习', settings);
 
-  assert.match(html, /class="bili-vocab-bilingual-line"/);
-  assert.match(html, /class="bili-vocab-bilingual-translation"/);
+  assert.match(html, /class="bsv-bilingual-line"/);
+  assert.match(html, /class="bsv-bilingual-translation"/);
   assert.match(html, /data-original-subtitle="我想系统学习"/);
   assert.match(html, />我想系统学习</);
 });

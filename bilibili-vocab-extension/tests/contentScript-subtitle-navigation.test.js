@@ -11,7 +11,7 @@ const previousReactOverlayModule = global.ReactOverlayModule;
 const previousOverlayPanelModule = global.OverlayPanelModule;
 const previousHTMLVideoElement = global.HTMLVideoElement;
 let runtimeConnectListener = null;
-let runtimeMessageListener = null;
+const runtimeMessageListeners = [];
 
 const subtitleNavigationControllerRuntime = require('../subtitleNavigationController.js');
 const subtitleNavigationShared = require('../subtitleNavigation.js');
@@ -42,7 +42,7 @@ global.chrome = {
     },
     onMessage: {
       addListener(listener) {
-        runtimeMessageListener = listener;
+        runtimeMessageListeners.push(listener);
       },
     },
   },
@@ -67,17 +67,31 @@ global.SubtitleParser = {
   },
 };
 
-const contentScriptPath = require.resolve('../contentScript.js');
+const contentScriptPath = require.resolve('../contentScript/index.js');
 delete require.cache[contentScriptPath];
-const contentScript = require('../contentScript.js');
+const contentScript = require('../contentScript/index.js');
 
 function dispatchRuntimeMessage(message) {
   return new Promise((resolve) => {
-    const keepChannelOpen = runtimeMessageListener(message, {}, (response) => {
-      resolve({
-        keepChannelOpen,
-        response: cloneValue(response),
+    let handled = false;
+    for (const listener of runtimeMessageListeners) {
+      const keepChannelOpen = listener(message, {}, (response) => {
+        if (handled) {
+          return;
+        }
+        handled = true;
+        resolve({
+          keepChannelOpen,
+          response: cloneValue(response),
+        });
       });
+      if (keepChannelOpen === true) {
+        return;
+      }
+    }
+    resolve({
+      keepChannelOpen: false,
+      response: null,
     });
   });
 }
@@ -140,7 +154,7 @@ test('contentScript subtitle navigation: manifest should load shared runtime bef
   const runtimeIndex = scriptList.indexOf('subtitleNavigation.js');
   const bridgeRuntimeIndex = scriptList.indexOf('overlaySubtitleNavigationBridge.js');
   const controllerRuntimeIndex = scriptList.indexOf('subtitleNavigationController.js');
-  const contentScriptIndex = scriptList.indexOf('contentScript.js');
+  const contentScriptIndex = scriptList.indexOf('contentScript/index.js');
 
   assert.notEqual(runtimeIndex, -1);
   assert.notEqual(bridgeRuntimeIndex, -1);

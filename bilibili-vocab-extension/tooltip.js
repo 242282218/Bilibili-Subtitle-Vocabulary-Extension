@@ -1,5 +1,5 @@
 ﻿(function (globalScope) {
-  const TOOLTIP_ID = 'bili-vocab-tooltip';
+  const TOOLTIP_ID = 'bsv-tooltip';
   const learningState =
     globalThis.LearningState ||
     (typeof require === 'function' ? require('./learningState.js') : null);
@@ -192,32 +192,32 @@
         : '点击单词可重新查看释义';
 
     return `
-      <div class="bili-vocab-tooltip-card">
-        <div class="bili-vocab-tooltip-head">
+      <div class="bsv-tooltip-card">
+        <div class="bsv-tooltip-head">
           <div>
-            <div class="bili-vocab-tooltip-word">${escapeHtml(word)}</div>
-            ${phonetic ? `<div class="bili-vocab-tooltip-phonetic">${escapeHtml(phonetic)}</div>` : ''}
+            <div class="bsv-tooltip-word">${escapeHtml(word)}</div>
+            ${phonetic ? `<div class="bsv-tooltip-phonetic">${escapeHtml(phonetic)}</div>` : ''}
           </div>
-          ${tags ? `<div class="bili-vocab-tooltip-tags">${escapeHtml(tags)}</div>` : ''}
+          ${tags ? `<div class="bsv-tooltip-tags">${escapeHtml(tags)}</div>` : ''}
         </div>
-        <div class="bili-vocab-tooltip-meaning">${escapeHtml(detailLine || meaning)}</div>
-        ${originalSubtitle ? `<div class="bili-vocab-tooltip-context">原句：${escapeHtml(originalSubtitle)}</div>` : ''}
-        <div class="bili-vocab-tooltip-reason">命中原因：${escapeHtml(hitReasonText)}</div>
-        <div class="bili-vocab-tooltip-meta-row">
-          <div class="bili-vocab-tooltip-status">当前状态 · ${escapeHtml(learningStatus)}</div>
-          <div class="bili-vocab-tooltip-frequency">${escapeHtml(frequencyLabel)}</div>
+        <div class="bsv-tooltip-meaning">${escapeHtml(detailLine || meaning)}</div>
+        ${originalSubtitle ? `<div class="bsv-tooltip-context">原句：${escapeHtml(originalSubtitle)}</div>` : ''}
+        <div class="bsv-tooltip-reason">命中原因：${escapeHtml(hitReasonText)}</div>
+        <div class="bsv-tooltip-meta-row">
+          <div class="bsv-tooltip-status">当前状态 · ${escapeHtml(learningStatus)}</div>
+          <div class="bsv-tooltip-frequency">${escapeHtml(frequencyLabel)}</div>
         </div>
-        <div class="bili-vocab-tooltip-actions">
-          <button type="button" class="bili-vocab-tooltip-action-button" data-feedback="know">认识</button>
-          <button type="button" class="bili-vocab-tooltip-action-button" data-feedback="fuzzy">模糊</button>
-          <button type="button" class="bili-vocab-tooltip-action-button" data-feedback="dontKnow">不认识</button>
+        <div class="bsv-tooltip-actions">
+          <button type="button" class="bsv-tooltip-action-button" data-feedback="know">认识</button>
+          <button type="button" class="bsv-tooltip-action-button" data-feedback="fuzzy">模糊</button>
+          <button type="button" class="bsv-tooltip-action-button" data-feedback="dontKnow">不认识</button>
           ${
             learningStatus === '已收藏'
-              ? '<button type="button" class="bili-vocab-tooltip-action-button saved" data-feedback="removeSave">已收藏</button>'
-              : '<button type="button" class="bili-vocab-tooltip-action-button" data-feedback="save">收藏</button>'
+              ? '<button type="button" class="bsv-tooltip-action-button saved" data-feedback="removeSave">已收藏</button>'
+              : '<button type="button" class="bsv-tooltip-action-button" data-feedback="save">收藏</button>'
           }
-          <button type="button" class="bili-vocab-tooltip-action-button" data-feedback="skip">跳过</button>
-          <button type="button" class="bili-vocab-tooltip-action-button" data-feedback="misreplace">替换不合理</button>
+          <button type="button" class="bsv-tooltip-action-button" data-feedback="skip">跳过</button>
+          <button type="button" class="bsv-tooltip-action-button" data-feedback="misreplace">替换不合理</button>
         </div>
       </div>
     `;
@@ -237,9 +237,24 @@
     }
 
     try {
-      return globalThis.SubtitleTranslator.reportContextMisreplace(normalizedWord, options);
+      const result = globalThis.SubtitleTranslator.reportContextMisreplace(normalizedWord, options);
+      refreshTranslationsForContextFeedback();
+      return result;
     } catch (_error) {
       return null;
+    }
+  }
+
+  function refreshTranslationsForContextFeedback() {
+    const runtime = globalThis.BiliVocabContentRuntime;
+    if (!runtime || typeof runtime.refreshTranslationsForSelectionStateChange !== 'function') {
+      return;
+    }
+
+    try {
+      runtime.refreshTranslationsForSelectionStateChange();
+    } catch (_error) {
+      // Feedback should not fail just because the current page cannot be rescheduled.
     }
   }
 
@@ -360,7 +375,7 @@
     if (!(target instanceof Element)) {
       return null;
     }
-    return target.closest('.bili-vocab-word');
+    return target.closest('.bsv-word');
   }
 
   function handleMouseOver(event) {

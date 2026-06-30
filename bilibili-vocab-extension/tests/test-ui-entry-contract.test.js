@@ -107,20 +107,6 @@ test('test ui entry contract: workspace should not keep legacy-only overlay pane
   assert.deepEqual(remainingLegacyContracts, []);
 });
 
-test('test ui entry contract: legacy popup/options html should load shared helpers before shell scripts', () => {
-  const popupHtml = fs.readFileSync(path.join(__dirname, '..', 'popup.html'), 'utf8');
-  const optionsHtml = fs.readFileSync(path.join(__dirname, '..', 'options.html'), 'utf8');
-
-  assert.match(
-    popupHtml,
-    /<script src="settingsUiStateMachine\.js"><\/script>[\s\S]*<script src="sharedSettings\.js"><\/script>[\s\S]*<script src="adaptiveTuning\.js"><\/script>[\s\S]*<script src="learningState\.js"><\/script>[\s\S]*<script src="popup\.js"><\/script>/
-  );
-  assert.match(
-    optionsHtml,
-    /<script src="settingsUiStateMachine\.js"><\/script>[\s\S]*<script src="sharedSettings\.js"><\/script>[\s\S]*<script src="adaptiveTuning\.js"><\/script>[\s\S]*<script src="options\.js"><\/script>/
-  );
-});
-
 test('test ui entry contract: run-ui-tests should select only ui contract files', () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'run-ui-tests-'));
   const testsDir = path.join(workspace, 'tests');
@@ -159,21 +145,9 @@ test('test ui entry contract: current workspace should include runtime bridge an
 
   assert.deepEqual(
     testFiles.filter((file) =>
-      [
-        'contentScript-overlay-bridge.test.js',
-        'react-ui-runtime-messaging.test.js',
-        'react-ui-subtitle-navigation.test.js',
-        'react-ui-study-preview.test.js',
-        'react-ui-use-overlay-settings.test.js',
-      ].includes(path.basename(file))
+      ['contentScript-overlay-bridge.test.js'].includes(path.basename(file))
     ),
-    [
-      path.join('tests', 'contentScript-overlay-bridge.test.js'),
-      path.join('tests', 'react-ui-runtime-messaging.test.js'),
-      path.join('tests', 'react-ui-study-preview.test.js'),
-      path.join('tests', 'react-ui-subtitle-navigation.test.js'),
-      path.join('tests', 'react-ui-use-overlay-settings.test.js'),
-    ]
+    [path.join('tests', 'contentScript-overlay-bridge.test.js')]
   );
 });
 

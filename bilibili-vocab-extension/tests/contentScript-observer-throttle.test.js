@@ -15,7 +15,7 @@ const previousTooltipModule = global.TooltipModule;
 const previousSchedulerModule = global.SchedulerModule;
 const previousDanmakuModule = global.DanmakuModule;
 
-const contentScriptPath = require.resolve('../contentScript.js');
+const contentScriptPath = require.resolve('../contentScript/index.js');
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -170,7 +170,7 @@ function createHarness(options = {}) {
   };
 
   delete require.cache[contentScriptPath];
-  require('../contentScript.js');
+  require('../contentScript/index.js');
 
   async function boot() {
     assert.equal(typeof domContentLoadedListener, 'function');

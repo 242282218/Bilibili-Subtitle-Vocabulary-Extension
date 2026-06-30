@@ -187,6 +187,49 @@ const CEFR_LABEL_MAP = {
 
 const PUBLISH_BLOCKING_SOURCE_FLAGS = ['kylebing', 'netem'];
 
+const DIRTY_DATA_PATTERNS = [/^FIXME$/i, /^\s*$/];
+
+function isDirtyEntry(entry) {
+  const word = String(entry.word || '');
+  if (!word || /^\s*$/.test(word)) {
+    return true;
+  }
+  for (let index = 0; index < DIRTY_DATA_PATTERNS.length; index += 1) {
+    if (DIRTY_DATA_PATTERNS[index].test(word)) {
+      return true;
+    }
+  }
+  const meaning = String(entry.meaning || '');
+  if (/FIXME/i.test(meaning)) {
+    return true;
+  }
+  return false;
+}
+
+function filterDirtyEntries(grouped) {
+  let filteredCount = 0;
+  const cleaned = {};
+
+  LEVELS.forEach((level) => {
+    const entries = grouped[level] || [];
+    const kept = [];
+    entries.forEach((entry) => {
+      if (isDirtyEntry(entry)) {
+        filteredCount += 1;
+      } else {
+        kept.push(entry);
+      }
+    });
+    cleaned[level] = kept;
+  });
+
+  if (filteredCount > 0) {
+    console.log(`[filter] removed ${filteredCount} dirty entries`);
+  }
+
+  return cleaned;
+}
+
 function normalizeBuildTarget(rawValue = 'development') {
   const normalized = String(rawValue || 'development')
     .trim()
@@ -1242,15 +1285,16 @@ async function buildVocabularyDataset(options = {}) {
   propagateSharedPartOfSpeech(entriesByKey);
 
   const grouped = groupEntries(entriesByKey);
+  const filteredGrouped = filterDirtyEntries(grouped);
   const manifest = createSourceManifest(sourceFiles);
 
   if (options.writeFiles !== false) {
-    writeDatasetFiles(dataDir, grouped, manifest);
+    writeDatasetFiles(dataDir, filteredGrouped, manifest);
   }
 
   return {
     buildTarget,
-    grouped,
+    grouped: filteredGrouped,
     manifest,
   };
 }

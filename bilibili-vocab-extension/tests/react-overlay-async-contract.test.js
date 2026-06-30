@@ -8,7 +8,7 @@ function readProjectFile(fileName) {
 }
 
 test('react overlay async contract: overlay entry should guard summary load failure', () => {
-  const source = readProjectFile('react-ui/src/overlay-entry.tsx');
+  const source = readProjectFile('react-ui/src/components/overlay-entry.tsx');
 
   assert.match(source, /学习概览读取失败，请稍后重试。/);
   assert.match(source, /subscribeLearningSummary/);
@@ -17,7 +17,7 @@ test('react overlay async contract: overlay entry should guard summary load fail
 });
 
 test('react overlay async contract: persistImmediate should persist before committing UI state', () => {
-  const source = readProjectFile('react-ui/src/overlay-entry.tsx');
+  const source = readProjectFile('react-ui/src/components/overlay-entry.tsx');
 
   assert.match(
     source,

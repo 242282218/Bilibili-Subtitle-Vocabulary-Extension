@@ -2,7 +2,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { listPublishedDataFileNames } = require('./build-vocab-dataset.js');
-const { collectManifestPackEntries } = require('./pack-extension.js');
+const {
+  collectManifestPackEntries,
+  collectRuntimeDependencyEntries,
+} = require('./pack-extension.js');
 
 const DEFAULT_PROJECT_ROOT = path.resolve(__dirname, '..');
 const DEFAULT_EXTENSION_ZIP_FILE = path.resolve(DEFAULT_PROJECT_ROOT, 'extension.zip');
@@ -137,7 +140,7 @@ function collectManifestRuntimePathValues(entries, value) {
   }
 }
 
-function collectManifestRuntimeEntries(manifest) {
+function collectManifestRuntimeEntries(manifest, options = {}) {
   const entries = [];
   collectManifestRuntimePathValues(
     entries,
@@ -151,7 +154,8 @@ function collectManifestRuntimeEntries(manifest) {
     collectManifestRuntimePathValues(entries, script && script.css);
   });
 
-  return entries;
+  const projectRoot = options.projectRoot ? path.resolve(options.projectRoot) : '';
+  return projectRoot ? collectRuntimeDependencyEntries(projectRoot, entries) : entries;
 }
 
 function collectManifestDistPackageEntries(projectRoot, manifestFile = 'manifest.json') {
@@ -534,7 +538,7 @@ function runExtensionPackageCheck(options = {}) {
   const allowedDataEntries = options.allowedDataEntries || ALLOWED_DATA_PACKAGE_ENTRIES;
   const manifest = options.manifest || readProjectManifest(projectRoot, manifestFile);
   const manifestRuntimeEntries =
-    options.allowedRuntimeEntries || collectManifestRuntimeEntries(manifest);
+    options.allowedRuntimeEntries || collectManifestRuntimeEntries(manifest, { projectRoot });
   const allowedPackageEntries =
     options.allowedPackageEntries ||
     collectAllowedPackageEntries({

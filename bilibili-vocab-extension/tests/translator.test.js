@@ -371,6 +371,22 @@ test('selectMatches: should deprioritize words under dynamic cooldown', () => {
   translator.__resetContextFeedbackForTest();
 });
 
+test('selection state versions: exposure and context feedback should invalidate the right surfaces', () => {
+  translator.__resetContextFeedbackForTest();
+  const baseSelectionVersion = translator.getSelectionStateVersion(1700000000000);
+  const baseContextVersion = translator.getContextFeedbackVersion(1700000000000);
+
+  translator.reportRenderedExposure('optimize', { now: 1700000001000 });
+  assert.equal(translator.getSelectionStateVersion(1700000001000), baseSelectionVersion + 1);
+  assert.equal(translator.getContextFeedbackVersion(1700000001000), baseContextVersion);
+
+  translator.reportContextMisreplace('strategy', { now: 1700000002000, severity: 'high' });
+  assert.equal(translator.getSelectionStateVersion(1700000002000), baseSelectionVersion + 2);
+  assert.equal(translator.getContextFeedbackVersion(1700000002000), baseContextVersion + 1);
+
+  translator.__resetContextFeedbackForTest();
+});
+
 test('selectMatches: should deprioritize recently exposed words', () => {
   translator.__resetContextFeedbackForTest();
 

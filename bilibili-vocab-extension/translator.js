@@ -1,4 +1,4 @@
-﻿(function (globalScope) {
+(function (globalScope) {
   const sharedSettings =
     globalScope.SharedSettings ||
     (typeof require === 'function' ? require('./sharedSettings.js') : null);
@@ -49,11 +49,13 @@
   const CONTEXT_COOLDOWN_MAX_MS = 24 * 60 * 60 * 1000;
   const RECENT_EXPOSURE_WINDOW_MS = 3 * 60 * 1000;
   const RECENT_EXPOSURE_PENALTY = -80;
-  const WORD_CONTEXT_FEEDBACK_STATE = new Map();
-  const WORD_RECENT_EXPOSURE_STATE = new Map();
+
+  const Utils = globalThis.Utils || (typeof require === 'function' ? require('./utils.js') : null);
+  const LRUCache = Utils && Utils.LRUCache;
+  const MAX_CACHE_SIZE = 500;
 
   const escapeHtml =
-    (globalThis.Utils && globalThis.Utils.escapeHtml) ||
+    (Utils && Utils.escapeHtml) ||
     ((text) =>
       String(text || '')
         .replace(/&/g, '&amp;')
@@ -61,6 +63,25 @@
         .replace(/>/g, '&gt;')
         .replace(/\"/g, '&quot;')
         .replace(/'/g, '&#39;'));
+
+  const WORD_CONTEXT_FEEDBACK_STATE = LRUCache ? new LRUCache(MAX_CACHE_SIZE) : new Map();
+  const WORD_RECENT_EXPOSURE_STATE = LRUCache ? new LRUCache(MAX_CACHE_SIZE) : new Map();
+  let selectionStateVersion = 0;
+  let contextFeedbackVersion = 0;
+
+  function nextStateVersion(version) {
+    const nextVersion = Number(version) + 1;
+    return Number.isSafeInteger(nextVersion) ? nextVersion : 1;
+  }
+
+  function bumpSelectionStateVersion() {
+    selectionStateVersion = nextStateVersion(selectionStateVersion);
+  }
+
+  function bumpContextFeedbackVersion() {
+    contextFeedbackVersion = nextStateVersion(contextFeedbackVersion);
+    bumpSelectionStateVersion();
+  }
 
   function recordExperienceMetric(eventType, options = {}) {
     if (!experienceMetrics || typeof experienceMetrics.recordEvent !== 'function') {
@@ -299,12 +320,17 @@
 
   function clearExpiredContextCooldown(now = Date.now()) {
     const nowTimestamp = normalizeTimestamp(now) || Date.now();
+    let removed = false;
     WORD_CONTEXT_FEEDBACK_STATE.forEach((state, key) => {
       const cooldownUntil = normalizeTimestamp(state && state.cooldownUntil);
       if (cooldownUntil != null && cooldownUntil <= nowTimestamp) {
         WORD_CONTEXT_FEEDBACK_STATE.delete(key);
+        removed = true;
       }
     });
+    if (removed) {
+      bumpContextFeedbackVersion();
+    }
   }
 
   function getContextCooldownPenalty(candidate, now = Date.now()) {
@@ -328,12 +354,17 @@
 
   function clearExpiredRecentExposure(now = Date.now()) {
     const nowTimestamp = normalizeTimestamp(now) || Date.now();
+    let removed = false;
     WORD_RECENT_EXPOSURE_STATE.forEach((state, key) => {
       const lastExposedAt = normalizeTimestamp(state && state.lastExposedAt);
       if (lastExposedAt == null || nowTimestamp - lastExposedAt > RECENT_EXPOSURE_WINDOW_MS) {
         WORD_RECENT_EXPOSURE_STATE.delete(key);
+        removed = true;
       }
     });
+    if (removed) {
+      bumpSelectionStateVersion();
+    }
   }
 
   function getRecentExposurePenalty(candidate, now = Date.now()) {
@@ -662,6 +693,7 @@
       lastExposedAt: now,
     };
     WORD_RECENT_EXPOSURE_STATE.set(wordKey, nextState);
+    bumpSelectionStateVersion();
 
     return {
       word: wordKey,
@@ -729,6 +761,7 @@
       lastReportedAt: now,
     };
     WORD_CONTEXT_FEEDBACK_STATE.set(wordKey, nextState);
+    bumpContextFeedbackVersion();
     recordExperienceMetric('context-misreplace', {
       severity,
       now,
@@ -773,6 +806,18 @@
   function resetContextFeedbackForTest() {
     WORD_CONTEXT_FEEDBACK_STATE.clear();
     WORD_RECENT_EXPOSURE_STATE.clear();
+    bumpContextFeedbackVersion();
+  }
+
+  function getSelectionStateVersion(now = Date.now()) {
+    clearExpiredContextCooldown(now);
+    clearExpiredRecentExposure(now);
+    return selectionStateVersion;
+  }
+
+  function getContextFeedbackVersion(now = Date.now()) {
+    clearExpiredContextCooldown(now);
+    return contextFeedbackVersion;
   }
 
   async function processSubtitle(text, settings) {
@@ -848,6 +893,8 @@
     getWordExposureState,
     reportContextMisreplace,
     getWordCooldownState,
+    getSelectionStateVersion,
+    getContextFeedbackVersion,
     __resetContextFeedbackForTest: resetContextFeedbackForTest,
     processSubtitle,
   };

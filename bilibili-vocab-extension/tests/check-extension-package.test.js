@@ -56,10 +56,11 @@ function writeFakeZip(workspace, sizeInBytes = 4096) {
 
 function createRequiredPackageEntries(
   manifest = createRuntimeManifest(),
-  allowedDistEntries = ALLOWED_DIST_PACKAGE_ENTRIES
+  allowedDistEntries = ALLOWED_DIST_PACKAGE_ENTRIES,
+  options = {}
 ) {
   return collectAllowedPackageEntries({
-    manifestRuntimeEntries: collectManifestRuntimeEntries(manifest),
+    manifestRuntimeEntries: collectManifestRuntimeEntries(manifest, options),
     allowedDistEntries,
     allowedDataEntries: ALLOWED_DATA_PACKAGE_ENTRIES,
   });
@@ -68,9 +69,10 @@ function createRequiredPackageEntries(
 function createEntryDetails(
   extraEntries = [],
   manifest = createRuntimeManifest(),
-  allowedDistEntries = ALLOWED_DIST_PACKAGE_ENTRIES
+  allowedDistEntries = ALLOWED_DIST_PACKAGE_ENTRIES,
+  options = {}
 ) {
-  return createRequiredPackageEntries(manifest, allowedDistEntries)
+  return createRequiredPackageEntries(manifest, allowedDistEntries, options)
     .concat(extraEntries)
     .map((name, index) => ({
       ...(typeof name === 'string' ? { name } : name),
@@ -84,7 +86,7 @@ function createRuntimeManifest() {
     background: { service_worker: 'background.js' },
     content_scripts: [
       {
-        js: ['scripts/danmaku.js', 'scripts/scheduler.js', 'contentScript.js'],
+        js: ['scripts/danmaku.js', 'scripts/scheduler.js', 'contentScript/index.js'],
         css: ['styles.css'],
       },
     ],
@@ -125,6 +127,58 @@ function writeManifestProject(workspace, options = {}) {
     `<script type="module" src="./assets/${popupAsset}"></script>`,
     'utf8'
   );
+}
+
+function writeBackgroundImportScriptsFixture(workspace) {
+  fs.writeFileSync(
+    path.join(workspace, 'background.js'),
+    `importScripts(
+  'sharedSettings.js',
+  'runtimeMessaging.js',
+  'learningState.js',
+  'background-settings.js',
+  'background-storage.js',
+  'background-learning-state.js',
+  'background-message-handler.js',
+  'background-commands.js'
+);
+`,
+    'utf8'
+  );
+  fs.writeFileSync(path.join(workspace, 'sharedSettings.js'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'runtimeMessaging.js'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'learningState.js'), '', 'utf8');
+  fs.writeFileSync(
+    path.join(workspace, 'background-settings.js'),
+    `importScripts('sharedSettings.js');`,
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(workspace, 'background-storage.js'),
+    `importScripts('background-settings.js');`,
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(workspace, 'background-learning-state.js'),
+    `importScripts('learningState.js', 'background-storage.js');`,
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(workspace, 'background-message-handler.js'),
+    `importScripts('runtimeMessaging.js', 'background-storage.js', 'background-learning-state.js');`,
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(workspace, 'background-commands.js'),
+    `importScripts('background-message-handler.js');`,
+    'utf8'
+  );
+  fs.writeFileSync(path.join(workspace, 'styles.css'), '', 'utf8');
+  fs.mkdirSync(path.join(workspace, 'contentScript'), { recursive: true });
+  fs.writeFileSync(path.join(workspace, 'contentScript', 'index.js'), '', 'utf8');
+  fs.mkdirSync(path.join(workspace, 'scripts'), { recursive: true });
+  fs.writeFileSync(path.join(workspace, 'scripts', 'danmaku.js'), '', 'utf8');
+  fs.writeFileSync(path.join(workspace, 'scripts', 'scheduler.js'), '', 'utf8');
 }
 
 test('check extension package: should parse unzip entry details', () => {
@@ -168,19 +222,20 @@ test('check extension package: should find missing required and nested forbidden
     'scripts/build-vocab-dataset.js',
     'scripts/test/00-setup-remote-env.sh',
     'tests/check-extension-package.test.js',
-    'react-ui/src/options-main.tsx',
+    'react-ui/src/components/options-main.tsx',
     'sources/ecdict.csv',
     'node_modules/pkg/index.js',
     'scripts/danmaku.js',
   ];
 
-  assert.deepEqual(findMissingRequiredEntries(entryNames, ['manifest.json', 'contentScript.js']), [
-    'contentScript.js',
-  ]);
+  assert.deepEqual(
+    findMissingRequiredEntries(entryNames, ['manifest.json', 'contentScript/index.js']),
+    ['contentScript/index.js']
+  );
   assert.deepEqual(findForbiddenEntries(entryNames, FORBIDDEN_PACKAGE_ENTRIES), [
     'dist/overlay-size-report.json',
     'node_modules/pkg/index.js',
-    'react-ui/src/options-main.tsx',
+    'react-ui/src/components/options-main.tsx',
     'scripts/build-vocab-dataset.js',
     'scripts/test/00-setup-remote-env.sh',
     'sources/ecdict.csv',
@@ -239,16 +294,44 @@ test('check extension package: should derive root runtime entries from manifest'
     'background.js',
     'scripts/danmaku.js',
     'scripts/scheduler.js',
-    'contentScript.js',
+    'contentScript/index.js',
     'styles.css',
   ]);
+});
+
+test('check extension package: should include background importScripts dependencies in runtime entries', () => {
+  const workspace = createTempDir();
+  try {
+    writeBackgroundImportScriptsFixture(workspace);
+
+    assert.deepEqual(
+      collectManifestRuntimeEntries(createRuntimeManifest(), { projectRoot: workspace }),
+      [
+        'background.js',
+        'scripts/danmaku.js',
+        'scripts/scheduler.js',
+        'contentScript/index.js',
+        'styles.css',
+        'sharedSettings.js',
+        'runtimeMessaging.js',
+        'learningState.js',
+        'background-settings.js',
+        'background-storage.js',
+        'background-learning-state.js',
+        'background-message-handler.js',
+        'background-commands.js',
+      ]
+    );
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
 });
 
 test('check extension package: should reject scripts runtime entries outside manifest', () => {
   const entryNames = [
     'manifest.json',
     'background.js',
-    'contentScript.js',
+    'contentScript/index.js',
     'styles.css',
     'scripts/danmaku.js',
     'scripts/scheduler.js',
@@ -270,7 +353,7 @@ test('check extension package: should reject root runtime entries outside manife
   const entryNames = [
     'manifest.json',
     'background.js',
-    'contentScript.js',
+    'contentScript/index.js',
     'styles.css',
     'debug.css',
     'unused.js',
@@ -384,7 +467,12 @@ test('check extension package: should require every manifest runtime entry by de
       ...createRuntimeManifest(),
       content_scripts: [
         {
-          js: ['scripts/danmaku.js', 'scripts/scheduler.js', 'contentScript.js', 'runtimeExtra.js'],
+          js: [
+            'scripts/danmaku.js',
+            'scripts/scheduler.js',
+            'contentScript/index.js',
+            'runtimeExtra.js',
+          ],
           css: ['styles.css'],
         },
       ],
@@ -404,6 +492,41 @@ test('check extension package: should require every manifest runtime entry by de
     assert.equal(report.result.overall, 'fail');
     assert.equal(report.result.requiredEntries, 'fail');
     assert.deepEqual(report.missingRequiredEntries, ['runtimeExtra.js']);
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('check extension package: should fail when background importScripts dependencies are missing from package', () => {
+  const workspace = createTempDir();
+  try {
+    const zipPath = writeFakeZip(workspace);
+    const reportFile = path.join(workspace, 'reports', 'package-report.json');
+    writeManifestProject(workspace);
+    writeBackgroundImportScriptsFixture(workspace);
+
+    const { report } = runExtensionPackageCheck({
+      packageFile: zipPath,
+      reportFile,
+      projectRoot: workspace,
+      entryDetails: createEntryDetails([], createRuntimeManifest(), ALLOWED_DIST_PACKAGE_ENTRIES),
+      maxZipSizeKb: 10,
+      maxUnpackedSizeKb: 20,
+      maxEntryCount: 50,
+    });
+
+    assert.equal(report.result.overall, 'fail');
+    assert.equal(report.result.requiredEntries, 'fail');
+    assert.deepEqual(report.missingRequiredEntries, [
+      'sharedSettings.js',
+      'runtimeMessaging.js',
+      'learningState.js',
+      'background-settings.js',
+      'background-storage.js',
+      'background-learning-state.js',
+      'background-message-handler.js',
+      'background-commands.js',
+    ]);
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
   }
@@ -662,7 +785,7 @@ test('check extension package: should expose conservative default budgets', () =
   assert.deepEqual(REQUIRED_STATIC_PACKAGE_ENTRIES, ['manifest.json']);
   assert.ok(createRequiredPackageEntries().includes('dist/overlay.js'));
   assert.ok(createRequiredPackageEntries().includes('dist/assets/study-preview-chunk.js'));
-  assert.ok(createRequiredPackageEntries().includes('contentScript.js'));
+  assert.ok(createRequiredPackageEntries().includes('contentScript/index.js'));
   assert.deepEqual(ALLOWED_DIST_PACKAGE_ENTRIES, [
     'dist/options.html',
     'dist/popup.html',

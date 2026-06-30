@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const contentScriptPath = require.resolve('../contentScript.js');
+const contentScriptPath = require.resolve('../contentScript/index.js');
 
 const previousDocument = global.document;
 const previousChrome = global.chrome;
@@ -21,6 +21,7 @@ const previousTooltipModule = global.TooltipModule;
 const previousSchedulerModule = global.SchedulerModule;
 const previousDanmakuModule = global.DanmakuModule;
 const previousReactOverlayModule = global.ReactOverlayModule;
+const previousBiliVocabContentRuntime = global.BiliVocabContentRuntime;
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -193,7 +194,7 @@ function installRuntime(options = {}) {
 function loadContentScript(options = {}) {
   delete require.cache[contentScriptPath];
   const harness = installRuntime(options);
-  const contentScript = require('../contentScript.js');
+  const contentScript = require('../contentScript/index.js');
   return { ...harness, contentScript };
 }
 
@@ -208,7 +209,11 @@ test('contentScript init: normal boot should register observer and listeners onc
   await boot(harness);
 
   assert.equal(harness.state.storageListeners, 1);
-  assert.equal(harness.state.runtimeMessageListeners, 1);
+  assert.equal(harness.state.runtimeMessageListeners, 2);
+  assert.equal(
+    typeof global.BiliVocabContentRuntime.refreshTranslationsForSelectionStateChange,
+    'function'
+  );
   assert.equal(harness.state.runtimeConnectListeners, 1);
   assert.equal(harness.state.observerObserveCalls, 1);
   assert.equal(harness.state.loadVocabularyCalls, 1);
@@ -246,12 +251,12 @@ test('contentScript init: repeated CommonJS init calls should not duplicate stor
   await harness.contentScript.init();
 
   assert.equal(harness.state.storageListeners, 1);
-  assert.equal(harness.state.runtimeMessageListeners, 1);
+  assert.equal(harness.state.runtimeMessageListeners, 2);
   assert.equal(harness.state.runtimeConnectListeners, 1);
 });
 
 test('contentScript init: duplicate browser injection should short-circuit runtime registration', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'contentScript.js'), 'utf8');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'contentScript', 'index.js'), 'utf8');
   const runtime = {
     console,
     globalThis: null,
@@ -362,6 +367,11 @@ test('contentScript init: duplicate browser injection should short-circuit runti
     BiliVocabRuntimeSettingsSync: require('../runtimeSettingsSync.js'),
     BiliVocabWebTextReplacement: require('../webTextReplacement.js'),
     BiliVocabOverlayLoader: require('../overlayLoader.js'),
+    BiliVocabDanmakuEngine: require('../contentScript/danmaku-engine.js'),
+    BiliVocabSubtitleNavigationBridge: require('../contentScript/subtitle-navigation-bridge.js'),
+    BiliVocabContentConstants: require('../contentScript/constants.js'),
+    BiliVocabTranslationPipeline: require('../contentScript/translation-pipeline.js'),
+    BiliVocabDomObserver: require('../contentScript/dom-observer.js'),
   };
   runtime.globalThis = runtime;
   vm.createContext(runtime);
@@ -369,7 +379,8 @@ test('contentScript init: duplicate browser injection should short-circuit runti
   vm.runInContext(source, runtime);
   vm.runInContext(source, runtime);
 
-  assert.equal(runtime.chrome.runtime.onMessage.calls, 1);
+  assert.equal(runtime.chrome.runtime.onMessage.calls, 2);
+  assert.equal(typeof runtime.BiliVocabContentRuntime.teardownContentRuntime, 'function');
   assert.equal(runtime.chrome.runtime.onConnect.calls, 1);
 });
 
@@ -390,4 +401,5 @@ test.after(() => {
   global.SchedulerModule = previousSchedulerModule;
   global.DanmakuModule = previousDanmakuModule;
   global.ReactOverlayModule = previousReactOverlayModule;
+  global.BiliVocabContentRuntime = previousBiliVocabContentRuntime;
 });

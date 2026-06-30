@@ -1,6 +1,6 @@
 /* Keep content-script styles self-contained because this stylesheet is injected on arbitrary pages. */
 
-#bili-vocab-danmaku-layer {
+#bsv-danmaku-layer {
   pointer-events: none;
   z-index: 999;
   overflow: hidden;
@@ -11,7 +11,7 @@
   height: 100%;
 }
 
-.bili-vocab-danmaku-item {
+.bsv-danmaku-item {
   position: absolute;
   display: inline-flex;
   align-items: baseline;
@@ -34,7 +34,7 @@
   pointer-events: none;
 }
 
-.bili-vocab-danmaku-item-associated {
+.bsv-danmaku-item-associated {
   opacity: 0.68;
   color: #ffe8a8;
   text-shadow:
@@ -45,14 +45,14 @@
     0 -1px 2px rgba(0, 0, 0, 0.92);
 }
 
-.bili-vocab-danmaku-item__word,
-.bili-vocab-danmaku-item__separator,
-.bili-vocab-danmaku-item__translation {
+.bsv-danmaku-item__word,
+.bsv-danmaku-item__separator,
+.bsv-danmaku-item__translation {
   display: inline;
   color: inherit;
 }
 
-.bili-vocab-danmaku-item__separator {
+.bsv-danmaku-item__separator {
   opacity: 0.8;
 }
 
@@ -66,7 +66,7 @@
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
 }
 
-.bili-vocab-word {
+.bsv-word {
   cursor: pointer;
   font-weight: 700;
   border-bottom: 1px dashed rgba(255, 255, 255, 0.5);
@@ -78,19 +78,19 @@
     transform 180ms ease;
 }
 
-.bili-vocab-word:hover {
+.bsv-word:hover {
   filter: brightness(1.12);
   text-shadow: 0 0 12px rgba(134, 190, 255, 0.42);
 }
 
-.bili-vocab-word:focus {
+.bsv-word:focus {
   filter: brightness(1.12);
   text-shadow: 0 0 12px rgba(134, 190, 255, 0.42);
   outline: 2px solid rgba(132, 188, 255, 0.9);
   outline-offset: 2px;
 }
 
-.bili-vocab-word:active {
+.bsv-word:active {
   transform: scale(0.98);
   filter: brightness(1.05);
 }
@@ -115,7 +115,7 @@
   color: #9b59b6;
 }
 
-.bili-vocab-overlay {
+.bsv-overlay-legacy {
   position: fixed;
   right: 24px;
   bottom: 96px;
@@ -140,35 +140,35 @@
   backdrop-filter: blur(22px);
 }
 
-.bili-vocab-overlay[hidden] {
+.bsv-overlay-legacy[hidden] {
   display: none !important;
 }
 
-.bili-vocab-overlay.is-collapsed {
+.bsv-overlay-legacy.is-collapsed {
   min-height: 0;
   height: auto !important;
 }
 
-.bili-vocab-overlay.is-collapsed .bili-vocab-overlay__hero-card,
-.bili-vocab-overlay.is-collapsed .bili-vocab-overlay__body,
-.bili-vocab-overlay.is-collapsed .bili-vocab-overlay__resize {
+.bsv-overlay-legacy.is-collapsed .bsv-overlay-legacy__hero-card,
+.bsv-overlay-legacy.is-collapsed .bsv-overlay-legacy__body,
+.bsv-overlay-legacy.is-collapsed .bsv-overlay-legacy__resize {
   display: none;
 }
 
-.bili-vocab-overlay__ambient {
+.bsv-overlay-legacy__ambient {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
 
-.bili-vocab-overlay__glow {
+.bsv-overlay-legacy__glow {
   position: absolute;
   border-radius: 999px;
   filter: blur(10px);
   opacity: 0.92;
 }
 
-.bili-vocab-overlay__glow--violet {
+.bsv-overlay-legacy__glow--violet {
   top: -28px;
   right: -22px;
   width: 144px;
@@ -176,7 +176,7 @@
   background: radial-gradient(circle, rgba(59, 130, 246, 0.28), rgba(59, 130, 246, 0));
 }
 
-.bili-vocab-overlay__glow--cyan {
+.bsv-overlay-legacy__glow--cyan {
   left: -34px;
   bottom: 108px;
   width: 128px;
@@ -184,7 +184,7 @@
   background: radial-gradient(circle, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0));
 }
 
-.bili-vocab-overlay__gridline {
+.bsv-overlay-legacy__gridline {
   position: absolute;
   inset: 0;
   background:
@@ -194,50 +194,50 @@
   mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.5), transparent 70%);
 }
 
-.bili-vocab-overlay__header,
-.bili-vocab-overlay__title-row,
-.bili-vocab-overlay__actions,
-.bili-vocab-overlay__field-head,
-.bili-vocab-overlay__switch-row,
-.bili-vocab-overlay__footer,
-.bili-vocab-overlay__grid,
-.bili-vocab-overlay__metrics,
-.bili-vocab-overlay__hero-topline,
-.bili-vocab-overlay__section-head {
+.bsv-overlay-legacy__header,
+.bsv-overlay-legacy__title-row,
+.bsv-overlay-legacy__actions,
+.bsv-overlay-legacy__field-head,
+.bsv-overlay-legacy__switch-row,
+.bsv-overlay-legacy__footer,
+.bsv-overlay-legacy__grid,
+.bsv-overlay-legacy__metrics,
+.bsv-overlay-legacy__hero-topline,
+.bsv-overlay-legacy__section-head {
   display: flex;
 }
 
-.bili-vocab-overlay__header,
-.bili-vocab-overlay__switch-row,
-.bili-vocab-overlay__footer,
-.bili-vocab-overlay__hero-topline,
-.bili-vocab-overlay__section-head {
+.bsv-overlay-legacy__header,
+.bsv-overlay-legacy__switch-row,
+.bsv-overlay-legacy__footer,
+.bsv-overlay-legacy__hero-topline,
+.bsv-overlay-legacy__section-head {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.bili-vocab-overlay__header {
+.bsv-overlay-legacy__header {
   cursor: grab;
 }
 
-.bili-vocab-overlay__header:active {
+.bsv-overlay-legacy__header:active {
   cursor: grabbing;
 }
 
-.bili-vocab-overlay__header,
-.bili-vocab-overlay__hero-card,
-.bili-vocab-overlay__section,
-.bili-vocab-overlay__footer {
+.bsv-overlay-legacy__header,
+.bsv-overlay-legacy__hero-card,
+.bsv-overlay-legacy__section,
+.bsv-overlay-legacy__footer {
   position: relative;
   z-index: 1;
 }
 
-.bili-vocab-overlay__brand-block {
+.bsv-overlay-legacy__brand-block {
   max-width: 78%;
 }
 
-.bili-vocab-overlay__eyebrow {
+.bsv-overlay-legacy__eyebrow {
   color: #98afff;
   font-size: 10px;
   font-weight: 800;
@@ -245,30 +245,30 @@
   text-transform: uppercase;
 }
 
-.bili-vocab-overlay__title-row {
+.bsv-overlay-legacy__title-row {
   align-items: center;
   gap: 10px;
   margin-top: 6px;
 }
 
-.bili-vocab-overlay__title {
+.bsv-overlay-legacy__title {
   font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.02em;
 }
 
-.bili-vocab-overlay__hero-caption {
+.bsv-overlay-legacy__hero-caption {
   margin-top: 10px;
   color: #bcc9ea;
   font-size: 12px;
   line-height: 1.6;
 }
 
-.bili-vocab-overlay__badge,
-.bili-vocab-overlay__section-pill,
-.bili-vocab-overlay__section-meta,
-.bili-vocab-overlay__value-pill,
-.bili-vocab-overlay__mode-tag {
+.bsv-overlay-legacy__badge,
+.bsv-overlay-legacy__section-pill,
+.bsv-overlay-legacy__section-meta,
+.bsv-overlay-legacy__value-pill,
+.bsv-overlay-legacy__mode-tag {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -280,24 +280,24 @@
   font-weight: 700;
 }
 
-.bili-vocab-overlay__badge {
+.bsv-overlay-legacy__badge {
   background: rgba(255, 255, 255, 0.08);
   color: #ccd8ff;
 }
 
-.bili-vocab-overlay__badge[data-enabled="true"] {
+.bsv-overlay-legacy__badge[data-enabled="true"] {
   background: rgba(72, 204, 145, 0.16);
   border-color: rgba(72, 204, 145, 0.18);
   color: #b6ffd7;
 }
 
-.bili-vocab-overlay__actions {
+.bsv-overlay-legacy__actions {
   gap: 8px;
 }
 
-.bili-vocab-overlay__icon-button,
-.bili-vocab-overlay__save,
-.bili-vocab-overlay-trigger {
+.bsv-overlay-legacy__icon-button,
+.bsv-overlay-legacy__save,
+.bsv-overlay-legacy-trigger {
   border: 0;
   cursor: pointer;
   transition:
@@ -307,13 +307,13 @@
     opacity 180ms ease;
 }
 
-.bili-vocab-overlay__icon-button:hover,
-.bili-vocab-overlay__save:hover,
-.bili-vocab-overlay-trigger:hover {
+.bsv-overlay-legacy__icon-button:hover,
+.bsv-overlay-legacy__save:hover,
+.bsv-overlay-legacy-trigger:hover {
   transform: translateY(-1px);
 }
 
-.bili-vocab-overlay__icon-button {
+.bsv-overlay-legacy__icon-button {
   width: 38px;
   height: 38px;
   border-radius: 14px;
@@ -321,7 +321,7 @@
   color: #eff4ff;
 }
 
-.bili-vocab-overlay__hero-card {
+.bsv-overlay-legacy__hero-card {
   margin-top: 16px;
   padding: 18px;
   border-radius: 24px;
@@ -331,7 +331,7 @@
     radial-gradient(circle at top right, rgba(86, 203, 255, 0.16), transparent 30%);
 }
 
-.bili-vocab-overlay__body {
+.bsv-overlay-legacy__body {
   display: grid;
   gap: 14px;
   margin-top: 16px;
@@ -341,24 +341,24 @@
   -webkit-overflow-scrolling: touch;
 }
 
-.bili-vocab-overlay__section {
+.bsv-overlay-legacy__section {
   padding: 16px;
   border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(8, 11, 19, 0.72);
 }
 
-.bili-vocab-overlay__grid {
+.bsv-overlay-legacy__grid {
   flex-wrap: wrap;
   gap: 10px;
 }
 
-.bili-vocab-overlay__metrics {
+.bsv-overlay-legacy__metrics {
   gap: 10px;
   margin-top: 14px;
 }
 
-.bili-vocab-overlay__metric {
+.bsv-overlay-legacy__metric {
   flex: 1;
   min-width: 0;
   padding: 12px;
@@ -366,42 +366,42 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
-.bili-vocab-overlay__metric-value {
+.bsv-overlay-legacy__metric-value {
   display: block;
   margin-top: 6px;
   font-size: 20px;
   font-weight: 800;
 }
 
-.bili-vocab-overlay__section-title {
+.bsv-overlay-legacy__section-title {
   font-size: 14px;
   font-weight: 700;
   color: #f5f8ff;
 }
 
-.bili-vocab-overlay__section-desc,
-.bili-vocab-overlay__helper,
-.bili-vocab-overlay__footnote,
-.bili-vocab-overlay__empty {
+.bsv-overlay-legacy__section-desc,
+.bsv-overlay-legacy__helper,
+.bsv-overlay-legacy__footnote,
+.bsv-overlay-legacy__empty {
   color: #a8b7d8;
   font-size: 12px;
   line-height: 1.6;
 }
 
-.bili-vocab-overlay__field {
+.bsv-overlay-legacy__field {
   margin-top: 14px;
 }
 
-.bili-vocab-overlay__field input[type="number"],
-.bili-vocab-overlay__field select,
-.bili-vocab-overlay__field input[type="range"] {
+.bsv-overlay-legacy__field input[type="number"],
+.bsv-overlay-legacy__field select,
+.bsv-overlay-legacy__field input[type="range"] {
   width: 100%;
   margin-top: 8px;
   box-sizing: border-box;
 }
 
-.bili-vocab-overlay__field input[type="number"],
-.bili-vocab-overlay__field select {
+.bsv-overlay-legacy__field input[type="number"],
+.bsv-overlay-legacy__field select {
   min-height: 40px;
   padding: 0 12px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -410,11 +410,11 @@
   color: #eff4ff;
 }
 
-.bili-vocab-overlay__field input[type="range"] {
+.bsv-overlay-legacy__field input[type="range"] {
   accent-color: #7ba2ff;
 }
 
-.bili-vocab-overlay__save {
+.bsv-overlay-legacy__save {
   min-height: 42px;
   padding: 0 18px;
   border-radius: 14px;
@@ -424,12 +424,12 @@
   box-shadow: 0 14px 24px rgba(76, 128, 255, 0.32);
 }
 
-.bili-vocab-overlay__save.is-busy {
+.bsv-overlay-legacy__save.is-busy {
   opacity: 0.6;
   pointer-events: none;
 }
 
-.bili-vocab-overlay__resize {
+.bsv-overlay-legacy__resize {
   position: absolute;
   right: 10px;
   bottom: 10px;
@@ -440,7 +440,7 @@
   cursor: nwse-resize;
 }
 
-.bili-vocab-overlay-trigger {
+.bsv-overlay-legacy-trigger {
   position: fixed;
   right: 24px;
   bottom: 24px;
@@ -453,58 +453,58 @@
   box-shadow: 0 18px 36px rgba(32, 74, 171, 0.34);
 }
 
-.bili-vocab-overlay__hero-kicker,
-.bili-vocab-overlay__metric-label,
-.bili-vocab-overlay__learning-stat-label,
-.bili-vocab-overlay__review-card-label,
-.bili-vocab-overlay__label,
-.bili-vocab-overlay__hint,
-.bili-vocab-overlay__status {
+.bsv-overlay-legacy__hero-kicker,
+.bsv-overlay-legacy__metric-label,
+.bsv-overlay-legacy__learning-stat-label,
+.bsv-overlay-legacy__review-card-label,
+.bsv-overlay-legacy__label,
+.bsv-overlay-legacy__hint,
+.bsv-overlay-legacy__status {
   font-size: 11px;
   line-height: 1.5;
 }
 
-.bili-vocab-overlay__hero-kicker,
-.bili-vocab-overlay__metric-label,
-.bili-vocab-overlay__review-card-label {
+.bsv-overlay-legacy__hero-kicker,
+.bsv-overlay-legacy__metric-label,
+.bsv-overlay-legacy__review-card-label {
   color: #9fb0d9;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   font-weight: 700;
 }
 
-.bili-vocab-overlay__label {
+.bsv-overlay-legacy__label {
   display: block;
   color: #eef4ff;
   font-weight: 700;
 }
 
-.bili-vocab-overlay__hint,
-.bili-vocab-overlay__status,
-.bili-vocab-overlay__preview,
-.bili-vocab-overlay__mock-preview,
-.bili-vocab-overlay__strategy-note,
-.bili-vocab-overlay__review-meta,
-.bili-vocab-overlay__review-description {
+.bsv-overlay-legacy__hint,
+.bsv-overlay-legacy__status,
+.bsv-overlay-legacy__preview,
+.bsv-overlay-legacy__mock-preview,
+.bsv-overlay-legacy__strategy-note,
+.bsv-overlay-legacy__review-meta,
+.bsv-overlay-legacy__review-description {
   color: #bcc9ea;
   line-height: 1.6;
 }
 
-.bili-vocab-overlay__preset-row,
-.bili-vocab-overlay__chips,
-.bili-vocab-overlay__learning-grid,
-.bili-vocab-overlay__action-row {
+.bsv-overlay-legacy__preset-row,
+.bsv-overlay-legacy__chips,
+.bsv-overlay-legacy__learning-grid,
+.bsv-overlay-legacy__action-row {
   display: grid;
   gap: 10px;
 }
 
-.bili-vocab-overlay__preset-row {
+.bsv-overlay-legacy__preset-row {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 14px;
 }
 
-.bili-vocab-overlay__preset-button,
-.bili-vocab-overlay__ghost-button {
+.bsv-overlay-legacy__preset-button,
+.bsv-overlay-legacy__ghost-button {
   min-height: 38px;
   padding: 0 12px;
   border-radius: 14px;
@@ -518,23 +518,23 @@
     background 180ms ease;
 }
 
-.bili-vocab-overlay__preset-button:hover,
-.bili-vocab-overlay__ghost-button:hover {
+.bsv-overlay-legacy__preset-button:hover,
+.bsv-overlay-legacy__ghost-button:hover {
   transform: translateY(-1px);
   border-color: rgba(125, 211, 252, 0.32);
   background: rgba(255, 255, 255, 0.1);
 }
 
-.bili-vocab-overlay__preset-button.is-active {
+.bsv-overlay-legacy__preset-button.is-active {
   border-color: rgba(125, 211, 252, 0.38);
   background: rgba(59, 130, 246, 0.18);
   color: #dbeafe;
 }
 
-.bili-vocab-overlay__preview,
-.bili-vocab-overlay__mock-preview,
-.bili-vocab-overlay__strategy-note,
-.bili-vocab-overlay__review-card {
+.bsv-overlay-legacy__preview,
+.bsv-overlay-legacy__mock-preview,
+.bsv-overlay-legacy__strategy-note,
+.bsv-overlay-legacy__review-card {
   margin-top: 14px;
   padding: 14px;
   border-radius: 18px;
@@ -542,15 +542,15 @@
   background: rgba(255, 255, 255, 0.04);
 }
 
-.bili-vocab-overlay__strategy-note {
+.bsv-overlay-legacy__strategy-note {
   color: #d7e1f7;
 }
 
-.bili-vocab-overlay__chips {
+.bsv-overlay-legacy__chips {
   grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
 }
 
-.bili-vocab-overlay__chips label {
+.bsv-overlay-legacy__chips label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -563,66 +563,66 @@
   cursor: pointer;
 }
 
-.bili-vocab-overlay__chips input {
+.bsv-overlay-legacy__chips input {
   accent-color: #7dd3fc;
 }
 
-.bili-vocab-overlay__footer-copy {
+.bsv-overlay-legacy__footer-copy {
   display: grid;
   gap: 4px;
 }
 
-.bili-vocab-overlay__footer-title,
-.bili-vocab-overlay__review-word,
-.bili-vocab-tooltip-word {
+.bsv-overlay-legacy__footer-title,
+.bsv-overlay-legacy__review-word,
+.bsv-tooltip-word {
   color: #eff4ff;
   font-weight: 800;
 }
 
-.bili-vocab-overlay__learning-grid {
+.bsv-overlay-legacy__learning-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 14px;
 }
 
-.bili-vocab-overlay__learning-stat {
+.bsv-overlay-legacy__learning-stat {
   padding: 14px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.bili-vocab-overlay__learning-stat-value {
+.bsv-overlay-legacy__learning-stat-value {
   display: block;
   margin-top: 8px;
   font-size: 24px;
   color: #f8fbff;
 }
 
-.bili-vocab-overlay__review-card-head {
+.bsv-overlay-legacy__review-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
 
-.bili-vocab-overlay__review-word {
+.bsv-overlay-legacy__review-word {
   margin-top: 12px;
   font-size: 18px;
   line-height: 1.4;
 }
 
-.bili-vocab-overlay__review-meta,
-.bili-vocab-overlay__review-description {
+.bsv-overlay-legacy__review-meta,
+.bsv-overlay-legacy__review-description {
   margin-top: 8px;
   font-size: 12px;
 }
 
-.bili-vocab-overlay__action-row {
+.bsv-overlay-legacy__action-row {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 14px;
 }
 
-#bili-vocab-tooltip {
+#bsv-tooltip {
   position: absolute;
   z-index: 2147483200;
   width: min(360px, calc(100vw - 24px));
@@ -634,13 +634,13 @@
     transform 160ms ease;
 }
 
-#bili-vocab-tooltip.visible {
+#bsv-tooltip.visible {
   pointer-events: auto;
   opacity: 1;
   transform: translateY(0);
 }
 
-.bili-vocab-tooltip-card {
+.bsv-tooltip-card {
   padding: 14px;
   border-radius: 18px;
   border: 1px solid rgba(148, 163, 184, 0.24);
@@ -651,27 +651,27 @@
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
 }
 
-.bili-vocab-tooltip-head,
-.bili-vocab-tooltip-meta-row,
-.bili-vocab-tooltip-actions {
+.bsv-tooltip-head,
+.bsv-tooltip-meta-row,
+.bsv-tooltip-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
 
-.bili-vocab-tooltip-phonetic,
-.bili-vocab-tooltip-tags,
-.bili-vocab-tooltip-context,
-.bili-vocab-tooltip-reason,
-.bili-vocab-tooltip-status,
-.bili-vocab-tooltip-frequency {
+.bsv-tooltip-phonetic,
+.bsv-tooltip-tags,
+.bsv-tooltip-context,
+.bsv-tooltip-reason,
+.bsv-tooltip-status,
+.bsv-tooltip-frequency {
   color: #475569;
   font-size: 12px;
   line-height: 1.6;
 }
 
-.bili-vocab-tooltip-tags {
+.bsv-tooltip-tags {
   padding: 4px 10px;
   border-radius: 999px;
   background: rgba(219, 234, 254, 0.86);
@@ -679,33 +679,33 @@
   font-weight: 700;
 }
 
-.bili-vocab-tooltip-meaning {
+.bsv-tooltip-meaning {
   margin-top: 10px;
   font-size: 14px;
   line-height: 1.7;
   color: #0f172a;
 }
 
-.bili-vocab-tooltip-context {
+.bsv-tooltip-context {
   margin-top: 10px;
   padding: 10px 12px;
   border-radius: 14px;
   background: rgba(241, 245, 249, 0.9);
 }
 
-.bili-vocab-tooltip-reason {
+.bsv-tooltip-reason {
   margin-top: 8px;
 }
 
-.bili-vocab-tooltip-meta-row {
+.bsv-tooltip-meta-row {
   margin-top: 10px;
 }
 
-.bili-vocab-tooltip-actions {
+.bsv-tooltip-actions {
   margin-top: 12px;
 }
 
-.bili-vocab-tooltip-action-button {
+.bsv-tooltip-action-button {
   flex: 1;
   min-height: 34px;
   border: 1px solid rgba(148, 163, 184, 0.22);
@@ -717,28 +717,28 @@
   transition: all 0.2s ease;
 }
 
-.bili-vocab-tooltip-action-button:hover {
+.bsv-tooltip-action-button:hover {
   border-color: rgba(96, 165, 250, 0.32);
   background: rgba(239, 246, 255, 0.96);
 }
 
-.bili-vocab-tooltip-action-button.saved {
+.bsv-tooltip-action-button.saved {
   background: rgba(34, 197, 94, 0.1);
   border-color: rgba(34, 197, 94, 0.3);
   color: #16a34a;
 }
 
-.bili-vocab-tooltip-action-button.saved:hover {
+.bsv-tooltip-action-button.saved:hover {
   background: rgba(34, 197, 94, 0.15);
 }
 
 /* 双语字幕模式 */
-.bili-vocab-bilingual-line {
+.bsv-bilingual-line {
   display: block;
   line-height: 1.5;
 }
 
-.bili-vocab-bilingual-translation {
+.bsv-bilingual-translation {
   display: block;
   font-size: 0.9em;
   color: rgba(255, 255, 255, 0.7);

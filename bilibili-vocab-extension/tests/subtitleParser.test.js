@@ -18,6 +18,15 @@ test('normalizeSubtitleUrl: 应将协议相对地址补全为 https', () => {
   assert.equal(normalized, 'https://aisubtitle.hdslb.com/bfs/subtitle/demo.json');
 });
 
+test('normalizeSubtitleUrl: 应拒绝非 HTTPS 或非官方字幕域名', () => {
+  assert.equal(subtitleParser.normalizeSubtitleUrl('http://aisubtitle.hdslb.com/demo.json'), '');
+  assert.equal(subtitleParser.normalizeSubtitleUrl('https://example.com/demo.json'), '');
+  assert.equal(
+    subtitleParser.normalizeSubtitleUrl('https://aisubtitle.hdslb.com.evil/demo.json'),
+    ''
+  );
+});
+
 test('pickPreferredSubtitleTrack: 应优先选择简体中文字幕轨道', () => {
   const selected = subtitleParser.pickPreferredSubtitleTrack([
     { lan: 'en-US', subtitle_url: 'https://example.com/en.json' },

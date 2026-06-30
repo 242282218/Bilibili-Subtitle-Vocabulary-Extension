@@ -95,7 +95,7 @@ function readExtractedText(extensionDir, relativePath) {
 function assertReviewDanmakuRuntimeMarkers(extensionDir) {
   const danmakuSource = readExtractedText(extensionDir, 'scripts/danmaku.js');
   const schedulerSource = readExtractedText(extensionDir, 'scripts/scheduler.js');
-  const contentScriptSource = readExtractedText(extensionDir, 'contentScript.js');
+  const contentScriptSource = readExtractedText(extensionDir, 'contentScript/index.js');
   const optionsBundleSource = readExtractedText(extensionDir, 'dist/assets/options.js');
 
   assert.match(danmakuSource, /#eaf6ff/);
@@ -178,12 +178,38 @@ test('extension zip smoke: should load the unpacked archive as the delivered ext
 
     const popupPage = await context.newPage();
     await popupPage.goto(`chrome-extension://${extensionId}/dist/popup.html`);
-    await popupPage.waitForSelector('text=当前页面学习助手');
+    await popupPage.waitForSelector('text=字幕学习助手');
+
+    const backgroundResponse = await popupPage.evaluate(
+      () =>
+        new Promise((resolve) => {
+          chrome.runtime.sendMessage(
+            {
+              type: 'BILI_VOCAB_EXPERIENCE_RECORD_EVENT',
+              payload: {
+                type: 'zip-smoke-background-check',
+              },
+            },
+            (response) => {
+              const runtimeError = chrome.runtime && chrome.runtime.lastError;
+              if (runtimeError) {
+                resolve({
+                  ok: false,
+                  error: runtimeError.message || 'runtime message failed',
+                });
+                return;
+              }
+              resolve(response || { ok: false, error: 'empty runtime response' });
+            }
+          );
+        })
+    );
+    assert.equal(backgroundResponse.ok, true, JSON.stringify(backgroundResponse));
 
     const contentPage = await context.newPage();
     await routeFixturePage(contentPage, SUPPORTED_FIXTURE_URL, 'Bili Vocab Zip Smoke Fixture');
     await contentPage.goto(SUPPORTED_FIXTURE_URL);
-    await contentPage.waitForSelector('#bili-vocab-react-overlay-root', { state: 'attached' });
+    await contentPage.waitForSelector('#bsv-react-overlay-root', { state: 'attached' });
 
     const unsupportedPage = await context.newPage();
     await routeFixturePage(
@@ -193,7 +219,7 @@ test('extension zip smoke: should load the unpacked archive as the delivered ext
     );
     await unsupportedPage.goto(UNSUPPORTED_FIXTURE_URL);
     await unsupportedPage.waitForLoadState('domcontentloaded');
-    assert.equal(await unsupportedPage.locator('#bili-vocab-react-overlay-root').count(), 0);
+    assert.equal(await unsupportedPage.locator('#bsv-react-overlay-root').count(), 0);
 
     const dataResponse = await optionsPage.evaluate(async () => {
       const response = await fetch(chrome.runtime.getURL('data/cet4.json'));

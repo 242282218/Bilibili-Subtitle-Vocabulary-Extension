@@ -25,6 +25,8 @@ test('config: default settings should stay aligned with shipped defaults without
   assert.equal(config.DEFAULT_SETTINGS.replaceRatio, 0.2);
   assert.equal(config.DEFAULT_SETTINGS.maxReplaceCount, 2);
   assert.equal(config.DEFAULT_SETTINGS.targetCefr, 'B2');
+  assert.equal(config.DEFAULT_SETTINGS.bilingualMode, 'default');
+  assert.equal(config.DEFAULT_SETTINGS.themeMode, 'auto');
   assert.deepEqual(config.DEFAULT_SETTINGS.activeLevels, config.LEVELS);
   assert.notEqual(config.DEFAULT_SETTINGS.activeLevels, config.LEVELS);
 });

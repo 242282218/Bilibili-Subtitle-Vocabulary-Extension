@@ -1,0 +1,19 @@
+- [x] 所有用户可见位置品牌名称统一为 `Bilibili Subtitle Vocabulary`
+- [x] CSS 类名与 DOM ID 命名空间统一为 `bsv-*`，无 `ev-*` / `rv-*` / `ui-*` / `bili-vocab-*` 混用于新增/重构代码
+- [x] `docs/design-system.md` 已创建并包含 token、组件类名、暗色模式规则
+- [x] `CONTRIBUTING.md` 引用 `docs/design-system.md`
+- [x] 可复用 `LoadingPanel`、`ErrorPanel`、`EmptyState` 组件已创建并在三入口中使用
+- [x] Popup、Options、Overlay 的 loading / error / empty 状态视觉与文案一致
+- [x] `overlay.css` 中硬编码值已替换为 design tokens 或复用 `ui.css` 组件类
+- [x] Overlay 在 light / dark 主题下视觉与 Popup/Options 一致
+- [x] 所有可交互元素具备正确的 `aria-label` / `aria-describedby` / `role="switch"`
+- [x] Tab 焦点顺序合理且焦点环可见
+- [x] `docs/architecture.md` 已创建并说明核心模块协作关系
+- [x] `docs/release-checklist.md` 已创建并覆盖发版全流程
+- [x] PR 模板包含 design-system 符合性检查项
+- [x] README 已更新品牌描述、文档链接与路线图
+- [x] `pnpm run lint` 通过
+- [x] `pnpm run typecheck` 通过
+- [x] `pnpm run test` 通过
+- [x] `pnpm run test:ui` 通过
+- [x] `pnpm run build:extension` 通过且 overlay size 检查通过

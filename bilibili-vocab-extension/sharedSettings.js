@@ -21,23 +21,26 @@
   const BILINGUAL_MODES = ['default', 'bilingual', 'english-only'];
   const THEME_MODES = ['auto', 'light', 'dark'];
 
-  const DEFAULT_SETTINGS = {
-    enabled: true,
-    schemaVersion: SCHEMA_VERSION,
-    reviewDanmakuEnabled: false,
-    reviewDanmakuSpeed: 'normal',
-    reviewDanmakuDensity: 'normal',
-    vocabularyMode: 'core',
-    examPreference: 'balanced',
-    webPageEnabled: true,
-    domainRules: {},
-    activeLevels: LEVELS.slice(),
-    replaceRatio: 0.2,
-    maxReplaceCount: 2,
-    targetCefr: 'B2',
-    bilingualMode: 'default',
-    themeMode: 'auto',
-  };
+  const DEFAULT_SETTINGS =
+    globalScope.Config && globalScope.Config.DEFAULT_SETTINGS
+      ? { ...globalScope.Config.DEFAULT_SETTINGS }
+      : {
+          enabled: true,
+          schemaVersion: SCHEMA_VERSION,
+          reviewDanmakuEnabled: false,
+          reviewDanmakuSpeed: 'normal',
+          reviewDanmakuDensity: 'normal',
+          vocabularyMode: 'core',
+          examPreference: 'balanced',
+          webPageEnabled: true,
+          domainRules: {},
+          activeLevels: LEVELS.slice(),
+          replaceRatio: 0.2,
+          maxReplaceCount: 2,
+          targetCefr: 'B2',
+          bilingualMode: 'default',
+          themeMode: 'auto',
+        };
 
   const SETTINGS_STORAGE_KEYS = Object.freeze([
     'enabled',
@@ -58,6 +61,7 @@
   ]);
 
   const SCHEMA_VERSION_V3 = 3;
+  // Legacy storage key retained for backward compatibility with existing installs.
   const SETTINGS_STORAGE_KEY_V3 = 'bili_vocab_settings_v3';
   const BUILTIN_PROFILE_IDS = Object.freeze(['gentle', 'balanced', 'intensive']);
   const MAX_CUSTOM_PROFILES = 5;
@@ -768,8 +772,16 @@
     };
 
     const words = presetMap[normalizeTargetCefr(targetCefr)] || presetMap.B2;
-    const density = ratio >= 0.25 ? 3 : ratio <= 0.15 ? 1 : 2;
-    const count = Math.min(words.length, Math.max(1, Math.min(maxReplaceCount, density)));
+    const normalizedRatio = Math.min(
+      0.3,
+      Math.max(0.1, parseFiniteNumber(ratio, DEFAULT_SETTINGS.replaceRatio))
+    );
+    const normalizedMaxReplaceCount = Math.min(
+      5,
+      Math.max(1, Math.floor(parseFiniteNumber(maxReplaceCount, DEFAULT_SETTINGS.maxReplaceCount)))
+    );
+    const density = normalizedRatio >= 0.25 ? 3 : normalizedRatio <= 0.15 ? 1 : 2;
+    const count = Math.min(words.length, Math.max(1, Math.min(normalizedMaxReplaceCount, density)));
     return words.slice(0, count);
   }
 
@@ -847,6 +859,8 @@
     REVIEW_DENSITIES,
     VOCABULARY_MODES,
     EXAM_PREFERENCES,
+    BILINGUAL_MODES,
+    THEME_MODES,
     SCHEMA_VERSION,
     SCHEMA_VERSION_V3,
     SETTINGS_STORAGE_KEY_V3,
@@ -881,6 +895,7 @@
     isDomainEnabled,
     getReviewDanmakuSpeedLabel,
     getReviewDanmakuDensityLabel,
+    getBilingualModeLabel,
     getHeroMetricMeta,
     getMockPreviewData,
     getLearningProfile,

@@ -102,7 +102,7 @@ test('workflow lockfile contract: ci workflow should freeze pnpm lockfile instal
   const workflow = readWorkflow('ci.yml');
   const installCommands = collectPnpmInstallCommands(workflow);
 
-  assert.equal(installCommands.length, 4);
+  assert.equal(installCommands.length, 5);
   assert.doesNotMatch(workflow, /--no-frozen-lockfile/);
   assert.doesNotMatch(
     workflow,

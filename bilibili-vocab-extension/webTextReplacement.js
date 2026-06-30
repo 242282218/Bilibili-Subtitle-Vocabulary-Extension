@@ -119,10 +119,7 @@
       return nodeFilter.FILTER_REJECT;
     }
 
-    if (
-      typeof parent.closest === 'function' &&
-      parent.closest('.bili-vocab-word, .bili-vocab-tooltip')
-    ) {
+    if (typeof parent.closest === 'function' && parent.closest('.bsv-word, .bsv-tooltip')) {
       return nodeFilter.FILTER_REJECT;
     }
 
@@ -238,7 +235,7 @@
 
   function createWordElement(doc, token, sourceText, bilingualMode) {
     const wordElement = doc.createElement('span');
-    setAttribute(wordElement, 'class', `bili-vocab-word ${resolveLevelClass(token)}`.trim());
+    setAttribute(wordElement, 'class', `bsv-word ${resolveLevelClass(token)}`.trim());
     setAttribute(wordElement, 'tabindex', '0');
     setAttribute(wordElement, 'data-word', token.word);
     setAttribute(wordElement, 'data-meaning', token.meaning);
@@ -287,12 +284,12 @@
 
     if (bilingualMode === 'bilingual' && source && mixedText !== source) {
       const line = doc.createElement('span');
-      setAttribute(line, 'class', 'bili-vocab-bilingual-line');
+      setAttribute(line, 'class', 'bsv-bilingual-line');
       appendRenderedTokens(line, doc, result, source, bilingualMode);
       wrapper.appendChild(line);
 
       const translation = doc.createElement('span');
-      setAttribute(translation, 'class', 'bili-vocab-bilingual-translation');
+      setAttribute(translation, 'class', 'bsv-bilingual-translation');
       appendTextNode(translation, doc, source);
       wrapper.appendChild(translation);
       return wrapper;

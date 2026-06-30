@@ -16,7 +16,7 @@ const previousSchedulerModule = global.SchedulerModule;
 const previousDanmakuModule = global.DanmakuModule;
 const previousMutationObserver = global.MutationObserver;
 
-const contentScriptPath = require.resolve('../contentScript.js');
+const contentScriptPath = require.resolve('../contentScript/index.js');
 
 class HarnessElement {
   constructor(text = '') {
@@ -86,7 +86,7 @@ function installBaseGlobals() {
 function loadContentScript() {
   delete require.cache[contentScriptPath];
   installBaseGlobals();
-  return require('../contentScript.js');
+  return require('../contentScript/index.js');
 }
 
 test('translation pipeline: subtitle text hit should render replacement result', async () => {
@@ -194,6 +194,72 @@ test('translation pipeline: cache hit should not recompute the same subtitle', a
   await contentScript.applyTranslation(element);
 
   assert.equal(translateCalls, 1);
+});
+
+test('translation pipeline: selection state version should invalidate cached translation result', async () => {
+  const element = new HarnessElement('系统学习');
+  const contentScript = loadContentScript();
+  let translateCalls = 0;
+  let selectionStateVersion = 0;
+
+  global.SubtitleParser = {
+    extractSubtitleText() {
+      return '系统学习';
+    },
+  };
+  global.SubtitleTranslator = {
+    async processSubtitle() {
+      translateCalls += 1;
+      return {
+        mixedText: `system学习-${translateCalls}`,
+        tokens: [{ type: 'word', word: 'system' }],
+      };
+    },
+    createSettingsFingerprint() {
+      return 'settings-v1';
+    },
+    getSelectionStateVersion() {
+      return selectionStateVersion;
+    },
+  };
+  global.SubtitleRenderer = {
+    renderSubtitleElement(target, result) {
+      target.dataset.renderedMixedText = result.mixedText;
+      return true;
+    },
+    restoreSubtitleElement() {},
+  };
+
+  await contentScript.applyTranslation(element);
+  delete element.dataset.biliVocabRenderSignature;
+  await contentScript.applyTranslation(element);
+  selectionStateVersion = 1;
+  delete element.dataset.biliVocabRenderSignature;
+  await contentScript.applyTranslation(element);
+
+  assert.equal(translateCalls, 2);
+  assert.equal(element.dataset.renderedMixedText, 'system学习-2');
+});
+
+test('translation pipeline: context feedback version should update render signature', () => {
+  const contentScript = loadContentScript();
+  let contextFeedbackVersion = 0;
+
+  global.SubtitleTranslator = {
+    createSettingsFingerprint() {
+      return 'settings-v1';
+    },
+    getContextFeedbackVersion() {
+      return contextFeedbackVersion;
+    },
+  };
+
+  const before = contentScript.createRenderSignature('系统学习', {});
+  contextFeedbackVersion = 1;
+  const after = contentScript.createRenderSignature('系统学习', {});
+
+  assert.notEqual(after, before);
+  assert.match(after, /context:1/);
 });
 
 test('translation pipeline: settings change should invalidate cache and reprocess', async () => {

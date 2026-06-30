@@ -82,12 +82,12 @@ test('subtitleParser timeline cache: should drop stale timeline after switching 
       return createJsonResponse({
         data: {
           subtitle: {
-            subtitles: [{ lan: 'zh-Hans', subtitle_url: 'https://example.com/old.json' }],
+            subtitles: [{ lan: 'zh-Hans', subtitle_url: 'https://aisubtitle.hdslb.com/old.json' }],
           },
         },
       });
     }
-    if (requestUrl === 'https://example.com/old.json') {
+    if (requestUrl === 'https://aisubtitle.hdslb.com/old.json') {
       return createJsonResponse({
         body: [{ from: 0.5, to: 1.4, content: '旧视频第一句' }],
       });
@@ -96,12 +96,12 @@ test('subtitleParser timeline cache: should drop stale timeline after switching 
       return createJsonResponse({
         data: {
           subtitle: {
-            subtitles: [{ lan: 'zh-Hans', subtitle_url: 'https://example.com/new.json' }],
+            subtitles: [{ lan: 'zh-Hans', subtitle_url: 'https://aisubtitle.hdslb.com/new.json' }],
           },
         },
       });
     }
-    if (requestUrl === 'https://example.com/new.json') {
+    if (requestUrl === 'https://aisubtitle.hdslb.com/new.json') {
       return createJsonResponse({
         body: [{ from: 3.5, to: 4.8, content: '新视频第一句' }],
       });
@@ -151,12 +151,14 @@ test('subtitleParser timeline cache: should retry once identifiers become availa
       return createJsonResponse({
         data: {
           subtitle: {
-            subtitles: [{ lan: 'zh-Hans', subtitle_url: 'https://example.com/retry.json' }],
+            subtitles: [
+              { lan: 'zh-Hans', subtitle_url: 'https://aisubtitle.hdslb.com/retry.json' },
+            ],
           },
         },
       });
     }
-    if (String(url) === 'https://example.com/retry.json') {
+    if (String(url) === 'https://aisubtitle.hdslb.com/retry.json') {
       return createJsonResponse({
         body: [{ from: 1, to: 2, content: '延迟就绪字幕' }],
       });
@@ -204,6 +206,101 @@ test('subtitleParser timeline cache: should expose the current video cache key h
     videoData: {},
   };
   assert.equal(subtitleParser.getCurrentSubtitleTimelineCacheKey(), '');
+});
+
+test('subtitleParser timeline cache: should resolve cid from Bilibili URL fallback', async () => {
+  global.location = {
+    hostname: 'www.bilibili.com',
+    href: 'https://www.bilibili.com/video/BV1urlFallback?p=2',
+  };
+  global.document = {
+    querySelector() {
+      return null;
+    },
+  };
+  global.__INITIAL_STATE__ = {};
+
+  const fetchCalls = [];
+  global.fetch = async (url, options = {}) => {
+    fetchCalls.push({ url: String(url), credentials: options.credentials });
+    const requestUrl = String(url);
+    if (requestUrl.includes('/x/web-interface/view') && requestUrl.includes('BV1urlFallback')) {
+      return createJsonResponse({
+        data: {
+          bvid: 'BV1urlFallback',
+          aid: 707,
+          pages: [
+            { page: 1, cid: 7071 },
+            { page: 2, cid: 7072 },
+          ],
+        },
+      });
+    }
+    if (requestUrl.includes('/x/player/v2') && requestUrl.includes('cid=7072')) {
+      return createJsonResponse({
+        data: {
+          subtitle: {
+            subtitles: [
+              { lan: 'zh-Hans', subtitle_url: '//aisubtitle.hdslb.com/url-fallback.json' },
+            ],
+          },
+        },
+      });
+    }
+    if (requestUrl === 'https://aisubtitle.hdslb.com/url-fallback.json') {
+      return createJsonResponse({
+        body: [{ from: 5, to: 6, content: 'URL fallback 字幕' }],
+      });
+    }
+    throw new Error(`Unexpected fetch: ${requestUrl}`);
+  };
+
+  const subtitleParser = loadSubtitleParser();
+
+  const timeline = await subtitleParser.loadSubtitleTimeline();
+
+  assert.deepEqual(timeline, [{ from: 5, to: 6, content: 'URL fallback 字幕' }]);
+  assert.equal(fetchCalls.length, 3);
+  assert.equal(fetchCalls[0].credentials, 'include');
+  assert.equal(fetchCalls[1].credentials, 'include');
+  assert.equal(fetchCalls[2].credentials, 'omit');
+});
+
+test('subtitleParser timeline cache: should skip subtitle fetch for disallowed subtitle URL', async () => {
+  global.location = {
+    hostname: 'www.bilibili.com',
+  };
+  global.document = {
+    querySelector() {
+      return null;
+    },
+  };
+  global.__INITIAL_STATE__ = {
+    videoData: {
+      bvid: 'BV1blocked',
+      cid: 808,
+    },
+  };
+
+  const fetchCalls = [];
+  global.fetch = async (url) => {
+    fetchCalls.push(String(url));
+    if (String(url).includes('cid=808')) {
+      return createJsonResponse({
+        data: {
+          subtitle: {
+            subtitles: [{ lan: 'zh-Hans', subtitle_url: 'https://example.com/blocked.json' }],
+          },
+        },
+      });
+    }
+    throw new Error(`Unexpected fetch: ${url}`);
+  };
+
+  const subtitleParser = loadSubtitleParser();
+
+  assert.deepEqual(await subtitleParser.loadSubtitleTimeline(), []);
+  assert.equal(fetchCalls.length, 1);
 });
 
 test.after(() => {

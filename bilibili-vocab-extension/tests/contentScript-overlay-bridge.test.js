@@ -57,9 +57,9 @@ function loadContentScript() {
     loadSubtitleTimeline: async () => [],
   };
 
-  const contentScriptPath = require.resolve('../contentScript.js');
+  const contentScriptPath = require.resolve('../contentScript/index.js');
   delete require.cache[contentScriptPath];
-  return require('../contentScript.js');
+  return require('../contentScript/index.js');
 }
 
 test('contentScript overlay bridge: read should return cloned fallback payload', () => {
@@ -342,5 +342,5 @@ test.after(() => {
   global.SubtitleParser = previousSubtitleParser;
   global.ReactOverlayModule = previousReactOverlayModule;
   global.OverlayPanelModule = previousOverlayPanelModule;
-  delete require.cache[require.resolve('../contentScript.js')];
+  delete require.cache[require.resolve('../contentScript/index.js')];
 });

@@ -20,6 +20,8 @@
     replaceRatio: 0.2,
     maxReplaceCount: 2,
     targetCefr: 'B2',
+    bilingualMode: 'default',
+    themeMode: 'auto',
   };
 
   const STORAGE_KEYS = {

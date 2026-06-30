@@ -1,8 +1,8 @@
-﻿{
+{
   "manifest_version": 3,
-  "name": "Bilibili Vocabulary Subtitle",
+  "name": "Bilibili Subtitle Vocabulary",
   "version": "0.1.3",
-  "description": "在 Bilibili 字幕中自动插入英文词汇，帮助被动学习英语",
+  "description": "在 Bilibili / YouTube 字幕里低打扰插入英文词汇，把刷视频变成碎片时间英语输入",
   "permissions": [
     "activeTab",
     "scripting",
@@ -35,6 +35,7 @@
         "learningState.js",
         "utils.js",
         "segmenter.js",
+        "vocabulary-pure.js",
         "vocabulary.js",
         "translator.js",
         "renderer.js",
@@ -48,7 +49,12 @@
         "runtimeSettingsSync.js",
         "webTextReplacement.js",
         "overlayLoader.js",
-        "contentScript.js"
+        "contentScript/constants.js",
+        "contentScript/translation-pipeline.js",
+        "contentScript/dom-observer.js",
+        "contentScript/danmaku-engine.js",
+        "contentScript/subtitle-navigation-bridge.js",
+        "contentScript/index.js"
       ],
       "css": [
         "styles.css"
@@ -58,7 +64,7 @@
   ],
   "options_page": "dist/options.html",
   "action": {
-    "default_title": "Bilibili Vocabulary Subtitle",
+    "default_title": "Bilibili Subtitle Vocabulary",
     "default_popup": "dist/popup.html"
   },
   "web_accessible_resources": [

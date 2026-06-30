@@ -40,9 +40,9 @@ global.chrome = {
   },
 };
 
-const contentScriptPath = require.resolve('../contentScript.js');
+const contentScriptPath = require.resolve('../contentScript/index.js');
 delete require.cache[contentScriptPath];
-const contentScript = require('../contentScript.js');
+const contentScript = require('../contentScript/index.js');
 
 test.beforeEach(() => {
   contentScript.__resetOverlayModuleStateForTest();
@@ -85,7 +85,7 @@ test('overlayLoader contract: manifest should load module before contentScript',
   assert.ok(shippedEntry, 'content_scripts entry should exist');
 
   const overlayLoaderIndex = shippedEntry.js.indexOf('overlayLoader.js');
-  const contentScriptIndex = shippedEntry.js.indexOf('contentScript.js');
+  const contentScriptIndex = shippedEntry.js.indexOf('contentScript/index.js');
   assert.notEqual(overlayLoaderIndex, -1);
   assert.notEqual(contentScriptIndex, -1);
   assert.ok(overlayLoaderIndex < contentScriptIndex);

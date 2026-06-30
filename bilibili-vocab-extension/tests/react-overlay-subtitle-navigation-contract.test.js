@@ -8,9 +8,9 @@ function readProjectFile(fileName) {
 }
 
 test('react overlay subtitle navigation contract: overlay entry should render subtitle navigation card', () => {
-  const source = readProjectFile('react-ui/src/overlay-entry.tsx');
+  const source = readProjectFile('react-ui/src/components/overlay-entry.tsx');
 
-  assert.match(source, /from ['"]\.\/subtitle-navigation['"]/);
+  assert.match(source, /from ['"]\.\.\/lib\/subtitle-navigation['"]/);
   assert.match(source, /字幕导航/);
   assert.match(source, /上一句/);
   assert.match(source, /重播本句/);

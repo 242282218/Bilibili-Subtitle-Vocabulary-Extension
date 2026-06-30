@@ -57,7 +57,7 @@ test('extractSubtitleText: should recover source text from rendered word nodes w
           dataset: {
             sourceText: '金字塔',
           },
-          classNames: ['bili-vocab-word'],
+          classNames: ['bsv-word'],
         }),
         new MockTextNode(' now'),
       ],

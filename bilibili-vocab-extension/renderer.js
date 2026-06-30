@@ -1,7 +1,7 @@
 ﻿(function (globalScope) {
-  const ENHANCED_CONTAINER_CLASS = 'bili-vocab-enhanced-container';
+  const ENHANCED_CONTAINER_CLASS = 'bsv-enhanced-container';
   const LEGACY_CONTAINER_CLASS = 'subtitle-container';
-  const YOUTUBE_WORD_CLASS = 'bili-vocab-word-youtube';
+  const YOUTUBE_WORD_CLASS = 'bsv-word-youtube';
 
   function isYouTubeHost(hostname) {
     const host = String(hostname || '').toLowerCase();
@@ -99,7 +99,7 @@
     const escapedPhraseBacked = token.isPhraseBacked === true ? 'true' : '';
     const escapedPhraseCount = escapeHtml(token.phraseCount || '');
 
-    return `<span class="bili-vocab-word ${levelClass}${siteWordClass}" tabindex="0" data-word="${escapedWord}" data-meaning="${escapedMeaning}" data-level="${escapedLevel}" data-cefr-level="${escapedCefrLevel}" data-frequency="${escapedFrequency}" data-pos="${escapedPos}" data-definition="${escapedDefinition}" data-phonetic="${escapedPhonetic}" data-learning-status="${escapedLearningStatus}" data-source-text="${escapedSourceText}" data-original-subtitle="${escapedOriginalSubtitle}" data-coverage-tier="${escapedCoverageTier}" data-source-flags="${escapedSourceFlags}" data-phrase-backed="${escapedPhraseBacked}" data-phrase-count="${escapedPhraseCount}">${escapedDisplayText}</span>`;
+    return `<span class="bsv-word ${levelClass}${siteWordClass}" tabindex="0" data-word="${escapedWord}" data-meaning="${escapedMeaning}" data-level="${escapedLevel}" data-cefr-level="${escapedCefrLevel}" data-frequency="${escapedFrequency}" data-pos="${escapedPos}" data-definition="${escapedDefinition}" data-phonetic="${escapedPhonetic}" data-learning-status="${escapedLearningStatus}" data-source-text="${escapedSourceText}" data-original-subtitle="${escapedOriginalSubtitle}" data-coverage-tier="${escapedCoverageTier}" data-source-flags="${escapedSourceFlags}" data-phrase-backed="${escapedPhraseBacked}" data-phrase-count="${escapedPhraseCount}">${escapedDisplayText}</span>`;
   }
 
   function renderTokensToHtml(tokens, originalSubtitleText, bilingualMode = false) {
@@ -124,7 +124,7 @@
     const safeWrapperTag = wrapperTag === 'span' ? 'span' : 'div';
     const content = renderedHtml || escapeHtml(sourceText);
     const escapedSourceText = escapeHtml(sourceText);
-    return `<${safeWrapperTag} class="bili-vocab-bilingual-line">${content}</${safeWrapperTag}><${safeWrapperTag} class="bili-vocab-bilingual-translation">${escapedSourceText}</${safeWrapperTag}>`;
+    return `<${safeWrapperTag} class="bsv-bilingual-line">${content}</${safeWrapperTag}><${safeWrapperTag} class="bsv-bilingual-translation">${escapedSourceText}</${safeWrapperTag}>`;
   }
 
   function buildRenderedHtml(translationResult, sourceText, settings = {}, wrapperTag = 'div') {

@@ -1,4 +1,5 @@
 (function (globalScope) {
+  // Legacy storage keys retained for backward compatibility with existing installs.
   const STORAGE_KEYS = {
     WORD_STATS_V2: 'bili_vocab_word_stats_v2',
     REVIEW_QUEUE: 'bili_vocab_review_queue_v1',
@@ -252,11 +253,19 @@
     return learningStreakLoadPromise;
   }
 
+  function getLocalDateString(timestamp) {
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
   async function updateLearningStreak(now = Date.now()) {
     return queueLearningStreakMutation(async () => {
       const currentLearningStreak = learningStreak || (await loadLearningStreak());
       const referenceNow = normalizeTimestamp(now) || Date.now();
-      const today = new Date(referenceNow).toISOString().slice(0, 10);
+      const today = getLocalDateString(referenceNow);
       if (currentLearningStreak.lastActiveDate === today) {
         // 今日已经记录过
         return currentLearningStreak;
@@ -264,7 +273,7 @@
 
       const yesterday = new Date(referenceNow);
       yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().slice(0, 10);
+      const yesterdayStr = getLocalDateString(yesterday.getTime());
 
       const nextLearningStreak = normalizeLearningStreak(currentLearningStreak);
 

@@ -168,10 +168,10 @@ test('containsUnsafeContent: allows safe span and div markup', () => {
   assertSafe(
     new TestElement(
       'DIV',
-      [{ name: 'class', value: 'bili-vocab-bilingual-line' }],
+      [{ name: 'class', value: 'bsv-bilingual-line' }],
       [
         new TestElement('SPAN', [
-          { name: 'class', value: 'bili-vocab-word level-cet4' },
+          { name: 'class', value: 'bsv-word level-cet4' },
           { name: 'tabindex', value: '0' },
           { name: 'data-word', value: 'system' },
           { name: 'data-meaning', value: '系统' },
@@ -251,11 +251,11 @@ test('webTextReplacement: should delegate html rendering with runtime settings',
   const html = webTextReplacement.renderWebTextReplacementHtml(result, '原句', settings, {
     renderToHtml(nextResult, sourceText, runtimeSettings) {
       calls.push({ nextResult, sourceText, runtimeSettings });
-      return '<span class="bili-vocab-word">translated</span>';
+      return '<span class="bsv-word">translated</span>';
     },
   });
 
-  assert.equal(html, '<span class="bili-vocab-word">translated</span>');
+  assert.equal(html, '<span class="bsv-word">translated</span>');
   assert.deepEqual(calls, [{ nextResult: result, sourceText: '原句', runtimeSettings: settings }]);
 });
 
@@ -309,7 +309,7 @@ test('processWebTextNode: builds safe DOM nodes without using innerHTML renderer
     (element) => element.getAttribute && element.getAttribute('data-word') === 'system'
   );
   assert.ok(wordElement);
-  assert.match(wordElement.getAttribute('class'), /\bbili-vocab-word\b/);
+  assert.match(wordElement.getAttribute('class'), /\bbsv-word\b/);
   assert.equal(wordElement.getAttribute('data-meaning'), '系统');
 });
 
@@ -321,7 +321,7 @@ test('webTextReplacement contract: manifest should load module before contentScr
   assert.ok(shippedEntry, 'content_scripts entry should exist');
 
   const webTextIndex = shippedEntry.js.indexOf('webTextReplacement.js');
-  const contentScriptIndex = shippedEntry.js.indexOf('contentScript.js');
+  const contentScriptIndex = shippedEntry.js.indexOf('contentScript/index.js');
   assert.notEqual(webTextIndex, -1);
   assert.notEqual(contentScriptIndex, -1);
   assert.ok(webTextIndex < contentScriptIndex);

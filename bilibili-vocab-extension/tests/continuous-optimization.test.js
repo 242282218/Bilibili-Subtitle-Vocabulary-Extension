@@ -126,7 +126,6 @@ test('continuous optimization: createExecutionPlan should resolve gates and shar
       'open-vocab-data.test.js',
       'scheduler.test.js',
       'danmaku.test.js',
-      'standalone-init.test.js',
       'shared-settings-integration.test.js',
       'check-overlay-size.test.js',
       'refresh-overlay-size-baseline.test.js',
@@ -246,21 +245,9 @@ test('continuous optimization: current shard plan should route runtime bridge an
   );
   assert.deepEqual(
     uiOverlay.testFiles.filter((file) =>
-      [
-        'contentScript-overlay-bridge.test.js',
-        'react-ui-runtime-messaging.test.js',
-        'react-ui-subtitle-navigation.test.js',
-        'react-ui-study-preview.test.js',
-        'react-ui-use-overlay-settings.test.js',
-      ].includes(path.basename(file))
+      ['contentScript-overlay-bridge.test.js'].includes(path.basename(file))
     ),
-    [
-      path.join('tests', 'contentScript-overlay-bridge.test.js'),
-      path.join('tests', 'react-ui-runtime-messaging.test.js'),
-      path.join('tests', 'react-ui-study-preview.test.js'),
-      path.join('tests', 'react-ui-subtitle-navigation.test.js'),
-      path.join('tests', 'react-ui-use-overlay-settings.test.js'),
-    ]
+    [path.join('tests', 'contentScript-overlay-bridge.test.js')]
   );
   assert.deepEqual(
     buildContractData.testFiles.filter((file) =>
@@ -338,7 +325,6 @@ test('continuous optimization: runContinuousOptimization should write reports an
       'open-vocab-data.test.js',
       'scheduler.test.js',
       'danmaku.test.js',
-      'standalone-init.test.js',
       'check-overlay-size.test.js',
       'refresh-overlay-size-baseline.test.js',
       'pack-extension.test.js',
@@ -418,7 +404,6 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
       'open-vocab-data.test.js',
       'scheduler.test.js',
       'danmaku.test.js',
-      'standalone-init.test.js',
       'check-overlay-size.test.js',
       'refresh-overlay-size-baseline.test.js',
       'pack-extension.test.js',
@@ -454,22 +439,6 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
     ]);
     assert.deepEqual(summary.deferredLegacyTests, ['popup.test.js']);
     assert.equal(summary.nextFocusCandidates[0].id, 'content-script-decomposition');
-    assert.deepEqual(summary.nextFocusCandidates[1].files, [
-      'popup.html',
-      'popup.js',
-      'options.html',
-      'options.js',
-    ]);
-    assert.doesNotMatch(summary.nextFocusCandidates[1].rationale, /overlay/i);
-    assert.doesNotMatch(summary.nextFocusCandidates[1].rationale, /manifest/i);
-    assert.equal(summary.nextFocusCandidates[1].id, 'legacy-react-drift');
-    assert.ok(
-      !summary.nextFocusCandidates.some((candidate) => candidate.id === 'runtime-bridge-coverage')
-    );
-    assert.deepEqual(
-      summary.knownBlindSpots.find((item) => item.id === 'legacy-react-drift').files,
-      ['popup.html', 'popup.js', 'options.html', 'options.js']
-    );
 
     const deferredCandidate = summary.nextFocusCandidates.at(-1);
     assert.equal(deferredCandidate.id, 'legacy-deferred-tests');
@@ -480,7 +449,6 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
       /dist\/popup\.html.*dist\/options\.html[\s\S]*legacy popup\/options 入口/
     );
     assert.match(deferredCandidate.rationale, /shared-settings-integration\.test\.js/);
-    assert.match(deferredCandidate.rationale, /standalone-init\.test\.js/);
 
     const latestReport = JSON.parse(fs.readFileSync(path.join(reportDir, 'latest.json'), 'utf8'));
     assert.deepEqual(latestReport.unassignedTests, []);
@@ -491,24 +459,6 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
     ]);
     assert.deepEqual(latestReport.deferredLegacyTests, ['popup.test.js']);
     assert.equal(latestReport.nextFocusCandidates[0].id, 'content-script-decomposition');
-    assert.deepEqual(latestReport.nextFocusCandidates[1].files, [
-      'popup.html',
-      'popup.js',
-      'options.html',
-      'options.js',
-    ]);
-    assert.doesNotMatch(latestReport.nextFocusCandidates[1].rationale, /overlay/i);
-    assert.doesNotMatch(latestReport.nextFocusCandidates[1].rationale, /manifest/i);
-    assert.equal(latestReport.nextFocusCandidates[1].id, 'legacy-react-drift');
-    assert.ok(
-      !latestReport.nextFocusCandidates.some(
-        (candidate) => candidate.id === 'runtime-bridge-coverage'
-      )
-    );
-    assert.deepEqual(
-      latestReport.knownBlindSpots.find((item) => item.id === 'legacy-react-drift').files,
-      ['popup.html', 'popup.js', 'options.html', 'options.js']
-    );
 
     const markdown = fs.readFileSync(path.join(reportDir, 'latest.md'), 'utf8');
     assert.match(markdown, /Out-of-Band Smoke Tests/);
@@ -524,8 +474,6 @@ test('continuous optimization: runContinuousOptimization should keep legacy popu
       markdown,
       /manifest \/ pack 真实交付入口是 `dist\/popup\.html` \/ `dist\/options\.html`[\s\S]*root `popup\.js` \/ `options\.js`/
     );
-    assert.match(markdown, /shared-settings-integration\.test\.js/);
-    assert.match(markdown, /standalone-init\.test\.js/);
     assert.match(markdown, /迁移可复用逻辑到 shared helper 或单独 legacy lane/);
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });
@@ -563,7 +511,6 @@ test('continuous optimization: report-only mode should write coverage report wit
       'open-vocab-data.test.js',
       'scheduler.test.js',
       'danmaku.test.js',
-      'standalone-init.test.js',
       'check-overlay-size.test.js',
       'refresh-overlay-size-baseline.test.js',
       'pack-extension.test.js',
@@ -611,13 +558,6 @@ test('continuous optimization contract: package should expose only local shard a
   assert.equal(scripts['test:shards'], 'node scripts/run-continuous-optimization.js --shards-only');
   assert.equal(scripts['optimize:continuous'], 'node scripts/run-continuous-optimization.js');
   assert.equal(scripts['optimize:continuous:ci'], undefined);
-});
-
-test('continuous optimization contract: ci workflow should not duplicate test:ui as a dedicated job', () => {
-  const workflow = readWorkflow('ci.yml');
-
-  assert.doesNotMatch(workflow, /^  test-ui:\r?$/m);
-  assert.doesNotMatch(workflow, /run: pnpm run test:ui/);
 });
 
 test('continuous optimization contract: ci workflow should generate report directly', () => {

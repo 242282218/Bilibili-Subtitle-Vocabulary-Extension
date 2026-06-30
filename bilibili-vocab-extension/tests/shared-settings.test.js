@@ -27,6 +27,7 @@ test('shared settings: should expose defaults and scene presets', () => {
   assert.equal(sharedSettings.DEFAULT_SETTINGS.reviewDanmakuSpeed, 'normal');
   assert.equal(sharedSettings.DEFAULT_SETTINGS.reviewDanmakuDensity, 'normal');
   assert.deepEqual(sharedSettings.REVIEW_DENSITIES, ['sparse', 'normal', 'dense']);
+  assert.deepEqual(sharedSettings.THEME_MODES, ['auto', 'light', 'dark']);
   assert.equal(sharedSettings.DEFAULT_SETTINGS.vocabularyMode, 'core');
   assert.equal(sharedSettings.DEFAULT_SETTINGS.examPreference, 'balanced');
   assert.deepEqual(sharedSettings.SCENE_PRESETS.light, {
@@ -107,6 +108,7 @@ test('shared settings: should expose popup metric labels through shared helper',
   assert.equal(sharedSettings.getHeroMetricMeta('reviewDensity', 'sparse'), '低频回放');
   assert.equal(sharedSettings.getHeroMetricMeta('reviewDensity', 'normal'), '稳定回放');
   assert.equal(sharedSettings.getHeroMetricMeta('reviewDensity', 'dense'), '高频回放');
+  assert.equal(sharedSettings.getBilingualModeLabel('bilingual'), '双语对照');
 });
 
 test('shared settings: should fallback to default active levels when selection is empty', () => {

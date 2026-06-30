@@ -219,7 +219,7 @@ async function findTabIdByUrl(helperPage, targetUrl) {
 }
 
 async function waitForOverlayInjection(page) {
-  await page.waitForSelector('#bili-vocab-react-overlay-root', {
+  await page.waitForSelector('#bsv-react-overlay-root', {
     state: 'attached',
     timeout: SITE_LOAD_TIMEOUT_MS,
   });
@@ -235,7 +235,7 @@ async function probeBilibiliSubtitleState(helperPage, targetUrl) {
             target: { tabId: targetTabId },
             func: async () => {
               const response = {
-                overlayAttached: Boolean(document.querySelector('#bili-vocab-react-overlay-root')),
+                overlayAttached: Boolean(document.querySelector('#bsv-react-overlay-root')),
                 videoCount: document.querySelectorAll('video').length,
                 videoKey: '',
                 timelineCount: 0,
@@ -444,7 +444,7 @@ async function waitForYouTubeSubtitleElements(helperPage, targetUrl) {
             {
               target: { tabId: targetTabId },
               func: () => ({
-                overlayAttached: Boolean(document.querySelector('#bili-vocab-react-overlay-root')),
+                overlayAttached: Boolean(document.querySelector('#bsv-react-overlay-root')),
                 detectedSubtitleCount:
                   globalThis.SubtitleParser &&
                   typeof globalThis.SubtitleParser.detectSubtitleElements === 'function'

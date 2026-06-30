@@ -8,23 +8,46 @@
   const adaptiveTuning =
     globalScope.AdaptiveTuning ||
     (typeof require === 'function' ? require('./adaptiveTuning.js') : null);
-  const LEVELS = ['CET4', 'CET6', 'KAOYAN', 'IELTS', 'TOEFL'];
+  const Pure =
+    globalScope.VocabularyPure ||
+    (typeof require === 'function' ? require('./vocabulary-pure.js') : null);
 
-  const LEVEL_CLASS_MAP = {
-    CET4: 'level-cet4',
-    CET6: 'level-cet6',
-    KAOYAN: 'level-kaoyan',
-    IELTS: 'level-ielts',
-    TOEFL: 'level-toefl',
-  };
-
-  const LEVEL_PRIORITY = {
-    CET4: 1,
-    CET6: 2,
-    KAOYAN: 3,
-    IELTS: 4,
-    TOEFL: 5,
-  };
+  const {
+    LEVELS,
+    LEVEL_CLASS_MAP,
+    LEVEL_PRIORITY,
+    DEFAULT_ACTIVE_LEVELS,
+    REVIEW_BUCKETS,
+    DEFAULT_INTERVAL_DAYS,
+    DEFAULT_EASE_FACTOR,
+    MIN_EASE_FACTOR,
+    MAX_EASE_FACTOR,
+    MAX_INTERVAL_DAYS,
+    ADAPTIVE_FEEDBACK_ACTIONS,
+    normalizeLevel,
+    normalizeWordKey,
+    normalizeActiveLevels,
+    splitMeaning,
+    extractAliasTerms,
+    normalizeHitCount,
+    normalizeLastSeen,
+    normalizeLearningStatus,
+    normalizeReviewBucket,
+    getIntervalByBucket,
+    normalizeIntervalDays,
+    normalizeEaseFactor,
+    normalizeEntry,
+    toWordStat,
+    toLearningRecord,
+    normalizeStoredStats,
+    normalizeLearningStats,
+    getLevelPriority,
+    getLevelClass,
+    getCoverageTierPriority,
+    getCandidatePriority,
+    createEntrySnapshotWithRecord,
+    applyLearningRecordToEntry,
+  } = Pure;
 
   const LEVEL_FILES = {
     CET4: 'data/cet4.json',
@@ -34,7 +57,6 @@
     TOEFL: 'data/toefl.json',
   };
 
-  const DEFAULT_ACTIVE_LEVELS = LEVELS.slice();
   const WORD_STATS_STORAGE_KEY = 'bili_vocab_word_stats_v1';
   const LEARNING_WORD_STATS_STORAGE_KEY = learningState
     ? learningState.STORAGE_KEYS.WORD_STATS_V2
@@ -46,13 +68,6 @@
     ? learningState.STORAGE_KEYS.LEARNING_SUMMARY
     : 'bili_vocab_learning_summary_v1';
   const STORAGE_THROTTLE_MS = 600;
-  const REVIEW_BUCKETS = ['today', 'soon', 'later'];
-  const DEFAULT_INTERVAL_DAYS = 1;
-  const DEFAULT_EASE_FACTOR = 2.3;
-  const MIN_EASE_FACTOR = 1.3;
-  const MAX_EASE_FACTOR = 2.8;
-  const MAX_INTERVAL_DAYS = 60;
-  const ADAPTIVE_FEEDBACK_ACTIONS = new Set(['know', 'fuzzy', 'dontknow']);
   const logError =
     globalThis.Utils && typeof globalThis.Utils.logError === 'function'
       ? globalThis.Utils.logError
@@ -67,309 +82,6 @@
   let persistChain = Promise.resolve();
   let reviewQueue = {};
   let learningSummary = null;
-
-  function normalizeLevel(level) {
-    const normalized = String(level || '')
-      .trim()
-      .toUpperCase();
-    if (!LEVELS.includes(normalized)) {
-      return '';
-    }
-    return normalized;
-  }
-
-  function normalizeWordKey(word) {
-    return String(word || '')
-      .trim()
-      .toLowerCase();
-  }
-
-  function normalizeActiveLevels(levels) {
-    if (!Array.isArray(levels) || levels.length === 0) {
-      return DEFAULT_ACTIVE_LEVELS.slice();
-    }
-
-    const normalizedLevels = [];
-    levels.forEach((level) => {
-      const normalized = normalizeLevel(level);
-      if (!normalized || normalizedLevels.includes(normalized)) {
-        return;
-      }
-      normalizedLevels.push(normalized);
-    });
-
-    if (normalizedLevels.length === 0) {
-      return DEFAULT_ACTIVE_LEVELS.slice();
-    }
-
-    return normalizedLevels;
-  }
-
-  function splitMeaning(meaning) {
-    const rawMeaning = String(meaning || '').trim();
-    if (!rawMeaning) {
-      return [];
-    }
-
-    return rawMeaning
-      .split(/[;；,，、/]/)
-      .map((part) => part.trim())
-      .filter((part) => part.length > 1);
-  }
-
-  function extractAliasTerms(rawAliases) {
-    if (!Array.isArray(rawAliases)) {
-      return [];
-    }
-
-    return rawAliases
-      .map((alias) => String(alias || '').trim())
-      .filter((alias) => /[\u4e00-\u9fff]/.test(alias))
-      .filter((alias) => alias.length > 1 && alias.length <= 8);
-  }
-
-  function normalizeHitCount(value) {
-    const count = Number(value);
-    if (!Number.isFinite(count) || count < 0) {
-      return 0;
-    }
-    return Math.floor(count);
-  }
-
-  function normalizeLastSeen(value) {
-    const lastSeen = Number(value);
-    if (!Number.isFinite(lastSeen) || lastSeen <= 0) {
-      return null;
-    }
-    return lastSeen;
-  }
-
-  function normalizeLearningStatus(value) {
-    const normalized = String(value || '')
-      .trim()
-      .toLowerCase();
-    if (normalized === 'new') {
-      return 'unseen';
-    }
-    if (normalized === 'learning' || normalized === 'reviewing') {
-      return 'seen';
-    }
-    if (['unseen', 'seen', 'saved', 'mastered', 'skipped'].includes(normalized)) {
-      return normalized;
-    }
-    return 'unseen';
-  }
-
-  function normalizeReviewBucket(value) {
-    const normalized = String(value || 'today')
-      .trim()
-      .toLowerCase();
-    return REVIEW_BUCKETS.includes(normalized) ? normalized : 'today';
-  }
-
-  function getIntervalByBucket(bucket) {
-    const normalized = normalizeReviewBucket(bucket);
-    if (normalized === 'today') {
-      return 1;
-    }
-    if (normalized === 'soon') {
-      return 3;
-    }
-    return 7;
-  }
-
-  function normalizeIntervalDays(value, fallback = DEFAULT_INTERVAL_DAYS) {
-    const interval = Number(value);
-    if (!Number.isFinite(interval) || interval <= 0) {
-      const safeFallback = Number.isFinite(Number(fallback))
-        ? Number(fallback)
-        : DEFAULT_INTERVAL_DAYS;
-      return Math.min(MAX_INTERVAL_DAYS, Math.max(DEFAULT_INTERVAL_DAYS, Math.floor(safeFallback)));
-    }
-    return Math.min(MAX_INTERVAL_DAYS, Math.max(DEFAULT_INTERVAL_DAYS, Math.round(interval)));
-  }
-
-  function normalizeEaseFactor(value, fallback = DEFAULT_EASE_FACTOR) {
-    const ease = Number(value);
-    if (!Number.isFinite(ease)) {
-      const safeFallback = Number.isFinite(Number(fallback))
-        ? Number(fallback)
-        : DEFAULT_EASE_FACTOR;
-      return Math.min(MAX_EASE_FACTOR, Math.max(MIN_EASE_FACTOR, Number(safeFallback.toFixed(2))));
-    }
-    return Math.min(MAX_EASE_FACTOR, Math.max(MIN_EASE_FACTOR, Number(ease.toFixed(2))));
-  }
-
-  function normalizeEntry(entry, fallbackLevel) {
-    const level = normalizeLevel(entry.level) || fallbackLevel;
-    const meaning = String(entry.meaning || entry.translation || '').trim();
-    const meaningTerms = splitMeaning(meaning);
-    const aliasTerms = extractAliasTerms(entry.aliases);
-    const mergedTerms = Array.from(new Set([...meaningTerms, ...aliasTerms]));
-
-    return {
-      word: String(entry.word || '').trim(),
-      meaning,
-      translation: meaning,
-      level,
-      phonetic: String(entry.phonetic || '').trim(),
-      partOfSpeech: String(entry.partOfSpeech || '').trim(),
-      definition: String(entry.definition || '').trim(),
-      aliases: aliasTerms,
-      cefrLevel: String(entry.cefrLevel || '')
-        .trim()
-        .toUpperCase(),
-      cefrRank: Number(entry.cefrRank) || 0,
-      frequency: Number(entry.frequency) || 0,
-      coverageTier:
-        String(entry.coverageTier || 'full')
-          .trim()
-          .toLowerCase() === 'core'
-          ? 'core'
-          : 'full',
-      sourceFlags: Array.isArray(entry.sourceFlags)
-        ? entry.sourceFlags.map((item) => String(item || '').trim()).filter(Boolean)
-        : [],
-      altMeanings: Array.isArray(entry.altMeanings)
-        ? entry.altMeanings.map((item) => String(item || '').trim()).filter(Boolean)
-        : [],
-      examFrequencyScore: Number(entry.examFrequencyScore) || 0,
-      examPriorityScore: Number(entry.examPriorityScore) || 0,
-      isPhraseBacked: entry.isPhraseBacked === true,
-      phraseCount: Math.max(0, Math.floor(Number(entry.phraseCount) || 0)),
-      hitCount: normalizeHitCount(entry.hitCount),
-      exposureCount: normalizeHitCount(
-        entry.exposureCount != null ? entry.exposureCount : entry.hitCount
-      ),
-      seenCount: normalizeHitCount(entry.seenCount),
-      lookupCount: normalizeHitCount(entry.lookupCount),
-      saveCount: normalizeHitCount(entry.saveCount),
-      firstSeenAt: normalizeLastSeen(
-        entry.firstSeenAt || entry.firstSeen || entry.lastSeenAt || entry.lastSeen
-      ),
-      lastSeen: normalizeLastSeen(entry.lastSeen),
-      lastSeenAt: normalizeLastSeen(entry.lastSeenAt),
-      reviewCount: normalizeHitCount(entry.reviewCount),
-      lastReviewedAt: normalizeLastSeen(entry.lastReviewedAt),
-      masteryScore: Math.max(0, Math.min(100, Math.floor(Number(entry.masteryScore) || 0))),
-      learningStatus: normalizeLearningStatus(entry.learningStatus || entry.status || ''),
-      nextReviewBucket: normalizeReviewBucket(entry.nextReviewBucket || 'today'),
-      intervalDays: normalizeIntervalDays(
-        entry.intervalDays,
-        getIntervalByBucket(entry.nextReviewBucket)
-      ),
-      easeFactor: normalizeEaseFactor(entry.easeFactor),
-      nextReviewAt: normalizeLastSeen(entry.nextReviewAt),
-      meaningTerms: mergedTerms.length ? mergedTerms : [meaning],
-    };
-  }
-
-  function toWordStat(entry) {
-    return {
-      word: entry.word,
-      translation: entry.translation || entry.meaning,
-      level: entry.level,
-      hitCount: normalizeHitCount(entry.hitCount),
-      lastSeen: normalizeLastSeen(entry.lastSeen),
-    };
-  }
-
-  function normalizeStoredStats(raw) {
-    if (!raw || typeof raw !== 'object') {
-      return {};
-    }
-
-    const normalized = {};
-    Object.keys(raw).forEach((key) => {
-      const item = raw[key];
-      if (!item || typeof item !== 'object') {
-        return;
-      }
-
-      const normalizedWord = normalizeWordKey(item.word || key);
-      if (!normalizedWord) {
-        return;
-      }
-
-      normalized[normalizedWord] = {
-        word: String(item.word || normalizedWord).trim(),
-        translation: String(item.translation || item.meaning || '').trim(),
-        level: normalizeLevel(item.level),
-        hitCount: normalizeHitCount(item.hitCount),
-        lastSeen: normalizeLastSeen(item.lastSeen),
-      };
-    });
-
-    return normalized;
-  }
-
-  function toLearningRecord(entry) {
-    return {
-      word: entry.word,
-      translation: entry.translation || entry.meaning,
-      level: entry.level,
-      sourceLevels:
-        Array.isArray(entry.sourceLevels) && entry.sourceLevels.length
-          ? entry.sourceLevels.slice()
-          : [entry.level],
-      exposureCount: normalizeHitCount(
-        entry.exposureCount != null ? entry.exposureCount : entry.hitCount
-      ),
-      hitCount: normalizeHitCount(
-        entry.exposureCount != null ? entry.exposureCount : entry.hitCount
-      ),
-      seenCount: normalizeHitCount(entry.seenCount || entry.hitCount),
-      lookupCount: normalizeHitCount(entry.lookupCount),
-      saveCount: normalizeHitCount(entry.saveCount),
-      firstSeenAt: normalizeLastSeen(
-        entry.firstSeenAt || entry.firstSeen || entry.lastSeenAt || entry.lastSeen
-      ),
-      reviewCount: normalizeHitCount(entry.reviewCount),
-      lastSeen: normalizeLastSeen(entry.lastSeen),
-      lastSeenAt: normalizeLastSeen(entry.lastSeenAt || entry.lastSeen),
-      lastReviewedAt: normalizeLastSeen(entry.lastReviewedAt),
-      masteryScore: Math.max(0, Math.min(100, Math.floor(Number(entry.masteryScore) || 0))),
-      status: normalizeLearningStatus(entry.learningStatus || 'unseen'),
-      nextReviewBucket: normalizeReviewBucket(entry.nextReviewBucket || 'today'),
-      intervalDays: normalizeIntervalDays(
-        entry.intervalDays,
-        getIntervalByBucket(entry.nextReviewBucket)
-      ),
-      easeFactor: normalizeEaseFactor(entry.easeFactor),
-      nextReviewAt: normalizeLastSeen(entry.nextReviewAt),
-    };
-  }
-
-  function normalizeLearningStats(rawLearning, legacyStats) {
-    if (learningState) {
-      if (rawLearning && typeof rawLearning === 'object') {
-        const normalized = {};
-        Object.keys(rawLearning).forEach((key) => {
-          const item = rawLearning[key];
-          if (!item || typeof item !== 'object') {
-            return;
-          }
-          const word = normalizeWordKey(item.word || key);
-          if (!word) {
-            return;
-          }
-          normalized[word] = learningState.normalizeLearningRecord(item, {
-            word,
-            level: item.level,
-          });
-        });
-        return normalized;
-      }
-
-      const migrated = {};
-      Object.keys(legacyStats || {}).forEach((key) => {
-        migrated[key] = learningState.migrateLegacyStat(legacyStats[key]);
-      });
-      return migrated;
-    }
-
-    return {};
-  }
 
   function getChromeRuntimeError() {
     if (typeof chrome === 'undefined' || !chrome.runtime) {
@@ -392,6 +104,54 @@
       typeof chrome.storage.local.get === 'function' &&
       typeof chrome.storage.local.set === 'function'
     );
+  }
+
+  function hasChromeRuntimeMessaging() {
+    return (
+      typeof chrome !== 'undefined' &&
+      chrome.runtime &&
+      typeof chrome.runtime.sendMessage === 'function'
+    );
+  }
+
+  function sendRuntimeMessage(type, payload) {
+    if (!hasChromeRuntimeMessaging()) {
+      return Promise.reject(new Error('chrome.runtime.sendMessage unavailable'));
+    }
+
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type, payload }, (response) => {
+        const runtimeError = getChromeRuntimeError();
+        if (runtimeError) {
+          reject(createStorageError('chrome.runtime.sendMessage failed', runtimeError));
+          return;
+        }
+        if (!response || response.ok !== true) {
+          reject(new Error(String((response && response.error) || 'runtime message failed')));
+          return;
+        }
+        resolve(response.payload);
+      });
+    });
+  }
+
+  function persistLearningHit(record, payload, now) {
+    return sendRuntimeMessage('BILI_VOCAB_LEARNING_RECORD_HIT', {
+      ...payload,
+      record,
+      now,
+    }).catch((error) => {
+      logError('Vocabulary hit background persist failed', error);
+      return null;
+    });
+  }
+
+  function persistLearningReviewFeedback(word, action, now) {
+    return sendRuntimeMessage('BILI_VOCAB_LEARNING_APPLY_REVIEW_FEEDBACK', {
+      word,
+      action,
+      now,
+    });
   }
 
   function readChromeLocalStorage(keys) {
@@ -603,64 +363,38 @@
     }
   }
 
-  function applyLearningRecordToEntry(entry, record) {
-    if (!entry || !record) {
-      return;
-    }
+  function replaceEntryInIndexes(oldEntry, newEntry) {
+    const key = normalizeWordKey(newEntry.word);
+    const entryIndex = vocabularyEntries.indexOf(oldEntry);
+    if (entryIndex >= 0) vocabularyEntries[entryIndex] = newEntry;
+    if (key) wordIndex.set(key, newEntry);
 
-    entry.exposureCount = normalizeHitCount(
-      record.exposureCount != null ? record.exposureCount : record.hitCount
-    );
-    entry.hitCount = normalizeHitCount(entry.exposureCount);
-    entry.seenCount = normalizeHitCount(
-      record.seenCount || record.exposureCount || record.hitCount
-    );
-    entry.lookupCount = normalizeHitCount(record.lookupCount);
-    entry.saveCount = normalizeHitCount(record.saveCount);
-    entry.firstSeenAt = normalizeLastSeen(
-      record.firstSeenAt || record.firstSeen || record.lastSeenAt || record.lastSeen
-    );
-    entry.lastSeen = normalizeLastSeen(record.lastSeen);
-    entry.lastSeenAt = normalizeLastSeen(record.lastSeenAt || record.lastSeen);
-    entry.reviewCount = normalizeHitCount(record.reviewCount);
-    entry.lastReviewedAt = normalizeLastSeen(record.lastReviewedAt);
-    entry.masteryScore = Math.max(0, Math.min(100, Math.floor(Number(record.masteryScore) || 0)));
-    entry.learningStatus = normalizeLearningStatus(
-      record.status || record.learningStatus || 'unseen'
-    );
-    entry.nextReviewBucket = normalizeReviewBucket(record.nextReviewBucket || 'today');
-    entry.intervalDays = normalizeIntervalDays(
-      record.intervalDays,
-      getIntervalByBucket(record.nextReviewBucket)
-    );
-    entry.easeFactor = normalizeEaseFactor(record.easeFactor);
-    entry.nextReviewAt = normalizeLastSeen(record.nextReviewAt);
-    entry.sourceLevels =
-      Array.isArray(record.sourceLevels) && record.sourceLevels.length
-        ? record.sourceLevels.slice()
-        : [entry.level];
+    if (Array.isArray(oldEntry.meaningTerms)) {
+      oldEntry.meaningTerms.forEach((term) => {
+        const token = String(term || '').trim();
+        if (!token || token.length < 2) return;
+        const entries = chineseTokenIndex.get(token);
+        if (!entries) return;
+        const idx = entries.indexOf(oldEntry);
+        if (idx >= 0) entries[idx] = newEntry;
+      });
+    }
   }
 
   function applyStoredStats(entries, storedData) {
     const records = storedData && storedData.learningRecords ? storedData.learningRecords : {};
-    entries.forEach((entry) => {
+    entries.forEach((entry, index) => {
       const key = normalizeWordKey(entry.word);
       if (!key || !records[key]) {
         return;
       }
 
-      applyLearningRecordToEntry(entry, records[key]);
+      entries[index] = applyLearningRecordToEntry(entry, records[key]);
     });
 
     reviewQueue = storedData && storedData.queue ? { ...storedData.queue } : {};
     learningSummary =
       storedData && storedData.summary ? storedData.summary : refreshLearningSummary(records);
-  }
-
-  function createEntrySnapshotWithRecord(entry, record) {
-    const snapshot = { ...entry };
-    applyLearningRecordToEntry(snapshot, record);
-    return snapshot;
   }
 
   function rebuildIndex(entries) {
@@ -688,10 +422,6 @@
     });
 
     sortedChineseTokens = Array.from(chineseTokenIndex.keys()).sort((a, b) => b.length - a.length);
-  }
-
-  function getLevelPriority(level) {
-    return LEVEL_PRIORITY[normalizeLevel(level)] || 0;
   }
 
   async function fetchLevelVocabulary(level) {
@@ -753,28 +483,6 @@
     applyStoredStats(vocabularyEntries, storedData);
     rebuildIndex(vocabularyEntries);
     return vocabularyEntries;
-  }
-
-  function getLevelClass(level) {
-    const normalized = normalizeLevel(level);
-    return LEVEL_CLASS_MAP[normalized] || LEVEL_CLASS_MAP.CET4;
-  }
-
-  function getCoverageTierPriority(entry, vocabularyMode) {
-    if (vocabularyMode === 'core') {
-      return entry && entry.coverageTier === 'core' ? 1000 : 0;
-    }
-    return entry && entry.coverageTier === 'core' ? 100 : 10;
-  }
-
-  function getCandidatePriority(entry, vocabularyMode) {
-    return (
-      getCoverageTierPriority(entry, vocabularyMode) +
-      (Number(entry && entry.examPriorityScore) || 0) +
-      (Number(entry && entry.examFrequencyScore) || 0) * 0.05 +
-      getLevelPriority(entry && entry.level) * 10 +
-      (Number(entry && entry.frequency) || 0) * 0.00001
-    );
   }
 
   function findMatchesInText(text, activeLevels, selectionSettings) {
@@ -896,25 +604,25 @@
 
     const now = Date.now();
     if (learningState) {
-      const nextRecord = learningState.recordExposure(
-        toLearningRecord(entry),
-        {
-          word: entry.word,
-          translation: entry.translation || entry.meaning,
-          level: entry.level,
-          sourceLevels: entry.sourceLevels || [entry.level],
-        },
-        now
-      );
-      applyLearningRecordToEntry(entry, nextRecord);
+      const previousRecord = toLearningRecord(entry);
+      const exposurePayload = {
+        word: entry.word,
+        translation: entry.translation || entry.meaning,
+        level: entry.level,
+        sourceLevels: entry.sourceLevels || [entry.level],
+      };
+      const nextRecord = learningState.recordExposure(previousRecord, exposurePayload, now);
+      const updated = applyLearningRecordToEntry(entry, nextRecord);
+      replaceEntryInIndexes(entry, updated);
       reviewQueue = learningState.syncReviewQueue(reviewQueue, nextRecord, now);
       refreshLearningSummary(buildActiveLearningRecords(vocabularyEntries));
+      void persistLearningHit(previousRecord, exposurePayload, now);
     } else {
       entry.hitCount = normalizeHitCount(entry.hitCount) + 1;
       entry.lastSeen = now;
+      scheduleStatsPersist();
     }
 
-    scheduleStatsPersist();
     if (learningState && typeof learningState.updateLearningStreak === 'function') {
       void learningState.updateLearningStreak(now);
     }
@@ -1032,30 +740,33 @@
       const normalizedAction = String(action || '')
         .trim()
         .toLowerCase();
-      const buildNextRecord = (record) => {
-        return typeof learningState.applyLearningAction === 'function'
-          ? learningState.applyLearningAction(record, normalizedAction, now)
-          : learningState.applyReviewFeedback(record, normalizedAction, now);
-      };
-
-      const snapshotRecord = buildNextRecord(toLearningRecord(entry));
-      const snapshotEntries = vocabularyEntries.map((item) => {
-        return item === entry ? createEntrySnapshotWithRecord(item, snapshotRecord) : item;
-      });
-      const snapshotQueue = learningState.syncReviewQueue(reviewQueue, snapshotRecord, now);
-
+      let committedPayload = null;
       try {
-        await writeStoredStats(createPersistSnapshot(snapshotEntries, snapshotQueue));
+        committedPayload = await persistLearningReviewFeedback(key, normalizedAction, now);
       } catch (error) {
         logError('Vocabulary learning action write failed', error);
         return null;
       }
 
-      const committedRecord = buildNextRecord(toLearningRecord(entry));
-      applyLearningRecordToEntry(entry, committedRecord);
-      reviewQueue = learningState.syncReviewQueue(reviewQueue, committedRecord, now);
-      refreshLearningSummary(buildActiveLearningRecords(vocabularyEntries));
-      scheduleStatsPersist();
+      const committedRecord =
+        committedPayload &&
+        committedPayload.stats &&
+        typeof committedPayload.stats === 'object' &&
+        committedPayload.stats[key]
+          ? committedPayload.stats[key]
+          : typeof learningState.applyLearningAction === 'function'
+            ? learningState.applyLearningAction(toLearningRecord(entry), normalizedAction, now)
+            : learningState.applyReviewFeedback(toLearningRecord(entry), normalizedAction, now);
+      const updated = applyLearningRecordToEntry(entry, committedRecord);
+      replaceEntryInIndexes(entry, updated);
+      reviewQueue =
+        committedPayload && committedPayload.queue && typeof committedPayload.queue === 'object'
+          ? learningState.normalizeReviewQueue(committedPayload.queue)
+          : learningState.syncReviewQueue(reviewQueue, committedRecord, now);
+      learningSummary =
+        committedPayload && committedPayload.summary && typeof committedPayload.summary === 'object'
+          ? committedPayload.summary
+          : refreshLearningSummary(buildActiveLearningRecords(vocabularyEntries));
       maybePersistAdaptiveFeedback(normalizedAction, now);
       if (typeof learningState.updateLearningStreak === 'function') {
         void learningState.updateLearningStreak(now);

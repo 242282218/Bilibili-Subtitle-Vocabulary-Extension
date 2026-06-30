@@ -8,18 +8,23 @@ const sharedSettings = require('../sharedSettings.js');
 
 const backgroundPath = path.join(__dirname, '..', 'background.js');
 const experienceMetricsPath = path.join(__dirname, '..', 'experienceMetrics.js');
-const storageSourcePath = path.join(__dirname, '..', 'react-ui', 'src', 'storage.ts');
+const storageSourcePath = path.join(__dirname, '..', 'react-ui', 'src', 'lib', 'storage.ts');
 const learningDashboardSourcePath = path.join(
   __dirname,
   '..',
   'react-ui',
   'src',
+  'lib',
   'learning-dashboard.ts'
 );
 const storageSourceDir = path.dirname(storageSourcePath);
 const SETTINGS_STORAGE_KEY_V3 = 'bili_vocab_settings_v3';
 const ADAPTIVE_TUNING_STORAGE_KEY = 'bili_vocab_adaptive_tuning_v1';
 const EXPERIENCE_METRICS_STORAGE_KEY = 'bili_vocab_experience_metrics_v1';
+const WORD_STATS_STORAGE_KEY = 'bili_vocab_word_stats_v1';
+const WORD_STATS_V2_KEY = 'bili_vocab_word_stats_v2';
+const REVIEW_QUEUE_KEY = 'bili_vocab_review_queue_v1';
+const LEARNING_SUMMARY_KEY = 'bili_vocab_learning_summary_v1';
 
 function cloneValue(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -178,6 +183,32 @@ function loadStorageModule(chrome) {
       if (id === './learning-dashboard') {
         return loadLearningDashboardModule();
       }
+      if (id === './chrome-storage-adapter') {
+        return {
+          readStorage(keys) {
+            return new Promise((resolve, reject) => {
+              chrome.storage.local.get(keys == null ? null : keys, (payload) => {
+                if (chrome.runtime.lastError) {
+                  reject(new Error(chrome.runtime.lastError.message));
+                  return;
+                }
+                resolve(payload || {});
+              });
+            });
+          },
+          writeStorage(payload) {
+            return new Promise((resolve, reject) => {
+              chrome.storage.local.set(payload, () => {
+                if (chrome.runtime.lastError) {
+                  reject(new Error(chrome.runtime.lastError.message));
+                  return;
+                }
+                resolve();
+              });
+            });
+          },
+        };
+      }
       if (id === './runtime-messaging') {
         return {
           MESSAGE_TYPES: {
@@ -221,6 +252,22 @@ function loadStorageModule(chrome) {
   return moduleRef.exports;
 }
 
+function sendRuntimeMessage(chrome, type, payload) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type, payload }, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      if (!response || response.ok !== true) {
+        reject(new Error((response && response.error) || 'runtime bridge failed'));
+        return;
+      }
+      resolve(response.payload);
+    });
+  });
+}
+
 async function withBackground(storageState, run) {
   const previousChrome = global.chrome;
   const stub = createChromeStub(storageState);
@@ -233,7 +280,13 @@ async function withBackground(storageState, run) {
     require(backgroundPath);
     const storageModule = loadStorageModule(stub.chrome);
     const experienceMetrics = require(experienceMetricsPath);
-    await run({ storageModule, experienceMetrics, storageState, listeners: stub.listeners });
+    await run({
+      chrome: stub.chrome,
+      storageModule,
+      experienceMetrics,
+      storageState,
+      listeners: stub.listeners,
+    });
   } finally {
     delete require.cache[require.resolve(backgroundPath)];
     delete require.cache[require.resolve(experienceMetricsPath)];
@@ -406,5 +459,66 @@ test('background shared state mutation: concurrent keyboard commands should buil
       ).length,
       2
     );
+  });
+});
+
+test('background shared state mutation: concurrent learning hit and review should not lose queue state', async () => {
+  const storageState = {
+    [WORD_STATS_V2_KEY]: {
+      alpha: {
+        word: 'alpha',
+        translation: '阿尔法',
+        level: 'CET4',
+        sourceLevels: ['CET4'],
+        exposureCount: 2,
+        hitCount: 2,
+        seenCount: 2,
+        firstSeenAt: 1700000000000,
+        lastSeenAt: 1700000000000,
+        masteryScore: 30,
+        status: 'seen',
+        nextReviewBucket: 'today',
+        intervalDays: 1,
+        easeFactor: 2.3,
+        nextReviewAt: 1700003600000,
+      },
+    },
+    [REVIEW_QUEUE_KEY]: {
+      alpha: {
+        word: 'alpha',
+        dueBucket: 'today',
+        nextReviewAt: 1700003600000,
+        intervalDays: 1,
+        easeFactor: 2.3,
+        updatedAt: 1700000000000,
+        lastSeenAt: 1700000000000,
+        sourceLevels: ['CET4'],
+      },
+    },
+  };
+
+  await withBackground(storageState, async ({ chrome, storageState: nextStorageState }) => {
+    await Promise.all([
+      sendRuntimeMessage(chrome, 'BILI_VOCAB_LEARNING_APPLY_REVIEW_FEEDBACK', {
+        word: 'alpha',
+        action: 'know',
+        now: 1700000100000,
+      }),
+      sendRuntimeMessage(chrome, 'BILI_VOCAB_LEARNING_RECORD_HIT', {
+        word: 'beta',
+        translation: '贝塔',
+        level: 'CET6',
+        now: 1700000200000,
+      }),
+    ]);
+
+    assert.equal(nextStorageState[WORD_STATS_V2_KEY].alpha.reviewCount, 1);
+    assert.equal(nextStorageState[WORD_STATS_V2_KEY].beta.exposureCount, 1);
+    assert.equal(nextStorageState[WORD_STATS_V2_KEY].beta.translation, '贝塔');
+    assert.equal(nextStorageState[REVIEW_QUEUE_KEY].alpha.word, 'alpha');
+    assert.equal(nextStorageState[REVIEW_QUEUE_KEY].beta.word, 'beta');
+    assert.equal(nextStorageState[LEARNING_SUMMARY_KEY].queueCount, 2);
+    assert.equal(nextStorageState[WORD_STATS_STORAGE_KEY].alpha.hitCount, 2);
+    assert.equal(nextStorageState[WORD_STATS_STORAGE_KEY].beta.hitCount, 1);
   });
 });

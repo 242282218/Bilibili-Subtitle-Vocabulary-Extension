@@ -94,3 +94,27 @@ test('reportContextMisreplaceFeedback: should forward word feedback to translato
 
   delete globalThis.SubtitleTranslator;
 });
+
+test('reportContextMisreplaceFeedback: should refresh rendered translations after feedback', () => {
+  let refreshCalls = 0;
+  globalThis.SubtitleTranslator = {
+    reportContextMisreplace() {
+      return { word: 'optimize', inCooldown: true };
+    },
+  };
+  globalThis.BiliVocabContentRuntime = {
+    refreshTranslationsForSelectionStateChange() {
+      refreshCalls += 1;
+    },
+  };
+
+  tooltip.reportContextMisreplaceFeedback('optimize', {
+    severity: 'high',
+    now: 1700000000000,
+  });
+
+  assert.equal(refreshCalls, 1);
+
+  delete globalThis.SubtitleTranslator;
+  delete globalThis.BiliVocabContentRuntime;
+});

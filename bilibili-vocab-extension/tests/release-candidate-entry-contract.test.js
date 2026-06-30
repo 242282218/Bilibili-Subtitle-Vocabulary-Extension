@@ -58,6 +58,7 @@ const EXPECTED_RELEASE_CHECK_SCRIPT_NAMES = [
   'lint',
   'typecheck',
   'test',
+  'test:ui',
   'build:extension:bundle',
   'test:extension-smoke:built',
   'test:zip-smoke:built',
@@ -161,10 +162,7 @@ test('release candidate contract: runner should execute required scripts seriall
     command: 'pnpm',
     args: ['run', 'lint'],
   });
-  assert.equal(
-    steps.some((step) => step.id === 'test:ui'),
-    false
-  );
+  assert.equal(steps[3].id, 'test:ui');
   assert.equal(
     steps.some((step) => step.id === 'optimize:continuous:release'),
     false
@@ -277,6 +275,8 @@ test('release candidate contract: windows package job should run smoke and uploa
   assert.doesNotMatch(workflow, /run: pnpm run test:extension-smoke\r?$/m);
   assert.match(workflow, /name: Check Extension Package/);
   assert.match(workflow, /run: pnpm run check:extension-package/);
+  assert.match(workflow, /name: Run extension zip smoke/);
+  assert.match(workflow, /run: pnpm run test:zip-smoke:built/);
   assert.doesNotMatch(workflow, /name: Verify extension\.zip exists/);
   assert.match(
     workflow,
@@ -298,6 +298,8 @@ test('release candidate contract: linux build job should run package gate', () =
   assert.match(workflow, /run: pnpm run pack/);
   assert.match(workflow, /name: Check Extension Package/);
   assert.match(workflow, /run: pnpm run check:extension-package/);
+  assert.match(workflow, /name: Run extension zip smoke/);
+  assert.match(workflow, /run: pnpm run test:zip-smoke:built/);
   assert.match(
     workflow,
     /name: Upload overlay size report\s+if: always\(\)\s+uses: actions\/upload-artifact@v4\s+with:\s+name: overlay-size-report-linux\s+path: \$\{\{\s*env\.WORKDIR\s*\}\}\/dist\/overlay-size-report\.json\s+if-no-files-found: warn/

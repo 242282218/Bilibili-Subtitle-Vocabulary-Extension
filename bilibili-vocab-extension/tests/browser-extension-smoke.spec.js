@@ -371,16 +371,16 @@ test('browser extension smoke: should load popup/options and inject overlay on a
 
     const popupPage = await context.newPage();
     await popupPage.goto(`chrome-extension://${extensionId}/dist/popup.html`);
-    await popupPage.waitForSelector('text=当前页面学习助手');
+    await popupPage.waitForSelector('text=字幕学习助手');
     await popupPage.waitForSelector('text=当前字幕导航');
 
     const contentPage = await context.newPage();
     await routeFixturePage(contentPage, SUPPORTED_FIXTURE_URL, 'Bili Vocab Smoke Fixture');
     await contentPage.goto(SUPPORTED_FIXTURE_URL);
-    await contentPage.waitForSelector('#bili-vocab-react-overlay-style', { state: 'attached' });
-    await contentPage.waitForSelector('#bili-vocab-react-overlay-root', { state: 'attached' });
+    await contentPage.waitForSelector('#bsv-react-overlay-style', { state: 'attached' });
+    await contentPage.waitForSelector('#bsv-react-overlay-root', { state: 'attached' });
 
-    const overlaySnapshot = await contentPage.$eval('#bili-vocab-react-overlay-root', (node) => ({
+    const overlaySnapshot = await contentPage.$eval('#bsv-react-overlay-root', (node) => ({
       childCount: node.childElementCount,
       text: node.textContent || '',
     }));
@@ -390,15 +390,12 @@ test('browser extension smoke: should load popup/options and inject overlay on a
     const youtubePage = await context.newPage();
     await routeFixturePage(youtubePage, YOUTUBE_FIXTURE_URL, 'YouTube Smoke Fixture');
     await youtubePage.goto(YOUTUBE_FIXTURE_URL);
-    await youtubePage.waitForSelector('#bili-vocab-react-overlay-style', { state: 'attached' });
-    await youtubePage.waitForSelector('#bili-vocab-react-overlay-root', { state: 'attached' });
-    const youtubeOverlaySnapshot = await youtubePage.$eval(
-      '#bili-vocab-react-overlay-root',
-      (node) => ({
-        childCount: node.childElementCount,
-        text: node.textContent || '',
-      })
-    );
+    await youtubePage.waitForSelector('#bsv-react-overlay-style', { state: 'attached' });
+    await youtubePage.waitForSelector('#bsv-react-overlay-root', { state: 'attached' });
+    const youtubeOverlaySnapshot = await youtubePage.$eval('#bsv-react-overlay-root', (node) => ({
+      childCount: node.childElementCount,
+      text: node.textContent || '',
+    }));
     assert.ok(youtubeOverlaySnapshot.childCount > 0);
     assert.match(String(youtubeOverlaySnapshot.text || ''), /隐藏面板|保存|字幕/);
 
@@ -406,7 +403,7 @@ test('browser extension smoke: should load popup/options and inject overlay on a
     await routeFixturePage(unsupportedPage, UNSUPPORTED_FIXTURE_URL, 'Unsupported Smoke Fixture');
     await unsupportedPage.goto(UNSUPPORTED_FIXTURE_URL);
     await unsupportedPage.waitForLoadState('domcontentloaded');
-    assert.equal(await unsupportedPage.locator('#bili-vocab-react-overlay-root').count(), 0);
+    assert.equal(await unsupportedPage.locator('#bsv-react-overlay-root').count(), 0);
   } finally {
     if (context) {
       await context.close();
@@ -444,8 +441,8 @@ test('browser extension smoke: should inject shipped content runtime on an autho
     );
     await contentPage.goto(AUTHORIZED_OPTIONAL_FIXTURE_URL);
     await contentPage.waitForLoadState('domcontentloaded');
-    assert.equal(await contentPage.locator('.bili-vocab-word').count(), 0);
-    assert.equal(await contentPage.locator('#bili-vocab-react-overlay-root').count(), 0);
+    assert.equal(await contentPage.locator('.bsv-word').count(), 0);
+    assert.equal(await contentPage.locator('#bsv-react-overlay-root').count(), 0);
 
     const helperPage = await context.newPage();
     await helperPage.goto(`chrome-extension://${extensionId}/dist/popup.html`);
@@ -454,9 +451,9 @@ test('browser extension smoke: should inject shipped content runtime on an autho
     const injectedTabId = await injectContentRuntimeIntoOptionalHost(helperPage);
     assert.equal(typeof injectedTabId, 'number');
 
-    await contentPage.waitForSelector('.bili-vocab-word', { state: 'attached' });
-    assert.ok((await contentPage.locator('.bili-vocab-word').count()) > 0);
-    assert.equal(await contentPage.locator('#bili-vocab-react-overlay-root').count(), 0);
+    await contentPage.waitForSelector('.bsv-word', { state: 'attached' });
+    assert.ok((await contentPage.locator('.bsv-word').count()) > 0);
+    assert.equal(await contentPage.locator('#bsv-react-overlay-root').count(), 0);
   } finally {
     if (context) {
       await context.close();
@@ -494,7 +491,7 @@ test('browser extension smoke: should refresh subtitle navigation after bilibili
       });
     });
     await contentPage.goto(BILIBILI_SWITCH_FIXTURE_URL);
-    await contentPage.waitForSelector('#bili-vocab-react-overlay-root', { state: 'attached' });
+    await contentPage.waitForSelector('#bsv-react-overlay-root', { state: 'attached' });
 
     const helperPage = await context.newPage();
     await helperPage.goto(`chrome-extension://${extensionId}/dist/popup.html`);

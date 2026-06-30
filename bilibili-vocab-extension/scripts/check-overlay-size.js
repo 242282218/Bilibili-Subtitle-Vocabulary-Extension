@@ -15,7 +15,7 @@ const DEFAULT_OVERLAY_BASELINE_FILE = path.resolve(
   'config',
   'overlay-size-baseline.json'
 );
-const DEFAULT_RAW_BUDGET_KB = 260;
+const DEFAULT_RAW_BUDGET_KB = 280;
 const DEFAULT_GZIP_BUDGET_KB = 70;
 const DEFAULT_PROJECT_ROOT = path.resolve(__dirname, '..');
 

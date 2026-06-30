@@ -19,7 +19,7 @@ const previousTooltipModule = global.TooltipModule;
 const previousSchedulerModule = global.SchedulerModule;
 const previousDanmakuModule = global.DanmakuModule;
 
-const contentScriptPath = require.resolve('../contentScript.js');
+const contentScriptPath = require.resolve('../contentScript/index.js');
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -160,7 +160,7 @@ function createTimelineHarness() {
   };
 
   delete require.cache[contentScriptPath];
-  require('../contentScript.js');
+  require('../contentScript/index.js');
 
   async function boot() {
     assert.equal(typeof domContentLoadedListener, 'function');
@@ -200,9 +200,12 @@ test('contentScript timeline polling: repeated triggers should keep one interval
 });
 
 test('contentScript timeline polling: interval callback should not self-start polling', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'contentScript.js'), 'utf8');
+  const source = fs.readFileSync(
+    path.join(__dirname, '..', 'contentScript', 'dom-observer.js'),
+    'utf8'
+  );
   const intervalBlock = source.match(
-    /timelinePollTimer\s*=\s*setInterval\(\(\)\s*=>\s*\{([\s\S]*?)\},\s*TIMELINE_POLL_MS\);/
+    /timelinePollTimer\s*=\s*setInterval\(\s*function\s*\(\)\s*\{([\s\S]*?)\},\s*TIMELINE_POLL_MS\)/
   );
 
   assert.ok(intervalBlock, 'expected timeline polling interval block to exist');

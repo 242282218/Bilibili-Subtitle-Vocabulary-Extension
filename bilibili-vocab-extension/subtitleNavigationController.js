@@ -14,6 +14,10 @@
     return message || fallbackMessage;
   }
 
+  function signatureFromFields(fields) {
+    return fields.map((f) => String(f == null ? '' : f)).join('::');
+  }
+
   function createSubtitleNavigationController(options) {
     const config = options && typeof options === 'object' ? options : {};
     const subtitleNavigation = config.subtitleNavigation || null;
@@ -163,69 +167,64 @@
     }
 
     function createSubtitleNavigationSnapshotSignature(snapshot) {
-      const normalized = snapshot && typeof snapshot === 'object' ? snapshot : {};
-      return [
-        normalized.supported === true ? '1' : '0',
-        String(normalized.progressLabel || ''),
-        String(normalized.headline || ''),
-        String(normalized.description || ''),
-        String(normalized.currentText || ''),
-        normalized.canGoPrevious === true ? '1' : '0',
-        normalized.canReplay === true ? '1' : '0',
-        normalized.canGoNext === true ? '1' : '0',
-      ].join('::');
+      const s = snapshot && typeof snapshot === 'object' ? snapshot : {};
+      return signatureFromFields([
+        s.supported === true ? '1' : '0',
+        s.progressLabel || '',
+        s.headline || '',
+        s.description || '',
+        s.currentText || '',
+        s.canGoPrevious === true ? '1' : '0',
+        s.canReplay === true ? '1' : '0',
+        s.canGoNext === true ? '1' : '0',
+      ]);
     }
 
     function getCurrentSubtitleNavigationVideoKey() {
       return String(getVideoKey() || '');
     }
 
-    function createOverlaySubtitleNavigationPayload(
-      state,
-      videoKey = getCurrentSubtitleNavigationVideoKey()
-    ) {
+    function buildOverlayPayload(state, videoKey) {
       return {
-        videoKey: String(videoKey || ''),
+        videoKey: String(videoKey || getCurrentSubtitleNavigationVideoKey() || ''),
         state:
           state && typeof state === 'object'
             ? { ...state }
-            : buildSubtitleNavigationContext(null, []).state,
+            : buildSharedSubtitleNavigationState({}),
       };
     }
 
     function cloneOverlaySubtitleNavigationPayload(payload) {
-      const source =
-        payload && typeof payload === 'object'
-          ? payload
-          : createOverlaySubtitleNavigationPayload(buildSubtitleNavigationContext(null, []).state);
+      if (!payload || typeof payload !== 'object') {
+        return buildOverlayPayload(buildSharedSubtitleNavigationState({}));
+      }
       return {
-        videoKey: String(source.videoKey || ''),
+        videoKey: String(payload.videoKey || ''),
         state:
-          source.state && typeof source.state === 'object'
-            ? { ...source.state }
-            : buildSubtitleNavigationContext(null, []).state,
+          payload.state && typeof payload.state === 'object'
+            ? { ...payload.state }
+            : buildSharedSubtitleNavigationState({}),
       };
     }
 
     function createOverlaySubtitleNavigationSignature(payload) {
-      const normalized =
+      const p =
         payload && typeof payload === 'object'
           ? payload
-          : createOverlaySubtitleNavigationPayload(buildSubtitleNavigationContext(null, []).state);
-      const state =
-        normalized.state && typeof normalized.state === 'object' ? normalized.state : {};
-      return [
-        String(normalized.videoKey || ''),
-        state.supported === true ? '1' : '0',
-        state.loading === true ? '1' : '0',
-        String(state.progressLabel || ''),
-        String(state.headline || ''),
-        String(state.description || ''),
-        String(state.currentText || ''),
-        state.previousIndex != null ? String(state.previousIndex) : '',
-        state.replayIndex != null ? String(state.replayIndex) : '',
-        state.nextIndex != null ? String(state.nextIndex) : '',
-      ].join('::');
+          : buildOverlayPayload(buildSharedSubtitleNavigationState({}));
+      const s = p.state && typeof p.state === 'object' ? p.state : {};
+      return signatureFromFields([
+        p.videoKey || '',
+        s.supported === true ? '1' : '0',
+        s.loading === true ? '1' : '0',
+        s.progressLabel || '',
+        s.headline || '',
+        s.description || '',
+        s.currentText || '',
+        s.previousIndex,
+        s.replayIndex,
+        s.nextIndex,
+      ]);
     }
 
     function shouldPreserveCurrentOverlaySubtitleNavigationPayload(currentPayload, nextPayload) {
@@ -252,52 +251,6 @@
       return Boolean(value && typeof value.currentTime === 'number');
     }
 
-    function buildPendingOverlaySubtitleNavigationPayload(
-      videoKey = getCurrentSubtitleNavigationVideoKey()
-    ) {
-      const video = getVideo();
-      const hasVideo = isSubtitleNavigationVideo(video);
-      const state = buildSharedSubtitleNavigationState({
-        hostname: getHostname(),
-        loading: isSubtitleNavigationSupportedHost() && hasVideo,
-        hasVideo,
-        currentTime: hasVideo ? Number(video.currentTime) : Number.NaN,
-        timeline: [],
-      });
-      return createOverlaySubtitleNavigationPayload(state, videoKey);
-    }
-
-    function createSubtitleNavigationRuntimePayload(context, videoKey) {
-      return {
-        context,
-        videoKey: String(videoKey || ''),
-        snapshot: context.snapshot,
-        overlayPayload: createOverlaySubtitleNavigationPayload(context.state, videoKey),
-      };
-    }
-
-    function buildPendingSubtitleNavigationRuntimePayload(
-      videoKey = getCurrentSubtitleNavigationVideoKey()
-    ) {
-      const overlayPayload = buildPendingOverlaySubtitleNavigationPayload(videoKey);
-      const snapshot = createSubtitleNavigationSnapshotFromState(overlayPayload.state);
-      return {
-        context: {
-          timeline: [],
-          video: null,
-          state: { ...overlayPayload.state },
-          snapshot,
-        },
-        videoKey: String(overlayPayload.videoKey || ''),
-        snapshot,
-        overlayPayload,
-      };
-    }
-
-    function buildPendingSubtitleNavigationSnapshot() {
-      return buildPendingSubtitleNavigationRuntimePayload().snapshot;
-    }
-
     function buildSubtitleNavigationContext(video, timeline) {
       const normalizedTimeline = normalizeSubtitleNavigationTimeline(timeline);
       const state = buildSharedSubtitleNavigationState({
@@ -313,6 +266,48 @@
         video: isSubtitleNavigationVideo(video) ? video : null,
         state,
         snapshot: createSubtitleNavigationSnapshotFromState(state),
+      };
+    }
+
+    function buildPendingState(videoKey) {
+      const video = getVideo();
+      const hasVideo = isSubtitleNavigationVideo(video);
+      const state = buildSharedSubtitleNavigationState({
+        hostname: getHostname(),
+        loading: isSubtitleNavigationSupportedHost() && hasVideo,
+        hasVideo,
+        currentTime: hasVideo ? Number(video.currentTime) : Number.NaN,
+        timeline: [],
+      });
+      return { state, videoKey: String(videoKey || getCurrentSubtitleNavigationVideoKey() || '') };
+    }
+
+    function buildPendingOverlayPayload(videoKey) {
+      const { state, videoKey: resolvedKey } = buildPendingState(videoKey);
+      return buildOverlayPayload(state, resolvedKey);
+    }
+
+    function buildPendingRuntimePayload(videoKey) {
+      const { state, videoKey: resolvedKey } = buildPendingState(videoKey);
+      const snapshot = createSubtitleNavigationSnapshotFromState(state);
+      return {
+        context: { timeline: [], video: null, state: { ...state }, snapshot },
+        videoKey: resolvedKey,
+        snapshot,
+        overlayPayload: buildOverlayPayload(state, resolvedKey),
+      };
+    }
+
+    function buildPendingSnapshot() {
+      return buildPendingRuntimePayload().snapshot;
+    }
+
+    function createRuntimePayload(context, videoKey) {
+      return {
+        context,
+        videoKey: String(videoKey || ''),
+        snapshot: context.snapshot,
+        overlayPayload: buildOverlayPayload(context.state, videoKey),
       };
     }
 
@@ -352,17 +347,12 @@
       try {
         const stableContext = await readStableSubtitleNavigationContext(requestedVideoKey);
         if (stableContext.isStale) {
-          // Why: async timeline reads must not publish resolved data for a video that has changed.
-          return buildPendingSubtitleNavigationRuntimePayload(stableContext.latestVideoKey);
+          return buildPendingRuntimePayload(stableContext.latestVideoKey);
         }
-        return createSubtitleNavigationRuntimePayload(
-          stableContext.context,
-          stableContext.requestedVideoKey
-        );
+        return createRuntimePayload(stableContext.context, stableContext.requestedVideoKey);
       } catch (error) {
-        // Why: bridge consumers should fall back to current pending state, not stale data.
         logError('Subtitle navigation runtime payload read failed', error);
-        return buildPendingSubtitleNavigationRuntimePayload(getCurrentSubtitleNavigationVideoKey());
+        return buildPendingRuntimePayload(getCurrentSubtitleNavigationVideoKey());
       }
     }
 
@@ -383,8 +373,8 @@
           bridgeKey,
           messageType: subscribeMessageType,
           cloneOverlayPayload: cloneOverlaySubtitleNavigationPayload,
-          createPendingOverlayPayload: buildPendingOverlaySubtitleNavigationPayload,
-          createPendingRuntimePayload: buildPendingSubtitleNavigationRuntimePayload,
+          createPendingOverlayPayload: buildPendingOverlayPayload,
+          createPendingRuntimePayload: buildPendingRuntimePayload,
           createOverlayPayloadSignature: createOverlaySubtitleNavigationSignature,
           createSnapshotFromState: createSubtitleNavigationSnapshotFromState,
           createSnapshotSignature: createSubtitleNavigationSnapshotSignature,
@@ -426,13 +416,11 @@
       try {
         stableContext = await readStableSubtitleNavigationContext();
       } catch (error) {
-        // Why: actionable navigation errors should be about invalid actions, not transient reads.
         logError('Subtitle navigation action read failed', error);
-        return buildPendingSubtitleNavigationSnapshot();
+        return buildPendingSnapshot();
       }
       if (stableContext.isStale) {
-        // Why: user actions should never seek a new video with the previous video's timeline.
-        return buildPendingSubtitleNavigationRuntimePayload(stableContext.latestVideoKey).snapshot;
+        return buildPendingRuntimePayload(stableContext.latestVideoKey).snapshot;
       }
       const context = stableContext.context;
       if (!context.video) {

@@ -4,6 +4,7 @@ const RELEASE_CHECK_SCRIPT_NAMES = [
   'lint',
   'typecheck',
   'test',
+  'test:ui',
   'build:extension:bundle',
   'test:extension-smoke:built',
   'test:zip-smoke:built',

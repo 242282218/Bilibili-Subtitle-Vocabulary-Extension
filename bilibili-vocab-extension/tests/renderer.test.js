@@ -97,8 +97,8 @@ test('renderToHtml: should keep bilingual page mode distinct from english-only o
   });
 
   assert.notEqual(bilingualHtml, englishOnlyHtml);
-  assert.match(bilingualHtml, /class="bili-vocab-bilingual-line"/);
-  assert.match(bilingualHtml, /class="bili-vocab-bilingual-translation"/);
+  assert.match(bilingualHtml, /class="bsv-bilingual-line"/);
+  assert.match(bilingualHtml, /class="bsv-bilingual-translation"/);
   assert.match(bilingualHtml, />我想系统学习</);
-  assert.doesNotMatch(englishOnlyHtml, /bili-vocab-bilingual-translation/);
+  assert.doesNotMatch(englishOnlyHtml, /bsv-bilingual-translation/);
 });

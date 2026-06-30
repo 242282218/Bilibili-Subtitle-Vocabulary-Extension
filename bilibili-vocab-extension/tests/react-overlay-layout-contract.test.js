@@ -8,17 +8,17 @@ function readProjectFile(fileName) {
 }
 
 test('react overlay layout contract: overlay body should remain scrollable inside fixed panel', () => {
-  const stylesheet = readProjectFile('react-ui/src/overlay.css');
+  const stylesheet = readProjectFile('react-ui/src/styles/overlay.css');
 
   assert.match(
     stylesheet,
-    /\.rv-overlay-panel\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-rows:\s*auto 1fr;/
+    /\.bsv-overlay-panel\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-rows:\s*auto 1fr;/
   );
-  assert.match(stylesheet, /\.rv-overlay-body\s*\{[\s\S]*overflow:\s*auto;/);
+  assert.match(stylesheet, /\.bsv-overlay-body\s*\{[\s\S]*overflow:\s*auto;/);
 });
 
 test('react overlay layout contract: mountOverlayPanel should short-circuit when react root already exists', () => {
-  const source = readProjectFile('react-ui/src/overlay-entry.tsx');
+  const source = readProjectFile('react-ui/src/components/overlay-entry.tsx');
 
   assert.match(
     source,

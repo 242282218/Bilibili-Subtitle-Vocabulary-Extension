@@ -1,0 +1,209 @@
+/*
+ * Design tokens for Bilibili Subtitle Vocabulary.
+ * Evidence Warm Precision — warm, precise, low-noise, evidence-first.
+ * Optimized for a learning tool that overlays on video content.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* Core canvas — warm paper tones */
+  --bsv-bg: #f7f5ee;
+  --bsv-surface: #ffffff;
+  --bsv-surface-elevated: #fdfcf8;
+  --bsv-surface-sunken: #efe9dc;
+  --bsv-surface-overlay: rgba(255, 255, 255, 0.92);
+
+  /* Foreground — high contrast for readability (WCAG AA on warm bg) */
+  --bsv-fg: #1a1714;
+  --bsv-muted: #5c554c;
+  --bsv-subtle: #6f665b;
+  --bsv-fg-on-accent: #ffffff;
+
+  /* Borders — subtle but visible */
+  --bsv-border: #e2dac9;
+  --bsv-border-soft: #ede6d6;
+  --bsv-border-strong: #d4c9b3;
+
+  /* Accent: terracotta — warm, focused, learning-friendly */
+  --bsv-accent: #9f452b;
+  --bsv-accent-soft: #b95738;
+  --bsv-accent-hover: #8c3a23;
+  --bsv-accent-active: #78311d;
+  --bsv-accent-subtle: rgba(159, 69, 43, 0.08);
+  --bsv-accent-foreground: #ffffff;
+
+  /* Semantic states — calibrated for clarity */
+  --bsv-success: #2f7d55;
+  --bsv-success-soft: rgba(47, 125, 85, 0.1);
+  --bsv-warning: #9f6b16;
+  --bsv-warning-soft: rgba(159, 107, 22, 0.1);
+  --bsv-error: #b42318;
+  --bsv-error-soft: rgba(180, 35, 24, 0.1);
+  --bsv-info: #2563eb;
+  --bsv-info-soft: rgba(37, 99, 235, 0.1);
+
+  /* Focus — accessible ring */
+  --bsv-focus: #0069c2;
+  --bsv-focus-ring: #0069c2;
+  --bsv-focus-ring-offset: #f7f5ee;
+
+  /* Surface interactions */
+  --bsv-surface-hover: #f1eee6;
+  --bsv-surface-active: #e8dfd0;
+  --bsv-surface-selected: #f5e6db;
+  --bsv-surface-disabled: #eee9df;
+  --bsv-fg-disabled: #8f867a;
+
+  /* Elevation — layered depth */
+  --bsv-shadow-xs: 0 1px 2px rgba(25, 21, 16, 0.04);
+  --bsv-shadow-sm: 0 1px 3px rgba(25, 21, 16, 0.06), 0 1px 2px rgba(25, 21, 16, 0.04);
+  --bsv-shadow-md: 0 4px 12px rgba(25, 21, 16, 0.08), 0 2px 4px rgba(25, 21, 16, 0.04);
+  --bsv-shadow-lg: 0 12px 32px rgba(25, 21, 16, 0.12), 0 4px 8px rgba(25, 21, 16, 0.06);
+  --bsv-shadow-xl: 0 20px 48px rgba(25, 21, 16, 0.16), 0 8px 16px rgba(25, 21, 16, 0.08);
+
+  /* Accent glow — for highlights and active states */
+  --bsv-glow-accent: 0 0 0 4px var(--bsv-accent-subtle);
+  --bsv-glow-success: 0 0 0 4px var(--bsv-success-soft);
+  --bsv-glow-warning: 0 0 0 4px var(--bsv-warning-soft);
+  --bsv-glow-error: 0 0 0 4px var(--bsv-error-soft);
+
+  /* Selection — warm tint */
+  --bsv-selection-bg: rgba(159, 69, 43, 0.18);
+  --bsv-selection-fg: var(--bsv-fg);
+
+  /* Radius — refined scale */
+  --bsv-radius-xs: 3px;
+  --bsv-radius-sm: 5px;
+  --bsv-radius-md: 8px;
+  --bsv-radius-lg: 12px;
+  --bsv-radius-xl: 16px;
+  --bsv-radius-2xl: 20px;
+  --bsv-radius-full: 9999px;
+
+  /* Spacing — consistent 4px base */
+  --bsv-space-1: 4px;
+  --bsv-space-2: 8px;
+  --bsv-space-3: 12px;
+  --bsv-space-4: 16px;
+  --bsv-space-5: 20px;
+  --bsv-space-6: 24px;
+  --bsv-space-8: 32px;
+  --bsv-space-10: 40px;
+  --bsv-space-12: 48px;
+
+  /* Typography — refined hierarchy */
+  --bsv-font-display: "Newsreader", Georgia, "Songti SC", serif;
+  --bsv-font-body: "Inter", system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --bsv-font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", "Source Code Pro", monospace;
+
+  --bsv-font-size-2xs: 11px;
+  --bsv-font-size-xs: 12px;
+  --bsv-font-size-sm: 13px;
+  --bsv-font-size-base: 14px;
+  --bsv-font-size-md: 15px;
+  --bsv-font-size-lg: 18px;
+  --bsv-font-size-xl: 20px;
+  --bsv-font-size-2xl: 24px;
+  --bsv-font-size-3xl: 30px;
+
+  --bsv-font-weight-normal: 400;
+  --bsv-font-weight-medium: 500;
+  --bsv-font-weight-semibold: 600;
+  --bsv-font-weight-bold: 700;
+
+  --bsv-line-height-tight: 1.2;
+  --bsv-line-height-normal: 1.5;
+  --bsv-line-height-relaxed: 1.65;
+
+  --bsv-letter-spacing-tight: -0.01em;
+  --bsv-letter-spacing-normal: 0;
+  --bsv-letter-spacing-wide: 0.02em;
+  --bsv-letter-spacing-wider: 0.06em;
+
+  /* Motion — natural easing */
+  --bsv-duration-instant: 80ms;
+  --bsv-duration-fast: 140ms;
+  --bsv-duration-normal: 200ms;
+  --bsv-duration-slow: 300ms;
+  --bsv-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --bsv-easing-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --bsv-easing-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --bsv-easing-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Z-index scale */
+  --bsv-z-base: 0;
+  --bsv-z-dropdown: 100;
+  --bsv-z-sticky: 200;
+  --bsv-z-overlay: 1000;
+  --bsv-z-modal: 1100;
+  --bsv-z-toast: 1200;
+}
+
+body.v3-page[data-bsv-theme="dark"],
+.v3-page--dark {
+  color-scheme: dark;
+
+  /* Core canvas — warm dark, not pure black */
+  --bsv-bg: #0d0c0a;
+  --bsv-surface: #181613;
+  --bsv-surface-elevated: #221f1b;
+  --bsv-surface-sunken: #080706;
+  --bsv-surface-overlay: rgba(24, 22, 19, 0.92);
+
+  /* Foreground — warm white for comfort */
+  --bsv-fg: #f5f1e8;
+  --bsv-muted: #b8b0a4;
+  --bsv-subtle: #8e8578;
+  --bsv-fg-on-accent: #17110e;
+
+  /* Borders — visible against dark surfaces */
+  --bsv-border: #36322c;
+  --bsv-border-soft: #2a2620;
+  --bsv-border-strong: #44403a;
+
+  /* Accent — brighter terracotta for dark mode contrast */
+  --bsv-accent: #e07a5f;
+  --bsv-accent-soft: #ea8d74;
+  --bsv-accent-hover: #f2967d;
+  --bsv-accent-active: #c96442;
+  --bsv-accent-subtle: rgba(224, 122, 95, 0.12);
+  --bsv-accent-foreground: #17110e;
+
+  /* Semantic states — brighter for dark mode */
+  --bsv-success: #4ade80;
+  --bsv-success-soft: rgba(74, 222, 128, 0.12);
+  --bsv-warning: #fbbf24;
+  --bsv-warning-soft: rgba(251, 191, 36, 0.12);
+  --bsv-error: #f87171;
+  --bsv-error-soft: rgba(248, 113, 113, 0.12);
+  --bsv-info: #60a5fa;
+  --bsv-info-soft: rgba(96, 165, 250, 0.12);
+
+  --bsv-focus: #7ab7ef;
+  --bsv-focus-ring: #7ab7ef;
+  --bsv-focus-ring-offset: #0d0c0a;
+
+  --bsv-surface-hover: #25221e;
+  --bsv-surface-active: #2e2a25;
+  --bsv-surface-selected: #3a2820;
+  --bsv-surface-disabled: #1a1815;
+  --bsv-fg-disabled: #756d63;
+
+  /* Elevation — deeper shadows for dark mode */
+  --bsv-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --bsv-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.28), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --bsv-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.36), 0 2px 4px rgba(0, 0, 0, 0.24);
+  --bsv-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.44), 0 4px 8px rgba(0, 0, 0, 0.28);
+  --bsv-shadow-xl: 0 20px 48px rgba(0, 0, 0, 0.52), 0 8px 16px rgba(0, 0, 0, 0.32);
+
+  /* Accent glow — brighter for dark mode */
+  --bsv-glow-accent: 0 0 0 4px var(--bsv-accent-subtle);
+  --bsv-glow-success: 0 0 0 4px var(--bsv-success-soft);
+  --bsv-glow-warning: 0 0 0 4px var(--bsv-warning-soft);
+  --bsv-glow-error: 0 0 0 4px var(--bsv-error-soft);
+
+  /* Selection — warm tint, brighter on dark */
+  --bsv-selection-bg: rgba(224, 122, 95, 0.28);
+  --bsv-selection-fg: var(--bsv-fg);
+}

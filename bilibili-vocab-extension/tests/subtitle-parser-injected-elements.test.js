@@ -7,11 +7,11 @@ test('isInjectedSubtitleElement: injected vocab span should be skipped as subtit
   const injected = {
     classList: {
       contains(name) {
-        return name === 'bili-vocab-word';
+        return name === 'bsv-word';
       },
     },
     closest(selector) {
-      return selector === '.bili-vocab-word' ? this : null;
+      return selector === '.bsv-word' ? this : null;
     },
   };
 

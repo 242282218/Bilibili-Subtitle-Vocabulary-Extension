@@ -7,10 +7,11 @@ const BUILD_VOCAB_DATASET_SCRIPT = path.join('scripts', 'build-vocab-dataset.js'
 const DEFAULT_OUTPUT_NAME = 'extension.zip';
 const DEFAULT_INCLUDE_GLOBS = [];
 const EXCLUDED_PUBLISH_ENTRIES = ['dist/overlay-size-report.json'];
+const EXCLUDED_PUBLISH_PREFIXES = ['legacy/'];
 const FIXED_INCLUDE_PATHS = [
   'manifest.json',
   'background.js',
-  'contentScript.js',
+  path.join('contentScript', 'index.js'),
   'styles.css',
   path.join('scripts', 'danmaku.js'),
   path.join('scripts', 'scheduler.js'),
@@ -24,6 +25,8 @@ const REQUIRED_ARCHIVE_ENTRIES = FIXED_INCLUDE_PATHS.slice();
 const WINDOWS_PACK_MAX_RETRY = 2;
 const HTML_REFERENCE_ATTRIBUTE_PATTERN = /\b(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
 const EXTERNAL_HTML_REFERENCE_PATTERN = /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i;
+const IMPORT_SCRIPTS_CALL_PATTERN = /\bimportScripts\s*\(([\s\S]*?)\)/gi;
+const STRING_LITERAL_PATTERN = /(['"])([^'"\\]*(?:\\.[^'"\\]*)*)\1/g;
 
 function listProjectRootFiles(rootDir) {
   return fs.readdirSync(rootDir, { withFileTypes: true }).map((entry) => entry.name);
@@ -177,7 +180,10 @@ function normalizeProjectRelativePath(rootDir, filePath) {
 
 function shouldExcludePublishEntry(rootDir, filePath) {
   const relativePath = normalizeProjectRelativePath(rootDir, filePath);
-  return EXCLUDED_PUBLISH_ENTRIES.includes(relativePath);
+  if (EXCLUDED_PUBLISH_ENTRIES.includes(relativePath)) {
+    return true;
+  }
+  return EXCLUDED_PUBLISH_PREFIXES.some((prefix) => relativePath.startsWith(prefix));
 }
 
 function readManifest(rootDir, manifestFile = 'manifest.json') {
@@ -211,6 +217,99 @@ function stripHtmlReferenceSuffix(rawReference) {
   const reference = String(rawReference || '').trim();
   const suffixIndex = reference.search(/[?#]/);
   return suffixIndex === -1 ? reference : reference.slice(0, suffixIndex);
+}
+
+function resolveRuntimeScriptReference(fromEntry, rawReference) {
+  const reference = stripHtmlReferenceSuffix(rawReference);
+  if (!reference || EXTERNAL_HTML_REFERENCE_PATTERN.test(reference)) {
+    return '';
+  }
+
+  const normalizedFromEntry = normalizeArchivePathForCheck(fromEntry);
+  const joinedReference = reference.startsWith('/')
+    ? reference.replace(/^\/+/, '')
+    : path.posix.join(path.posix.dirname(normalizedFromEntry), reference);
+  const normalizedReference = normalizeArchivePathForCheck(path.posix.normalize(joinedReference));
+
+  if (
+    !normalizedReference ||
+    normalizedReference === '..' ||
+    normalizedReference.startsWith('../')
+  ) {
+    return '';
+  }
+
+  return normalizedReference;
+}
+
+function extractImportScriptsReferences(sourceText) {
+  const references = [];
+  let callMatch = null;
+
+  IMPORT_SCRIPTS_CALL_PATTERN.lastIndex = 0;
+  while ((callMatch = IMPORT_SCRIPTS_CALL_PATTERN.exec(String(sourceText || ''))) !== null) {
+    const argsSource = callMatch[1] || '';
+    let literalMatch = null;
+    STRING_LITERAL_PATTERN.lastIndex = 0;
+
+    while ((literalMatch = STRING_LITERAL_PATTERN.exec(argsSource)) !== null) {
+      const reference = literalMatch[2];
+      if (reference && !references.includes(reference)) {
+        references.push(reference);
+      }
+    }
+  }
+
+  return references;
+}
+
+function collectImportScriptDependencies(rootDir, entryPath, visitedEntries = new Set()) {
+  const normalizedEntry = normalizeArchivePathForCheck(entryPath);
+  if (!normalizedEntry || visitedEntries.has(normalizedEntry)) {
+    return [];
+  }
+
+  visitedEntries.add(normalizedEntry);
+  const absolutePath = path.resolve(rootDir, normalizedEntry);
+  if (!fs.existsSync(absolutePath) || path.extname(normalizedEntry).toLowerCase() !== '.js') {
+    return [];
+  }
+
+  const sourceText = fs.readFileSync(absolutePath, 'utf8').replace(/^\uFEFF/, '');
+  const dependencies = [];
+
+  extractImportScriptsReferences(sourceText).forEach((reference) => {
+    const dependencyEntry = resolveRuntimeScriptReference(normalizedEntry, reference);
+    if (!dependencyEntry) {
+      return;
+    }
+
+    addUniqueEntry(dependencies, dependencyEntry);
+    collectImportScriptDependencies(rootDir, dependencyEntry, visitedEntries).forEach(
+      (nestedDependency) => {
+        addUniqueEntry(dependencies, nestedDependency);
+      }
+    );
+  });
+
+  return dependencies;
+}
+
+function collectRuntimeDependencyEntries(rootDir, baseEntries) {
+  const entries = [];
+  const runtimeVisitedEntries = new Set();
+
+  (Array.isArray(baseEntries) ? baseEntries : []).forEach((entry) => {
+    addUniqueEntry(entries, entry);
+  });
+
+  entries.slice().forEach((entry) => {
+    collectImportScriptDependencies(rootDir, entry, runtimeVisitedEntries).forEach((dependency) => {
+      addUniqueEntry(entries, dependency);
+    });
+  });
+
+  return entries;
 }
 
 function resolveHtmlReferenceEntry(htmlEntry, rawReference) {
@@ -321,7 +420,7 @@ function collectManifestPackEntries(rootDir, manifestFile = 'manifest.json') {
     collectManifestPathValues(rootDir, entries, item && item.resources);
   });
 
-  return entries;
+  return collectRuntimeDependencyEntries(rootDir, entries);
 }
 
 function parseZipEntryList(stdoutText) {
@@ -607,11 +706,15 @@ module.exports = {
   DEFAULT_INCLUDE_GLOBS,
   FIXED_INCLUDE_PATHS,
   EXCLUDED_PUBLISH_ENTRIES,
+  EXCLUDED_PUBLISH_PREFIXES,
   WIN_ARCHIVE_SCRIPT_FILE,
   REQUIRED_ARCHIVE_ENTRIES,
   WINDOWS_PACK_MAX_RETRY,
   collectPackEntries,
   collectManifestPackEntries,
+  collectRuntimeDependencyEntries,
+  collectImportScriptDependencies,
+  extractImportScriptsReferences,
   collectHtmlAssetReferences,
   normalizeOutputZipPath,
   normalizeArchivePathForCheck,

@@ -10,6 +10,7 @@ const OVERLAY_STORAGE_SOURCE_PATH = path.join(
   '..',
   'react-ui',
   'src',
+  'lib',
   'overlay-storage.ts'
 );
 const OVERLAY_STORAGE_SOURCE_DIR = path.dirname(OVERLAY_STORAGE_SOURCE_PATH);

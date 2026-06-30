@@ -1,7 +1,25 @@
-﻿const test = require('node:test');
+const test = require('node:test');
 const assert = require('node:assert/strict');
 
+const vocabularyPure = require('../vocabulary-pure.js');
 const vocabulary = require('../vocabulary.js');
+
+const previousChrome = global.chrome;
+
+test.before(() => {
+  global.chrome = {
+    runtime: {
+      lastError: null,
+      sendMessage(_message, callback) {
+        callback({ ok: true, payload: {} });
+      },
+    },
+  };
+});
+
+test.after(() => {
+  global.chrome = previousChrome;
+});
 
 test('findMatchesInText: should match alias terms', () => {
   vocabulary.__setEntriesForTest([

@@ -20,10 +20,7 @@ const OUT_OF_BAND_SMOKE_TESTS = [
   'extension-zip-smoke.spec.js',
   'real-site-smoke.spec.js',
 ];
-const LEGACY_COMPAT_TESTS_IN_OPTIMIZE_LANE = [
-  'shared-settings-integration.test.js',
-  'standalone-init.test.js',
-];
+const LEGACY_COMPAT_TESTS_IN_OPTIMIZE_LANE = ['shared-settings-integration.test.js'];
 const LEGACY_DEFERRED_REASON = `manifest / pack 真实交付入口是 dist/popup.html / dist/options.html；root popup.js / options.js 仍是 legacy popup/options 入口，因此默认只在报告中显式暴露，不并入 shipped optimize shard。共享默认值与 fallback 兼容仍通过 ${LEGACY_COMPAT_TESTS_IN_OPTIMIZE_LANE.join(
   ' / '
 )} 留在 optimize lane；剩余 legacy shell tests 的后续动作应是迁移可复用逻辑到 shared helper 或单独 legacy lane，而不是直接并入 shipped shard。`;
@@ -37,15 +34,6 @@ const STATIC_OPTIMIZATION_GAPS = [
       'contentScript.js 仍是最高复杂区，初始化、缓存、观察者、字幕导航和 overlay 桥接耦合较重。',
     files: ['contentScript.js', 'subtitleParser.js', 'subtitleNavigation.js'],
     suggestedCommands: ['node --test tests/contentScript-*.test.js tests/subtitle*.test.js'],
-  },
-  {
-    id: 'legacy-react-drift',
-    priority: 1,
-    title: '继续压低 React 与 legacy 双栈漂移风险',
-    rationale:
-      'shipped popup/options 入口与 pack 已锁定到 React dist，但根目录 legacy popup/options shell 文件仍存在，后续优化需要持续防止目标漂移。',
-    files: ['popup.html', 'popup.js', 'options.html', 'options.js'],
-    suggestedCommands: ['pnpm run test:ui', 'pnpm run build:extension'],
   },
 ];
 
@@ -115,7 +103,6 @@ const TEST_SHARD_DEFINITIONS = [
       /^open-vocab-data\.test\.js$/,
       /^scheduler\.test\.js$/,
       /^danmaku\.test\.js$/,
-      /^standalone-init\.test\.js$/,
       /^continuous-optimization(?:-.*)?\.test\.js$/,
     ],
   },
@@ -504,7 +491,7 @@ function renderMarkdownReport(summary) {
     lines.push('- None');
   } else {
     lines.push(
-      `- 说明: manifest / pack 真实交付入口是 \`dist/popup.html\` / \`dist/options.html\`；以下测试直接锁定 root \`popup.js\` / \`options.js\`，因此默认只在报告中显式暴露，不并入 shipped optimize shard。共享默认值与 fallback 兼容仍通过 \`${LEGACY_COMPAT_TESTS_IN_OPTIMIZE_LANE[0]}\` / \`${LEGACY_COMPAT_TESTS_IN_OPTIMIZE_LANE[1]}\` 留在 optimize lane。`
+      `- 说明: manifest / pack 真实交付入口是 \`dist/popup.html\` / \`dist/options.html\`；以下测试直接锁定 root \`popup.js\` / \`options.js\`，因此默认只在报告中显式暴露，不并入 shipped optimize shard。`
     );
     lines.push(
       '- 后续: 迁移可复用逻辑到 shared helper 或单独 legacy lane，再决定是否保留这些 legacy shell tests。'

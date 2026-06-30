@@ -5,7 +5,7 @@ const previousDocument = global.document;
 const previousChrome = global.chrome;
 const previousUtils = global.Utils;
 
-const contentScriptPath = require.resolve('../contentScript.js');
+const contentScriptPath = require.resolve('../contentScript/index.js');
 
 class MinimalLruCache {
   constructor(maxSize) {
@@ -38,7 +38,7 @@ function loadContentScriptWithMinimalCache() {
   global.Utils = {
     LRUCache: MinimalLruCache,
   };
-  return require('../contentScript.js');
+  return require('../contentScript/index.js');
 }
 
 test.before(() => {

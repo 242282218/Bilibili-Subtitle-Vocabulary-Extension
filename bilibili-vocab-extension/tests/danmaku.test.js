@@ -330,17 +330,17 @@ test('shootWordDanmaku: should render associated words with weaker visual style'
     const container = host.findById(danmaku.DANMAKU_CONTAINER_ID);
     assert.ok(container);
     const node = container.children[container.children.length - 1];
-    assert.match(node.className, /bili-vocab-danmaku-item-associated/);
+    assert.match(node.className, /bsv-danmaku-item-associated/);
     assert.equal(node.style.color, '#ffe8a8');
     assert.equal(node.style.fontSize, '23px');
     assert.equal(node.style.fontWeight, '600');
     assert.equal(node.style.opacity, '0.68');
     assert.equal(node.children.length, 3);
-    assert.equal(node.children[0].className, 'bili-vocab-danmaku-item__word');
+    assert.equal(node.children[0].className, 'bsv-danmaku-item__word');
     assert.equal(node.children[0].style.color, '#ffe8a8');
-    assert.equal(node.children[1].className, 'bili-vocab-danmaku-item__separator');
+    assert.equal(node.children[1].className, 'bsv-danmaku-item__separator');
     assert.equal(node.children[1].style.color, 'rgba(255, 255, 255, 0.42)');
-    assert.equal(node.children[2].className, 'bili-vocab-danmaku-item__translation');
+    assert.equal(node.children[2].className, 'bsv-danmaku-item__translation');
     assert.equal(node.children[2].style.color, 'rgba(255, 255, 255, 0.72)');
     assert.equal(node.textContent, 'associated-word · test');
   } finally {

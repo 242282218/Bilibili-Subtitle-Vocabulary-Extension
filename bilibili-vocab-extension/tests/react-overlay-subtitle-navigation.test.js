@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
 
-const MODULE_PATH = path.join(__dirname, '..', 'react-ui', 'src', 'subtitle-navigation.ts');
+const MODULE_PATH = path.join(__dirname, '..', 'react-ui', 'src', 'lib', 'subtitle-navigation.ts');
 const SHARED_MODULE_PATH = path.join(__dirname, '..', 'subtitleNavigation.js');
 
 function cloneValue(value) {
