@@ -84,8 +84,31 @@
     globalThis.Utils && typeof globalThis.Utils.LRUCache === 'function'
       ? globalThis.Utils.LRUCache
       : class SimpleMapCache extends Map {
-          constructor() {
+          constructor(limit) {
             super();
+            this.limit = limit;
+          }
+
+          get(key) {
+            if (!this.has(key)) {
+              return undefined;
+            }
+            const value = super.get(key);
+            this.delete(key);
+            this.set(key, value);
+            return value;
+          }
+
+          set(key, value) {
+            if (this.has(key)) {
+              this.delete(key);
+            } else if (this.size >= this.limit) {
+              const oldestKey = this.keys().next().value;
+              if (oldestKey !== undefined) {
+                this.delete(oldestKey);
+              }
+            }
+            return super.set(key, value);
           }
         };
   const translationCache = new LRUCacheCtor(TRANSLATION_CACHE_LIMIT);
@@ -129,6 +152,20 @@
       domainRules:
         source.domainRules && typeof source.domainRules === 'object' ? source.domainRules : {},
       schemaVersion: Number(source.schemaVersion) || 2,
+      vocabularyMode: ['core', 'full'].includes(String(source.vocabularyMode || '').trim())
+        ? String(source.vocabularyMode).trim()
+        : EFFECTIVE_DEFAULTS.vocabularyMode,
+      examPreference: ['balanced', 'exam-first'].includes(String(source.examPreference || '').trim())
+        ? String(source.examPreference).trim()
+        : EFFECTIVE_DEFAULTS.examPreference,
+      bilingualMode: ['default', 'bilingual', 'english-only'].includes(
+        String(source.bilingualMode || '').trim()
+      )
+        ? String(source.bilingualMode).trim()
+        : EFFECTIVE_DEFAULTS.bilingualMode,
+      themeMode: ['auto', 'light', 'dark'].includes(String(source.themeMode || '').trim())
+        ? String(source.themeMode).trim()
+        : EFFECTIVE_DEFAULTS.themeMode,
     };
   }
 
@@ -395,7 +432,7 @@
     return webTextReplacementController;
   }
 
-  function importOverlayModuleBundle() {
+  async function importOverlayModuleBundle() {
     if (
       typeof chrome === 'undefined' ||
       !chrome.runtime ||
@@ -404,7 +441,20 @@
       return null;
     }
 
-    return import(chrome.runtime.getURL('dist/overlay.js'));
+    const overlayUrl = chrome.runtime.getURL('dist/overlay.js');
+    try {
+      await fetch(overlayUrl, { method: 'HEAD' });
+    } catch (_error) {
+      logError('Overlay module resource unavailable', new Error(`HEAD ${overlayUrl} failed`));
+      return null;
+    }
+
+    try {
+      return await import(overlayUrl);
+    } catch (error) {
+      logError('Overlay module dynamic import failed', error);
+      return null;
+    }
   }
 
   function getOverlayLoaderController() {

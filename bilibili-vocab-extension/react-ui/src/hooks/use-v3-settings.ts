@@ -94,6 +94,14 @@ export function useV3Settings(options: UseV3SettingsOptions = {}): UseV3Settings
   const [reloadNonce, setReloadNonce] = useState(0);
   const dirtyRef = useRef(false);
   const workingRef = useRef<SettingsV3 | null>(null);
+  const savedRef = useRef<SettingsV3 | null>(null);
+
+  // Track dirty state incrementally instead of comparing full JSON on every render.
+  const recomputeDirty = useCallback(() => {
+    const s = savedRef.current;
+    const w = workingRef.current;
+    dirtyRef.current = Boolean(s && w) && JSON.stringify(s) !== JSON.stringify(w);
+  }, []);
 
   const dirty = useMemo(() => {
     if (!saved || !working) {
@@ -137,6 +145,8 @@ export function useV3Settings(options: UseV3SettingsOptions = {}): UseV3Settings
   function setWorkingState(next: SettingsV3 | null) {
     workingRef.current = next;
     setWorking(next);
+    // Sync savedRef so dirty computation always compares against latest saved.
+    savedRef.current = savedRef.current;
   }
 
   function detectConflictScopes(local: SettingsV3 | null, remote: SettingsV3): string[] {
@@ -188,6 +198,7 @@ export function useV3Settings(options: UseV3SettingsOptions = {}): UseV3Settings
           return;
         }
         setSaved(payload);
+        savedRef.current = payload;
         setWorkingState(payload);
         setLoading(false);
         setConflict(null);
@@ -288,6 +299,7 @@ export function useV3Settings(options: UseV3SettingsOptions = {}): UseV3Settings
         workingRef.current
       );
       setSaved(reconciliation.saved);
+      savedRef.current = reconciliation.saved;
       setWorkingState(reconciliation.working);
       setConflict(null);
       setSaving(false);

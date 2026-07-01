@@ -1,4 +1,5 @@
 (function (globalScope) {
+  let modulesLoaded = false;
   if (typeof importScripts === 'function') {
     try {
       importScripts(
@@ -14,12 +15,26 @@
         'background-message-handler.js',
         'background-commands.js'
       );
+      modulesLoaded = true;
     } catch (error) {
       // importScripts is unavailable in non-ServiceWorker contexts (e.g. Node tests).
-      // If importScripts exists but a script failed to load, log the error.
-      if (typeof importScripts === 'function') {
-        console.error('[BiliVocab] background importScripts failed:', error);
-      }
+      // Mark as failed so callers can detect partial initialization.
+      console.error('[BiliVocab] background importScripts failed:', error);
+      modulesLoaded = false;
+    }
+  }
+
+  // In Node tests, modules are loaded via require() — detect successful load.
+  if (!modulesLoaded && typeof require === 'function') {
+    try {
+      require('./sharedSettings.js');
+      require('./background-settings.js');
+      require('./background-storage.js');
+      require('./background-message-handler.js');
+      require('./background-commands.js');
+      modulesLoaded = true;
+    } catch (_error) {
+      modulesLoaded = false;
     }
   }
 
@@ -140,15 +155,27 @@
 
   if (typeof chrome !== 'undefined' && chrome.runtime) {
     chrome.runtime.onInstalled.addListener(() => {
+      if (!modulesLoaded) {
+        console.error('[BiliVocab] Skipping ensureDefaultSettings: modules failed to load');
+        return;
+      }
       ensureDefaultSettings();
     });
 
     chrome.runtime.onStartup.addListener(() => {
+      if (!modulesLoaded) {
+        console.error('[BiliVocab] Skipping ensureDefaultSettings: modules failed to load');
+        return;
+      }
       ensureDefaultSettings();
     });
 
     if (chrome.runtime.onMessage && typeof chrome.runtime.onMessage.addListener === 'function') {
       chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+        if (!modulesLoaded) {
+          sendResponse({ ok: false, error: 'Background modules not loaded' });
+          return false;
+        }
         if (typeof handleBackgroundMessage === 'function') {
           return handleBackgroundMessage(message, sendResponse);
         }
@@ -159,6 +186,10 @@
     // 快捷键命令处理
     if (chrome.commands && typeof chrome.commands.onCommand.addListener === 'function') {
       chrome.commands.onCommand.addListener(async (command) => {
+        if (!modulesLoaded) {
+          console.error('[BiliVocab] Ignoring command due to module load failure:', command);
+          return;
+        }
         if (!chrome.storage || !chrome.storage.local) return;
         if (typeof commitCommandSettings !== 'function') return;
         let settings = null;

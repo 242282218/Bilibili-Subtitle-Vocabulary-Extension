@@ -516,10 +516,31 @@
     return custom ? custom.config : normalized.profilesBuiltin.balanced;
   }
 
+  const PROFILE_CONFIG_KEYS = [
+    'enabled',
+    'replaceRatio',
+    'maxReplaceCount',
+    'targetCefr',
+    'activeLevels',
+    'reviewDanmakuSpeed',
+    'reviewDanmakuDensity',
+    'vocabularyMode',
+    'examPreference',
+    'bilingualMode',
+    'themeMode',
+  ];
+
   function isSameProfileConfig(left, right) {
     const a = normalizeProfileConfig(left);
     const b = normalizeProfileConfig(right);
-    return JSON.stringify(a) === JSON.stringify(b);
+    return PROFILE_CONFIG_KEYS.every((key) => {
+      const av = a[key];
+      const bv = b[key];
+      if (Array.isArray(av) && Array.isArray(bv)) {
+        return av.length === bv.length && av.every((v, i) => v === bv[i]);
+      }
+      return av === bv;
+    });
   }
 
   function migrateToV3(legacyPayload) {

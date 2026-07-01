@@ -40,7 +40,6 @@
         "translator.js",
         "renderer.js",
         "subtitleParser.js",
-        "scripts/danmaku.js",
         "scripts/scheduler.js",
         "tooltip.js",
         "subtitleNavigation.js",

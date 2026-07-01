@@ -297,6 +297,13 @@
     });
   }
 
+  function logBackgroundInfo(context, info) {
+    if (typeof console === 'undefined' || typeof console.info !== 'function') {
+      return;
+    }
+    console.info(`[BiliVocab] ${context}:`, info);
+  }
+
   async function tryCleanOldLearningData() {
     try {
       const currentStorage = await getStoragePayload(null);
@@ -307,9 +314,9 @@
 
       await writeStoragePayload(cleanupPatch.payload);
 
-      logBackgroundError(
+      logBackgroundInfo(
         'Cleaned old learning data',
-        new Error(`Reduced from ${cleanupPatch.beforeCount} to ${cleanupPatch.afterCount} entries`)
+        `Reduced from ${cleanupPatch.beforeCount} to ${cleanupPatch.afterCount} entries`
       );
       return cleanupPatch;
     } catch (error) {
@@ -378,6 +385,7 @@
     LEARNING_SUMMARY_KEY,
     getChromeRuntimeError,
     logBackgroundError,
+    logBackgroundInfo,
     normalizeTimestamp,
     writeStoragePayload,
     getStoragePayload,

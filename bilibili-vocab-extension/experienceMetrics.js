@@ -380,7 +380,7 @@
     return buildSnapshot(state, options);
   }
 
-  function resetForTest() {
+  function resetState() {
     memoryState = normalizeState(DEFAULT_STATE);
     writeQueue = Promise.resolve();
   }
@@ -395,7 +395,8 @@
     buildSnapshot,
     recordEvent,
     readSnapshot,
-    __resetForTest: resetForTest,
+    resetState,
+    __resetForTest: resetState,
   };
 
   globalScope.ExperienceMetrics = api;
